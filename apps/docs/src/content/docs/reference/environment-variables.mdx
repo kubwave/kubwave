@@ -194,7 +194,10 @@ The Worker can refresh the service-template catalog from a remote URL without a 
 ## Helm chart secrets
 
 The Helm chart creates (or references) a Secret named `console-creds` containing
-these keys. In production the CLI installer generates random values.
+these keys. In production the CLI installer generates random values for
+`JWT_SECRET` and `SECRETS_KEY`. `GITHUB_TOKEN` is optional and worker-only — the
+installer never sets it; supply it manually via Helm/Secret only if you need
+PR-preview discovery of private GitHub repos.
 
 | Secret key     | Workloads that read it | Purpose                                                          |
 | -------------- | ---------------------- | ---------------------------------------------------------------- |
