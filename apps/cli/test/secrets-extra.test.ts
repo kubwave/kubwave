@@ -56,7 +56,11 @@ describe('createSecrets', () => {
 			makeApiClient: () => ({
 				readNamespacedSecret: async ({ name }: { name: string }) => {
 					if (name === 'console-creds') {
-						return { metadata: { name, resourceVersion: '7' }, type: 'Opaque', data: { JWT_SECRET: 'ag==', SECRETS_KEY: 'Yg==', GITHUB_TOKEN: 'Z2g=' } };
+						return {
+							metadata: { name, resourceVersion: '7' },
+							type: 'Opaque',
+							data: { JWT_SECRET: 'ag==', SECRETS_KEY: 'Yg==', GITHUB_TOKEN: 'Z2g=' }
+						};
 					}
 					throw { code: 404 };
 				},
