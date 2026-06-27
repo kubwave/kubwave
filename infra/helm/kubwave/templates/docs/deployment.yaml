@@ -1,0 +1,32 @@
+{{- $docs := .Values.docs | default dict -}}
+{{- if $docs.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docs
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "docs") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kubwave.selectorLabels" (dict "component" "docs") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kubwave.labels" (dict "root" $ "component" "docs") | nindent 8 }}
+    spec:
+      {{- with $docs.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: docs
+          image: "{{ $docs.image.repository }}:{{ $docs.image.tag }}"
+          imagePullPolicy: {{ $docs.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $docs.port }}
+          resources:
+            {{- toYaml $docs.resources | nindent 12 }}
+{{- end }}

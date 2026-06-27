@@ -1,0 +1,27 @@
+---
+title: Uptime Kuma
+description: Self-hosted uptime monitoring with a status page — a single-service template.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+[Uptime Kuma](https://github.com/louislam/uptime-kuma) is a self-hosted monitoring tool with a fancy
+status page. It's the simplest template: a **single service**, no inputs, no secrets.
+
+## What you get
+
+- One service (`uptime-kuma`, the primary) running the `louislam/uptime-kuma` image on port `3001`.
+- A persistent volume for its SQLite data, so monitors and history survive restarts.
+- The platform's default domain, so it's reachable as soon as it's deployed.
+
+## Deploy it
+
+1. **Create Service → Uptime Kuma** in your environment.
+2. There are no inputs to fill in — just create and deploy.
+3. Open the default domain shown on the service; the first visit walks you through creating the admin
+   account.
+
+<Aside type="note">
+	Because it carries a volume, the service uses the `Recreate` rollout strategy (one instance at a time) and can't be horizontally autoscaled —
+	expected for a single-node SQLite app.
+</Aside>

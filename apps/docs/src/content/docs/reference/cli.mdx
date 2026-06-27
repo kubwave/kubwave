@@ -1,0 +1,178 @@
+---
+title: CLI reference
+description: Every kubwave CLI command, flag, and option.
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+The `kubwave` CLI is a **single, self-contained binary** (Bun-compiled) that installs,
+upgrades, and manages the kubwave platform on a Kubernetes cluster. It embeds both the
+Helm binary and the platform Helm chart — no external dependencies beyond `kubectl`
+access to a cluster.
+
+## Install script
+
+The recommended way to get the CLI is the bootstrap script:
+
+```sh
+curl -fsSL https://get.kubwave.com | sh
+```
+
+This detects your OS and architecture, downloads the matching binary for the requested
+release channel, and immediately runs `kubwave install`.
+
+### Script options
+
+| Flag                          | Description                         |
+| ----------------------------- | ----------------------------------- |
+| `--channel <stable\|preview>` | Release channel (default: `stable`) |
+| `--version <x.y.z[-...]>`     | Pin a specific version tag          |
+| `--help`, `-h`                | Print usage                         |
+
+### Script environment variables
+
+| Variable              | Default            | Description                                      |
+| --------------------- | ------------------ | ------------------------------------------------ |
+| `KUBWAVE_CHANNEL`     | `stable`           | Release channel if no `--channel` flag is given. |
+| `KUBWAVE_INSTALL_DIR` | `$HOME/.local/bin` | Directory to install the binary into.            |
+
+<Aside type="note">
+	The install script adds `$INSTALL_DIR` to `PATH` before running the CLI. Add it to your shell profile for persistent access.
+</Aside>
+
+---
+
+## Commands
+
+### `kubwave install`
+
+Install kubwave onto a Kubernetes cluster. Interactive by default; every prompt can
+be answered via flags for non-interactive use.
+
+See [Supported providers](/start/supported-providers/) for the current platform target
+and upcoming provider roadmap.
+
+```sh
+kubwave install
+kubwave install --domain app.example.com --email ops@example.com --channel stable
+kubwave install --platform cloudfleet-hetzner --ha
+```
+
+| Flag                                                | Default           | Description                                                                                                                                    |
+| --------------------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--domain <fqdn>`                                   | (prompted)        | Domain for the Console and API.                                                                                                                |
+| `--email <email>`                                   | (prompted)        | Email for Let's Encrypt certificate notifications.                                                                                             |
+| `--channel <stable\|preview>`                       | `stable`          | Release channel for future updates.                                                                                                            |
+| `--platform <id>`                                   | (prompted)        | Target platform. Currently: `cloudfleet-hetzner`. See [Supported providers](/start/supported-providers/).                                      |
+| `--hetzner-lb-location <loc>`                       | —                 | Hetzner Load Balancer location: `fsn1`, `nbg1`, `hel1`, `ash`, or `hil`.                                                                       |
+| `--registry <url>`                                  | `ghcr.io/kubwave` | Container registry endpoint for platform images.                                                                                               |
+| `--storage <auto\|skip>`                            | `auto`            | `auto` installs a CSI driver if no default StorageClass exists; `skip` does nothing.                                                           |
+| `--storage-class <name>`                            | —                 | Use this StorageClass and skip CSI auto-install.                                                                                               |
+| `--tenant-pod-security <baseline\|restricted\|off>` | `baseline`        | Pod Security Standards enforce level for tenant namespaces. `restricted` requires every tenant image to run non-root; `off` removes the label. |
+| `--tenant-runtime-class <gvisor\|off>`              | `off`             | Sandbox runtime for tenant pods. `gvisor` auto-installs runsc on all Linux nodes and stamps `runtimeClassName` on tenant workloads.            |
+| `--ha`                                              | `false`           | Enable high availability (3 replicas of each workload, soft-spread across nodes).                                                              |
+| `--cluster-confirmed`                               | `false`           | Skip the interactive cluster-confirmation prompt.                                                                                              |
+| `--in-cluster`                                      | `false`           | Use the in-cluster kubeconfig (for self-update Jobs).                                                                                          |
+
+### `kubwave update`
+
+Refreshes the local CLI binary (if a newer version is available) and upgrades the
+cluster installation. Resolves the target version from the active release channel
+unless `--target` is given.
+
+```sh
+kubwave update
+kubwave update --target 0.2.0
+kubwave update --channel preview
+```
+
+| Flag                          | Default               | Description                                                                                        |
+| ----------------------------- | --------------------- | -------------------------------------------------------------------------------------------------- |
+| `--target <version>`          | (latest from channel) | Pin a specific version.                                                                            |
+| `--channel <stable\|preview>` | (from cluster marker) | One-shot override of the release channel; persisted to the cluster.                                |
+| `--registry <url>`            | (from install)        | Container registry override.                                                                       |
+| `--yes`                       | `false`               | Non-interactive: accept all prompts.                                                               |
+| `--cluster-confirmed`         | `false`               | Skip the interactive cluster-confirmation prompt.                                                  |
+| `--skip-self-refresh`         | `false`               | Do not refresh the local CLI binary before upgrading.                                              |
+| `--in-cluster`                | `false`               | In-cluster mode (set by the self-update Kubernetes Job).                                           |
+| `--run-id <id>`               | —                     | Update run ID (only with `--in-cluster`).                                                          |
+| `--phase <phase>`             | —                     | In-cluster phase (`prepare`, `repair-dependencies`, `wait-dependencies`, `helm-plan`, `finalize`). |
+
+<Aside type="caution">
+	The `--in-cluster`, `--run-id`, and `--phase` flags are internal to the self-update Job lifecycle. You should never need to set them manually.
+</Aside>
+
+### `kubwave uninstall`
+
+Removes kubwave from the cluster — **destroys all data.** Deletes the Helm release,
+all PVCs, all Secrets, the platform namespace, dependency releases (Traefik,
+cert-manager, CloudNativePG), per-environment tenant namespaces, and orphaned RBAC.
+
+```sh
+kubwave uninstall
+kubwave uninstall --yes
+```
+
+| Flag                       | Default           | Description                                      |
+| -------------------------- | ----------------- | ------------------------------------------------ |
+| `--yes`                    | `false`           | Skip the confirmation prompt.                    |
+| `--in-cluster`             | `false`           | Use the in-cluster kubeconfig.                   |
+| `--keep-staging`           | `false`           | Do not touch a legacy staging namespace/release. |
+| `--staging-namespace <ns>` | `kubwave-staging` | Namespace to probe for a legacy staging release. |
+
+### `kubwave status`
+
+Shows the installed platform status — version, channel, install date.
+
+```sh
+kubwave status
+```
+
+| Flag           | Default | Description                    |
+| -------------- | ------- | ------------------------------ |
+| `--in-cluster` | `false` | Use the in-cluster kubeconfig. |
+
+Output:
+
+```
+Version:         0.1.0
+Channel:         stable
+Installed at:    2026-06-01T12:00:00.000Z
+Installed by:    kubwave CLI v0.1.0
+```
+
+### `kubwave version`
+
+Prints the CLI version, embedded Helm version, and the active release channel
+(read from the cluster if reachable).
+
+```sh
+kubwave version
+kubwave version --in-cluster
+```
+
+| Flag           | Default | Description                                               |
+| -------------- | ------- | --------------------------------------------------------- |
+| `--in-cluster` | `false` | Use the in-cluster kubeconfig to read the channel marker. |
+
+Output:
+
+```
+kubwave CLI      v0.1.0
+Helm (embedded)  3.16.4
+Channel          stable (from cluster)
+```
+
+---
+
+## Global behavior
+
+- **Kubeconfig:** All commands use your default `KUBECONFIG` (or `~/.kube/config`)
+  unless `--in-cluster` is set, which reads the pod's service-account token.
+- **Interactive prompts:** Every command uses `@clack/prompts`. Pass the relevant
+  flags to run non-interactively (CI-friendly).
+- **Spinners and progress:** Long-running operations show a spinner and step-by-step
+  progress. Errors are printed with a red cross and exit code 1.
+- **Release channels:**
+  - `stable` — production-ready releases. The `:latest` container tag is pushed.
+  - `preview` — prereleases (tags with a dash, e.g. `0.2.0-alpha.1`). No `:latest` push.

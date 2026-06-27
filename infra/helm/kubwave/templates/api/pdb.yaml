@@ -1,0 +1,1 @@
+{{- include "kubwave.haPDB" (dict "root" $ "component" "api") }}

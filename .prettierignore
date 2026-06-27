@@ -1,0 +1,21 @@
+node_modules
+plans
+.nuxt
+.output
+.turbo
+.astro
+dist
+build
+bun.lock
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+coverage
+
+# Helm chart templates use Go template syntax — not valid YAML to Prettier.
+# values*.yaml and Chart.yaml stay formatted; only templates/ is ignored.
+infra/helm/kubwave/templates/
+
+# Generated artifact — `build:catalog` is the sole authority over its format
+# (enforced by the check:catalog CI gate). Keep Prettier out so the two don't conflict.
+packages/templates/catalog.json

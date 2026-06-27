@@ -1,0 +1,75 @@
+---
+title: Introduction
+description: What kubwave is, what it does, and how it compares to other self-hosted PaaS options.
+---
+
+import { Card, CardGrid, LinkCard, Aside } from '@astrojs/starlight/components';
+
+**kubwave turns any Kubernetes cluster into a self-hosted PaaS.** Install one binary, point it
+at a cluster, and you get a web console, an HTTP API, and a background worker that deploy and run
+your apps — with TLS, ingress, autoscaling, and a Postgres database wired up for you.
+
+Think of it as a Heroku- or Railway-style experience that you own end to end: no managed cloud, no
+per-seat billing, no black box. Just your cluster, a Helm chart, and a console that hides the
+Kubernetes plumbing.
+
+## What you get
+
+<CardGrid>
+	<Card title="One binary, full stack" icon="rocket">
+		A single Bun-compiled CLI embeds the Helm chart and installs the whole platform — API, Console, Worker, Postgres, ingress, and TLS — in one
+		command.
+	</Card>
+	<Card title="Kubernetes-native" icon="puzzle">
+		Every service becomes real Kubernetes objects — Deployments, Services, Ingress, HPAs, PersistentVolumeClaims, cert-manager Certificates — that you
+		can inspect with `kubectl`.
+	</Card>
+	<Card title="Isolated by environment" icon="approve-check">
+		Each environment runs in its own namespace with a default-deny NetworkPolicy, so staging can't talk to production by accident.
+	</Card>
+	<Card title="Production controls built in" icon="setting">
+		Per-service CPU/memory limits, horizontal autoscaling, HTTP/TCP health checks, persistent volumes, and encrypted secrets — configured in the
+		console, not buried in YAML.
+	</Card>
+</CardGrid>
+
+## How it fits together
+
+The CLI installs five moving parts into your cluster, all defined by a single Helm chart:
+
+- **Console** — a Nuxt web UI where you manage projects, environments, and services.
+- **API** — the NestJS backend API (OpenAPI, JWT auth) served same-origin with the console under `/api`.
+- **Worker** — a reconciliation loop that turns your service config into running workloads, builds
+  Dockerfiles in-cluster, rolls out deployments, and applies platform self-updates.
+- **Postgres** — the platform's state, run in-cluster by default or pointed at an external database.
+- **Ingress & TLS** — Traefik for routing and cert-manager for automatic Let's Encrypt certificates.
+
+You interact with five concepts, and the platform maps them onto Kubernetes for you:
+
+| Concept         | What it is                                                                    |
+| --------------- | ----------------------------------------------------------------------------- |
+| **Team**        | The tenant that owns everything; members are invited with roles.              |
+| **Project**     | A grouping of environments for one application or system.                     |
+| **Environment** | A deployment target (e.g. `staging`, `production`) — one namespace each.      |
+| **Service**     | A workload: a container image, an in-cluster Dockerfile, or a Git-repo build. |
+| **Deployment**  | An immutable snapshot of a service + config; roll back by re-activating one.  |
+
+## Working with services
+
+A **service** is one workload, and you can create it from four kinds of source:
+
+- a prebuilt **container image** from a registry,
+- a **Dockerfile** you paste, built in-cluster with BuildKit,
+- a **public Git repository**, built from source (Nixpacks auto-detects the stack, or the repo's own
+  Dockerfile), and
+- a **private Git repository**, built the same way over an SSH deploy key.
+
+You can also import a `docker-compose.yml` to create several services at once, and opt services that
+build from Git into **auto-deploy** so a new commit triggers a fresh build. See
+[Deploy a service](/guides/deploy-a-service/) for the details.
+
+For each service you configure environment variables and **encrypted secrets** (AES-256-GCM at rest,
+decrypted only by the worker at rollout), resource requests and limits, autoscaling, health checks,
+volumes, and custom domains. Every change produces a new immutable deployment with its own build and
+runtime logs, and rolling back is just re-activating an earlier one. Live CPU/memory/network/volume
+metrics come from the kubelet out of the box, with optional Prometheus for history.

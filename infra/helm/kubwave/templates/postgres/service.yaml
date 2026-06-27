@@ -1,0 +1,16 @@
+{{- if eq .Values.postgres.mode "statefulset" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "postgres") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "kubwave.selectorLabels" (dict "component" "postgres") | nindent 4 }}
+  ports:
+    - name: postgres
+      port: {{ .Values.postgres.port }}
+      targetPort: postgres
+{{- end }}

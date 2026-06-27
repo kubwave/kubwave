@@ -1,0 +1,329 @@
+---
+// Replaces Starlight's default Hero — title/tagline/CTAs from frontmatter; only the terminal snippet and layout are owned here.
+import { Image } from 'astro:assets';
+import type { StarlightRouteData } from '@astrojs/starlight/route-data';
+import { LinkButton } from '@astrojs/starlight/components';
+
+// Starlight's internal constant (not a public export). The page-title anchor id.
+const PAGE_TITLE_ID = '_top';
+
+const route = Astro.locals.starlightRoute as StarlightRouteData | undefined;
+const entry = route?.entry;
+const data = entry?.data;
+const { title = data?.title ?? '', tagline, image, actions = [] } = data?.hero || {};
+
+// Splash hero supports file/dark+light/raw html; we only need single-file but handle all defensively.
+let darkImage: ImageMetadata | undefined;
+let lightImage: ImageMetadata | undefined;
+let rawHtml: string | undefined;
+if (image) {
+	if ('file' in image) {
+		darkImage = image.file;
+	} else if ('dark' in image) {
+		darkImage = image.dark;
+		lightImage = image.light;
+	} else {
+		rawHtml = image.html;
+	}
+}
+
+const imageAttrs = {
+	loading: 'eager' as const,
+	decoding: 'async' as const,
+	width: 320,
+	height: 320,
+	alt: image?.alt || '',
+};
+
+const installCmd = 'curl -fsSL https://get.kubwave.com | sh';
+---
+
+{data && <div class="hero">
+	<div class="hero-copy sl-flex">
+		<span class="eyebrow">
+			<span class="dot"></span>
+			Open-source · Kubernetes-native
+		</span>
+
+		<h1 id={PAGE_TITLE_ID} data-page-title set:html={title} />
+
+		{tagline && <p class="tagline" set:html={tagline} />}
+
+		{
+			actions.length > 0 && (
+				<div class="sl-flex actions">
+					{actions.map(
+						({ attrs: { class: className, ...attrs } = {}, icon, link: href, text, variant }) => (
+							<LinkButton {href} {variant} icon={icon?.name} class:list={[className]} {...attrs}>
+								{text}
+								{icon?.html && <Fragment set:html={icon.html} />}
+							</LinkButton>
+						)
+					)}
+				</div>
+			)
+		}
+
+		<div class="terminal" role="group" aria-label="Install command">
+			<div class="terminal-bar">
+				<span class="tdot"></span>
+				<span class="tdot"></span>
+				<span class="tdot"></span>
+				<span class="terminal-title">bash</span>
+			</div>
+			<div class="terminal-body">
+				<code><span class="prompt">$</span> {installCmd}</code>
+				<button type="button" class="copy-btn" data-copy={installCmd} aria-label="Copy install command">
+					<svg class="i-copy" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+					<svg class="i-check" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>
+				</button>
+			</div>
+		</div>
+	</div>
+
+	<div class="hero-art" aria-hidden={image?.alt ? undefined : 'true'}>
+		<div class="art-glow"></div>
+		<div class="art-grid"></div>
+		{
+			darkImage && (
+				<Image
+					src={darkImage}
+					{...imageAttrs}
+					class:list={['logo', { 'light:sl-hidden': Boolean(lightImage) }]}
+				/>
+			)
+		}
+		{lightImage && <Image src={lightImage} {...imageAttrs} class="logo dark:sl-hidden" />}
+		{rawHtml && <div class="hero-html sl-flex" set:html={rawHtml} />}
+	</div>
+</div>}
+
+<style>
+	.hero {
+		display: grid;
+		align-items: center;
+		gap: 2rem;
+		padding-block: clamp(2.5rem, calc(1rem + 8vmin), 6rem);
+	}
+
+	.hero-copy {
+		flex-direction: column;
+		align-items: center;
+		gap: 1.5rem;
+		text-align: center;
+	}
+
+	.eyebrow {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.3rem 0.75rem;
+		border: 1px solid var(--sl-color-hairline);
+		border-radius: 999px;
+		font-family: var(--sl-font-mono);
+		font-size: var(--sl-text-xs);
+		letter-spacing: 0.02em;
+		color: var(--sl-color-gray-2);
+		background: color-mix(in oklab, var(--sl-color-accent) 6%, transparent);
+	}
+
+	.eyebrow .dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 999px;
+		background: var(--sl-color-accent-high);
+		box-shadow: 0 0 0 3px color-mix(in oklab, var(--sl-color-accent) 30%, transparent);
+	}
+
+	h1 {
+		margin: 0;
+		font-size: clamp(var(--sl-text-4xl), calc(0.5rem + 5.5vw), 4.25rem);
+		line-height: 1.05;
+		font-weight: 700;
+		letter-spacing: -0.02em;
+		background: linear-gradient(180deg, var(--sl-color-white), color-mix(in oklab, var(--sl-color-white) 55%, var(--sl-color-accent-high)));
+		-webkit-background-clip: text;
+		background-clip: text;
+		color: transparent;
+	}
+
+	.tagline {
+		margin: 0;
+		max-width: 44ch;
+		font-size: clamp(var(--sl-text-base), calc(0.0625rem + 1.4vw), var(--sl-text-lg));
+		line-height: 1.6;
+		color: var(--sl-color-gray-2);
+	}
+
+	.actions {
+		gap: 0.75rem 1rem;
+		flex-wrap: wrap;
+		justify-content: center;
+	}
+
+	/* Terminal install snippet — self-contained dark, identical in both themes. */
+	.terminal {
+		width: 100%;
+		max-width: 32rem;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 0.7rem;
+		overflow: hidden;
+		background: #0a0b14;
+		box-shadow: 0 14px 40px -18px rgba(0, 0, 0, 0.7);
+		text-align: start;
+	}
+
+	.terminal-bar {
+		display: flex;
+		align-items: center;
+		gap: 0.45rem;
+		padding: 0.55rem 0.8rem;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+		background: rgba(255, 255, 255, 0.03);
+	}
+
+	.tdot {
+		width: 10px;
+		height: 10px;
+		border-radius: 999px;
+		background: #3b3f57;
+	}
+
+	.terminal-title {
+		margin-inline-start: auto;
+		font-family: var(--sl-font-mono);
+		font-size: var(--sl-text-xs);
+		color: #7c8199;
+	}
+
+	.terminal-body {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 0.85rem 0.9rem 0.85rem 1rem;
+		font-family: var(--sl-font-mono);
+		font-size: var(--sl-text-sm);
+	}
+
+	.terminal-body code {
+		flex: 1;
+		min-width: 0;
+		overflow-x: auto;
+		white-space: nowrap;
+		color: #e7e9f2;
+		background: none;
+		border: none;
+		padding: 0;
+	}
+
+	.terminal-body .prompt {
+		color: #5fdff0;
+		user-select: none;
+		margin-inline-end: 0.5rem;
+	}
+
+	.copy-btn {
+		flex-shrink: 0;
+		display: inline-grid;
+		place-items: center;
+		width: 30px;
+		height: 30px;
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		border-radius: 0.45rem;
+		background: transparent;
+		color: #b3b8cc;
+		cursor: pointer;
+		transition: color 0.15s, border-color 0.15s, background 0.15s;
+	}
+
+	.copy-btn:hover {
+		color: #f7f8fc;
+		border-color: var(--sl-color-accent);
+		background: color-mix(in oklab, var(--sl-color-accent) 18%, transparent);
+	}
+
+	.copy-btn .i-check {
+		display: none;
+		color: #5fdff0;
+	}
+
+	.copy-btn.copied .i-copy {
+		display: none;
+	}
+
+	.copy-btn.copied .i-check {
+		display: block;
+	}
+
+	/* Artwork: logo over a soft glow + faint grid */
+	.hero-art {
+		position: relative;
+		display: grid;
+		place-items: center;
+		min-height: 16rem;
+	}
+
+	.art-glow {
+		position: absolute;
+		inset: 0;
+		background: radial-gradient(circle at center, color-mix(in oklab, var(--sl-color-accent) 38%, transparent), transparent 62%);
+		filter: blur(8px);
+		z-index: -2;
+	}
+
+	.art-grid {
+		position: absolute;
+		inset: -10%;
+		background-image:
+			linear-gradient(to right, color-mix(in oklab, var(--sl-color-white) 5%, transparent) 1px, transparent 1px),
+			linear-gradient(to bottom, color-mix(in oklab, var(--sl-color-white) 5%, transparent) 1px, transparent 1px);
+		background-size: 38px 38px;
+		mask-image: radial-gradient(circle at center, #000 35%, transparent 72%);
+		-webkit-mask-image: radial-gradient(circle at center, #000 35%, transparent 72%);
+		z-index: -1;
+	}
+
+	.hero-art :global(.logo),
+	.hero-art .hero-html {
+		width: min(72%, 14rem);
+		height: auto;
+		filter: drop-shadow(0 18px 36px color-mix(in oklab, var(--sl-color-accent) 45%, transparent));
+	}
+
+	@media (min-width: 50rem) {
+		.hero {
+			grid-template-columns: 1.15fr 0.85fr;
+			gap: 3rem;
+		}
+
+		.hero-copy {
+			align-items: flex-start;
+			text-align: start;
+		}
+
+		.actions {
+			justify-content: flex-start;
+		}
+	}
+
+	@media (prefers-reduced-motion: no-preference) {
+		.copy-btn {
+			transition-duration: 0.18s;
+		}
+	}
+</style>
+
+<script>
+	for (const btn of document.querySelectorAll<HTMLButtonElement>('.copy-btn[data-copy]')) {
+		btn.addEventListener('click', async () => {
+			const text = btn.dataset.copy ?? '';
+			try {
+				await navigator.clipboard.writeText(text);
+			} catch {
+				return;
+			}
+			btn.classList.add('copied');
+			setTimeout(() => btn.classList.remove('copied'), 1600);
+		});
+	}
+</script>

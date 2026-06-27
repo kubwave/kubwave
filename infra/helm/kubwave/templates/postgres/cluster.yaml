@@ -1,0 +1,56 @@
+{{- if eq .Values.postgres.mode "cnpg" }}
+{{- /*
+CloudNativePG-managed Postgres (default). Replaces the hand-rolled StatefulSet/Service/PVC
+(still available via postgres.mode=statefulset as a migration fallback). The operator
+creates the postgres-rw (primary), postgres-ro (hot standbys) and postgres-r (any) Services,
+handles failover, and — when instances>1 — its own PodDisruptionBudget. api/worker connect
+to postgres-rw (values.yaml api/worker env POSTGRES_HOST). The CNPG operator + its CRDs must
+already be installed (CLI dependency `cnpg`; dev: scripts/dev.sh).
+*/}}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: postgres
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "postgres") | nindent 4 }}
+spec:
+  # HA-aware: ha.replicas when ha.enabled, else postgres.instances (1). Each instance gets
+  # its own ReadWriteOnce PVC, so a 3-instance HA cluster needs no shared storage.
+  instances: {{ include "kubwave.replicas" (dict "root" $ "fallback" .Values.postgres.instances) }}
+  imageName: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+  imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+  # Auto-failover the primary during minor-version/image rollouts.
+  primaryUpdateStrategy: unsupervised
+  # The `app` owner is a normal role (NOT a superuser, unlike the vanilla postgres image).
+  # The schema only needs gen_random_uuid() (core in PG13+) — no extensions, no superuser.
+  enableSuperuserAccess: false
+  {{- with .Values.imagePullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  storage:
+    size: {{ .Values.postgres.storage.size }}
+    {{- with .Values.postgres.storage.storageClassName }}
+    storageClass: {{ . | quote }}
+    {{- end }}
+  affinity:
+    # Soft (preferred) anti-affinity, tied to HA: with instances=1 (HA off) it's a no-op;
+    # with 3 instances it spreads them across nodes but still schedules on a smaller fleet.
+    enablePodAntiAffinity: {{ (.Values.ha | default dict).enabled | default false }}
+    topologyKey: {{ (.Values.ha | default dict).topologyKey | default "kubernetes.io/hostname" }}
+    podAntiAffinityType: preferred
+    {{- with .Values.postgres.nodeSelector }}
+    nodeSelector:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+  resources:
+    {{- toYaml .Values.postgres.resources | nindent 4 }}
+  bootstrap:
+    initdb:
+      database: {{ .Values.postgres.bootstrap.database }}
+      owner: {{ .Values.postgres.bootstrap.owner }}
+      # basic-auth Secret (username/password). Its password MUST equal
+      # postgres-creds.POSTGRES_PASSWORD so api/worker authenticate as `app` via postgres-rw.
+      secret:
+        name: {{ .Values.postgres.bootstrap.credentialsSecret }}
+{{- end }}

@@ -1,0 +1,61 @@
+---
+title: Configure a service
+description: Environment variables, secrets, custom domains, resources, autoscaling, health checks, and volumes — the runtime settings every service shares.
+---
+
+import { Aside, LinkCard } from '@astrojs/starlight/components';
+
+However a service is built — image, Dockerfile, or Git repo — it shares the same runtime settings.
+You configure them in the console, and every change produces a new [deployment](/guides/deploy-a-service/#deployments-and-rollback)
+that the worker rolls out.
+
+## Environment variables
+
+Plain key/value pairs injected into the container's environment. Use them for non-sensitive
+configuration — feature flags, service URLs, log levels.
+
+## Secrets
+
+Sensitive values — API keys, database passwords — kept separate from plain environment variables.
+They're **encrypted at rest** (AES-256-GCM) and injected as a Kubernetes Secret, decrypted only by
+the worker at rollout. Once saved, a secret's value is never shown back to you; you can replace it or
+remove it, but not read it.
+
+## Custom domains
+
+Attach one or more hostnames to a service, each pointing at a container port. The platform creates a
+Traefik ingress route and **cert-manager** issues a Let's Encrypt certificate automatically.
+
+<Aside type="tip">Point an `A` record for the hostname at your cluster's load-balancer IP first — the certificate is issued once DNS resolves.</Aside>
+
+## Resources
+
+Set CPU and memory **requests** (what the scheduler reserves) and **limits** (the hard ceiling), e.g.
+`250m` CPU / `256Mi` memory. Requests also matter for autoscaling — see below.
+
+## Autoscaling
+
+Opt a service into a Horizontal Pod Autoscaler: set **min** and **max** replicas and a target **CPU**
+or **memory** utilization, and the platform scales replicas between those bounds.
+
+<Aside type="caution">
+	Autoscaling needs a few things to work: the matching **resource request** must be set (the HPA measures utilization against it), your cluster needs
+	**metrics-server**, and the service must not have a persistent volume — a volume attaches to a single instance and can't be shared across replicas.
+</Aside>
+
+## Health checks
+
+Add an HTTP or TCP **probe** so Kubernetes only sends traffic to healthy instances and restarts ones
+that wedge. An HTTP check needs a path; both need a port to probe (either an explicit one or the
+service's container port).
+
+## Volumes
+
+Attach **persistent storage** mounted at a path in the container. A volume is a single ReadWriteOnce
+PersistentVolumeClaim, so it belongs to one instance — services that need a volume scale vertically
+(more CPU/RAM/disk), not by adding replicas.
+
+## Metrics
+
+Each service has live CPU, memory, network, and volume metrics out of the box, read from the kubelet.
+Point the platform at Prometheus if you want historical metrics beyond the live view.

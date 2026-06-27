@@ -1,0 +1,51 @@
+---
+title: Service templates
+description: One-click catalog services — what they are, how to deploy them, and how each template is wired.
+---
+
+import { Card, CardGrid, Aside, LinkCard } from '@astrojs/starlight/components';
+
+A **template** is a prebuilt, one-click service — or a whole stack of services — that you pick from the
+catalog in the **Create Service** flow. Instead of configuring images, ports, environment, and secrets
+by hand, you choose a template, fill in a couple of inputs, and the platform creates the wired-up
+services for you. Each one is an ordinary service afterwards: a Kubernetes Deployment behind a Service
+and (optionally) an Ingress.
+
+## How templates work
+
+- **Catalog** — templates are served from a catalog the console reads, refreshed out-of-band, so new or
+  updated templates appear without a platform upgrade.
+- **Instantiation** — picking a template creates its services through the **same path as a manual
+  service**. There is no parallel runtime; a templated service deploys, scales, and rolls back like any
+  other.
+- **Generated secrets** — templates declare secrets that are generated **per instance**: random
+  passwords, and (for Supabase) HS256-signed JWT keys derived from a generated `jwt_secret`. You never
+  type these.
+- **Cross-service wiring** — services reference each other by their internal host with
+  `{{ services.<name>.host }}`, resolved at instantiation (in any order, cycles included). The
+  **primary** service is the public entrypoint and gets the default domain.
+- **Inputs** — the few values you supply, e.g. a public domain.
+
+## Deploying a template
+
+1. Open an environment and click **Create Service**.
+2. Pick a template from the catalog (top of the service-type picker).
+3. Fill in the inputs (for example, a domain), then create.
+4. The platform creates the services. Deploy them like any other service.
+
+<Aside type="note">
+	Generated secrets (database passwords, API keys) are encrypted at rest and injected into the containers as Kubernetes Secrets — you don't manage
+	them by hand.
+</Aside>
+
+## Available templates
+
+<CardGrid>
+	<LinkCard
+		title="Supabase"
+		href="/templates/supabase/"
+		description="Postgres + Auth + REST + Realtime + Storage behind a Kong gateway, with Studio. Edge Functions opt-in."
+	/>
+	<LinkCard title="Ghost" href="/templates/ghost/" description="The Ghost publishing platform backed by its own MySQL database." />
+	<LinkCard title="Uptime Kuma" href="/templates/uptime-kuma/" description="Self-hosted uptime monitoring with a status page." />
+</CardGrid>

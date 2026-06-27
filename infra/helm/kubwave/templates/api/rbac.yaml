@@ -1,0 +1,83 @@
+{{- if .Values.api.serviceAccount.create }}
+# Control-plane Role for the api — READ-ONLY on k8s:
+#   - batch/jobs: get/list   (update-run listing)
+#   - core/pods: get/list    (update Job pod inspection)
+#   - core/pods/log: get     (update Job log streaming via getJobLogs)
+#   - core/configmaps: get   (platform marker read for setup/registry status)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Values.api.serviceAccount.name }}
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "api") | nindent 4 }}
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["kubwave-platform"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Values.api.serviceAccount.name }}
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "api") | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ .Values.api.serviceAccount.name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.api.serviceAccount.name }}
+    namespace: {{ .Release.Namespace }}
+---
+# Workloads ClusterRole — READ-ONLY, CLUSTER-SCOPED: tenant workloads live in a namespace
+# per environment (kubwave-env-<id>), so the api reads Deployments + pods cluster-wide
+# for live service-status. It never mutates tenant workloads (the worker does) and never
+# creates namespaces — read-only is the invariant.
+#   - nodes/proxy: get   (kubelet Summary API for live service metrics — CPU/mem/net/PVC)
+#   - pods/log: get      (tail tenant container logs for the service Logs tab)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Values.api.serviceAccount.name }}-workloads
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "api") | nindent 4 }}
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["nodes/proxy"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Values.api.serviceAccount.name }}-workloads
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "api") | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Values.api.serviceAccount.name }}-workloads
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.api.serviceAccount.name }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

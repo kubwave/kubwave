@@ -1,0 +1,32 @@
+{
+	"$schema": "https://turborepo.dev/schema.json",
+	"ui": "tui",
+	"tasks": {
+		"build": {
+			"dependsOn": ["^build"],
+			"inputs": ["$TURBO_DEFAULT$", ".env*"],
+			"outputs": [".output/**", "dist/**", ".astro/**"]
+		},
+		"build:docker": {
+			"env": ["KUBWAVE_VERSION", "KUBWAVE_HELM_VERSION"],
+			"outputs": ["dist/**"]
+		},
+		"check-types": {
+			"dependsOn": ["^check-types", "^build"]
+		},
+		"test": {
+			"dependsOn": ["^build"],
+			"passThroughEnv": ["DATABASE_URL", "POSTGRES_HOST", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB", "POSTGRES_PORT"],
+			"outputs": []
+		},
+		"test:coverage": {
+			"dependsOn": ["^build"],
+			"passThroughEnv": ["DATABASE_URL", "POSTGRES_HOST", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB", "POSTGRES_PORT"],
+			"outputs": []
+		},
+		"dev": {
+			"cache": false,
+			"persistent": true
+		}
+	}
+}

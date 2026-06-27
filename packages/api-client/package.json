@@ -1,0 +1,34 @@
+{
+	"name": "@kubwave/api-client",
+	"version": "0.0.0",
+	"description": "Generated kubwave OpenAPI client.",
+	"private": true,
+	"license": "Apache-2.0",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/kubwave/kubwave.git",
+		"directory": "packages/api-client"
+	},
+	"bugs": {
+		"url": "https://github.com/kubwave/kubwave/issues"
+	},
+	"homepage": "https://github.com/kubwave/kubwave/tree/main/packages/api-client",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"build": "bun run generate",
+		"generate": "bun run --filter=backend openapi:generate && openapi-ts -f openapi-ts.config.ts && bun run generate:resource-client && prettier --write openapi.json \"src/generated/**/*.ts\"",
+		"generate:resource-client": "bun scripts/generate-resource-client.ts",
+		"check-types": "tsc --noEmit",
+		"test": "bun test --isolate test",
+		"test:coverage": "bun test --isolate --coverage --coverage-reporter=text --coverage-reporter=lcov test"
+	},
+	"dependencies": {},
+	"devDependencies": {
+		"@hey-api/openapi-ts": "^0.99.0",
+		"@types/node": "^24.0.0",
+		"typescript": "^6.0.3"
+	}
+}

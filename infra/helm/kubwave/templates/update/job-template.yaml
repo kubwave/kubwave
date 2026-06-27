@@ -1,0 +1,312 @@
+{{- if .Values.update.serviceAccount.create }}
+{{- $dependenciesAuto := eq (default "disabled" .Values.update.dependencies.mode) "auto" -}}
+{{- $apiSecret := include "kubwave.secretName" (dict "secret" .Values.api.secret) -}}
+{{- $pgSecret  := include "kubwave.secretName" (dict "secret" .Values.postgres.secret) -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: update-job-template
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "updater") | nindent 4 }}
+data:
+  job.yaml: |
+    apiVersion: batch/v1
+    kind: Job
+    metadata:
+      name: kubwave-update-{{`{{RUN_ID}}`}}
+      namespace: {{ .Release.Namespace }}
+      labels:
+        app.kubernetes.io/part-of: kubwave
+        app.kubernetes.io/component: updater
+    spec:
+      ttlSecondsAfterFinished: 3600
+      activeDeadlineSeconds: 3600
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/part-of: kubwave
+            app.kubernetes.io/component: updater
+        spec:
+          serviceAccountName: {{ .Values.update.serviceAccount.name }}
+          restartPolicy: Never
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          {{- with .Values.update.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          # The update runs as a sequenced pipeline in one Pod:
+          #   prepare             (Bun)  -> stages the chart + records state via k8s API + DB
+          #   repair-dependencies (Bun)  -> checks dependencies, running helm only if missing
+          #   wait-dependencies   (Bun)  -> verifies dependencies through k8s APIs only
+          #   helm-upgrade        (Bun)  -> builds the shared upgrade plan + runs Helm
+          #   finalize            (Bun)  -> writes the version marker + marks success
+          # The repair phase usually skips helm entirely; when it is needed, it uses
+          # the executable helm baked into the CLI image.
+          initContainers:
+            - name: prepare
+              image: "{{`{{TARGET_IMAGE}}`}}"
+              args:
+                - update
+                - --in-cluster
+                - --phase=prepare
+                - "--target={{`{{TARGET_VERSION}}`}}"
+                - "--run-id={{`{{RUN_ID}}`}}"
+              envFrom:
+                - secretRef:
+                    name: {{ $apiSecret }}
+                - secretRef:
+                    name: {{ $pgSecret }}
+              env:
+                # HOME points at the shared writable work volume so the CLI extracts
+                # the embedded chart there and hands it to the helm container.
+                - name: HOME
+                  value: /tmp/work
+                - name: NODE_EXTRA_CA_CERTS
+                  value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                - name: POSTGRES_HOST
+                  value: postgres-rw
+                - name: POSTGRES_PORT
+                  value: "5432"
+                {{- with .Values.api.databaseUrl }}
+                - name: DATABASE_URL
+                  value: {{ . | quote }}
+                {{- end }}
+                - name: KUBERNETES_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: [ALL]
+                readOnlyRootFilesystem: true
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: work
+                  mountPath: /tmp/work
+            {{- if $dependenciesAuto }}
+            - name: repair-dependencies
+              image: "{{`{{TARGET_IMAGE}}`}}"
+              args:
+                - update
+                - --in-cluster
+                - --phase=repair-dependencies
+                - "--target={{`{{TARGET_VERSION}}`}}"
+                - "--run-id={{`{{RUN_ID}}`}}"
+              envFrom:
+                - secretRef:
+                    name: {{ $apiSecret }}
+                - secretRef:
+                    name: {{ $pgSecret }}
+              env:
+                - name: HOME
+                  value: /tmp/work
+                # Pin helm to the binary baked into the read-only-but-executable image
+                # fs. Without this, a needed dependency install could fall through to
+                # extracting helm onto the noexec /tmp/work emptyDir → EACCES.
+                - name: KUBWAVE_HELM_BIN
+                  value: /usr/local/bin/helm
+                - name: NODE_EXTRA_CA_CERTS
+                  value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                - name: POSTGRES_HOST
+                  value: postgres-rw
+                - name: POSTGRES_PORT
+                  value: "5432"
+                {{- with .Values.api.databaseUrl }}
+                - name: DATABASE_URL
+                  value: {{ . | quote }}
+                {{- end }}
+                - name: KUBERNETES_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: [ALL]
+                readOnlyRootFilesystem: true
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: work
+                  mountPath: /tmp/work
+            - name: wait-dependencies
+              image: "{{`{{TARGET_IMAGE}}`}}"
+              args:
+                - update
+                - --in-cluster
+                - --phase=wait-dependencies
+                - "--target={{`{{TARGET_VERSION}}`}}"
+                - "--run-id={{`{{RUN_ID}}`}}"
+              envFrom:
+                - secretRef:
+                    name: {{ $apiSecret }}
+                - secretRef:
+                    name: {{ $pgSecret }}
+              env:
+                - name: HOME
+                  value: /tmp/work
+                - name: NODE_EXTRA_CA_CERTS
+                  value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                - name: POSTGRES_HOST
+                  value: postgres-rw
+                - name: POSTGRES_PORT
+                  value: "5432"
+                {{- with .Values.api.databaseUrl }}
+                - name: DATABASE_URL
+                  value: {{ . | quote }}
+                {{- end }}
+                - name: KUBERNETES_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: [ALL]
+                readOnlyRootFilesystem: true
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: work
+                  mountPath: /tmp/work
+            {{- end }}
+            # Bun (CLI) phase: resolves the install state via the k8s API + DB and
+            # writes /tmp/work/upgrade-values.yaml. It must NOT run helm — Bun.spawn(helm)
+            # EACCESes under this Job's securityContext (runAsNonRoot + seccomp +
+            # no_new_privs) even though helm is a 0755 static binary. The actual upgrade
+            # runs in the helm-upgrade container below, with helm as PID 1.
+            - name: helm-plan
+              image: "{{`{{TARGET_IMAGE}}`}}"
+              args:
+                - update
+                - --in-cluster
+                - --phase=helm-plan
+                - "--target={{`{{TARGET_VERSION}}`}}"
+                - "--run-id={{`{{RUN_ID}}`}}"
+              envFrom:
+                - secretRef:
+                    name: {{ $apiSecret }}
+                - secretRef:
+                    name: {{ $pgSecret }}
+              env:
+                - name: HOME
+                  value: /tmp/work
+                - name: NODE_EXTRA_CA_CERTS
+                  value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                - name: POSTGRES_HOST
+                  value: postgres-rw
+                - name: POSTGRES_PORT
+                  value: "5432"
+                {{- with .Values.api.databaseUrl }}
+                - name: DATABASE_URL
+                  value: {{ . | quote }}
+                {{- end }}
+                - name: KUBERNETES_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: [ALL]
+                readOnlyRootFilesystem: true
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: work
+                  mountPath: /tmp/work
+            # helm runs as PID 1 here (entrypoint overridden), never Bun.spawn'd, which
+            # is what sidesteps the EACCES. The chart was staged at /tmp/work/chart.tgz by
+            # prepare and the values at /tmp/work/upgrade-values.yaml by helm-plan, so every
+            # dynamic input is in the values file and these args are fully static. helm uses
+            # the in-cluster service-account config; HOME is the writable work volume.
+            - name: helm-upgrade
+              image: "{{`{{TARGET_IMAGE}}`}}"
+              command:
+                - /usr/local/bin/helm
+              args:
+                - upgrade
+                - --install
+                - kubwave
+                - /tmp/work/chart.tgz
+                - -f
+                - /tmp/work/upgrade-values.yaml
+                - --namespace
+                - {{ .Release.Namespace }}
+                - --reset-then-reuse-values
+                - --atomic
+                - --wait
+                - --timeout
+                - 10m
+              env:
+                - name: HOME
+                  value: /tmp/work
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: [ALL]
+                readOnlyRootFilesystem: true
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: work
+                  mountPath: /tmp/work
+          containers:
+            - name: finalize
+              image: "{{`{{TARGET_IMAGE}}`}}"
+              args:
+                - update
+                - --in-cluster
+                - --phase=finalize
+                - "--target={{`{{TARGET_VERSION}}`}}"
+                - "--run-id={{`{{RUN_ID}}`}}"
+              envFrom:
+                - secretRef:
+                    name: {{ $apiSecret }}
+                - secretRef:
+                    name: {{ $pgSecret }}
+              env:
+                - name: HOME
+                  value: /tmp/work
+                - name: NODE_EXTRA_CA_CERTS
+                  value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                - name: POSTGRES_HOST
+                  value: postgres-rw
+                - name: POSTGRES_PORT
+                  value: "5432"
+                {{- with .Values.api.databaseUrl }}
+                - name: DATABASE_URL
+                  value: {{ . | quote }}
+                {{- end }}
+                - name: KUBERNETES_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: [ALL]
+                readOnlyRootFilesystem: true
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: work
+                  mountPath: /tmp/work
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            - name: work
+              emptyDir: {}
+{{- end }}

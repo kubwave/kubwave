@@ -1,0 +1,54 @@
+id: ghost
+name: Ghost
+description: Professional publishing platform — a blog and newsletter backed by MySQL.
+category: cms
+tags: [blog, cms, publishing, newsletter]
+logo: ghost.svg
+documentation: https://ghost.org/docs/
+schemaVersion: 1
+version: 1
+inputs:
+  - key: url
+    label: Public URL
+    type: string
+    required: false
+    placeholder: https://blog.example.com
+secrets:
+  - { key: db_password, generate: password }
+  - { key: db_root_password, generate: password }
+services:
+  - name: db
+    primary: false
+    type: docker-image
+    config:
+      image: mysql
+      tag: '8.4'
+      containerPort: 3306
+      env:
+        - { key: MYSQL_USER, value: ghost }
+        - { key: MYSQL_DATABASE, value: ghost }
+      secrets:
+        - { key: MYSQL_PASSWORD, value: '{{ secrets.db_password }}' }
+        - { key: MYSQL_ROOT_PASSWORD, value: '{{ secrets.db_root_password }}' }
+      domains: []
+      volumes:
+        - { name: data, mountPath: /var/lib/mysql, size: 1Gi }
+  - name: ghost
+    primary: true
+    type: docker-image
+    config:
+      image: ghost
+      tag: '5'
+      containerPort: 2368
+      defaultDomainEnabled: true
+      env:
+        - { key: database__client, value: mysql }
+        - { key: database__connection__host, value: '{{ services.db.host }}' }
+        - { key: database__connection__port, value: '3306' }
+        - { key: database__connection__user, value: ghost }
+        - { key: database__connection__database, value: ghost }
+        - { key: url, value: '{{ inputs.url }}' }
+      secrets:
+        - { key: database__connection__password, value: '{{ secrets.db_password }}' }
+      domains: []
+      volumes: []

@@ -1,0 +1,304 @@
+---
+title: Helm chart reference
+description: Every value in the kubwave Helm chart (infra/helm/kubwave).
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+The kubwave Helm chart (`infra/helm/kubwave`) is the **single source of truth** for
+everything that lands in your Kubernetes cluster. This page documents every top-level
+value. For the complete, commented defaults see
+[`values.yaml`](https://github.com/kubwave/kubwave/blob/main/infra/helm/kubwave/values.yaml).
+
+## Profiles
+
+| File                             | When                                                                                     |
+| -------------------------------- | ---------------------------------------------------------------------------------------- |
+| `values.yaml`                    | **Dev only.** `pullPolicy: Never`, tag `dev`, local k3d setup with mailcrab and Adminer. |
+| `values-cloudfleet-hetzner.yaml` | Production on Cloudfleet (Hetzner). Hardened security contexts, CNPG, node selectors.    |
+
+The CLI sets image references, secrets, and ingress host at install time via `--set`.
+Never deploy the dev `values.yaml` to a production cluster.
+
+---
+
+## Global settings
+
+| Value                      | Default | Description                                                  |
+| -------------------------- | ------- | ------------------------------------------------------------ |
+| `imagePullSecrets`         | `[]`    | Pull secrets for workload images.                            |
+| `podSecurityContext`       | `{}`    | Pod-level security context (empty in dev, hardened in prod). |
+| `containerSecurityContext` | `{}`    | Container-level security context.                            |
+
+### `ha`
+
+High-availability mode. Controlled by the `--ha` CLI flag, the admin settings UI,
+and the Worker reconciler.
+
+| Key              | Default                  | Description                                                |
+| ---------------- | ------------------------ | ---------------------------------------------------------- |
+| `ha.enabled`     | `false`                  | Master HA switch.                                          |
+| `ha.replicas`    | `3`                      | Replica count for api, console, worker, and CNPG database. |
+| `ha.topologyKey` | `kubernetes.io/hostname` | Pod anti-affinity topology key.                            |
+
+<Aside type="tip">
+	All scheduling constraints are **soft** (`preferredDuringScheduling`). A cluster with fewer than `replicas` nodes still schedules everything — it
+	just won't be spread.
+</Aside>
+
+---
+
+## `api`
+
+Backend API entrypoint — auth authority, `JWT_SECRET` holder, read-only Kubernetes RBAC.
+
+| Key                            | Default                                     | Description                                                    |
+| ------------------------------ | ------------------------------------------- | -------------------------------------------------------------- |
+| `api.replicas`                 | `1`                                         | Deployment replicas.                                           |
+| `api.serviceAccount.create`    | `true`                                      | Create the ServiceAccount.                                     |
+| `api.serviceAccount.name`      | `kubwave-api`                               | ServiceAccount name.                                           |
+| `api.image.repository`         | `backend`                                   | Backend image repository (Tilt-rewritten in dev).              |
+| `api.image.tag`                | `dev`                                       | Image tag (Tilt-rewritten in dev).                             |
+| `api.image.pullPolicy`         | `Never`                                     | Pull policy. `Never` in dev; `IfNotPresent` in prod.           |
+| `api.port`                     | `3001`                                      | Container port.                                                |
+| `api.env.POSTGRES_HOST`        | `postgres-rw`                               | CNPG read-write Service hostname.                              |
+| `api.env.POSTGRES_PORT`        | `5432`                                      | Postgres port.                                                 |
+| `api.env.SMTP_HOST`            | `mailcrab`                                  | SMTP host (dev). Admin-editable in prod.                       |
+| `api.env.SMTP_PORT`            | `1025`                                      | SMTP port.                                                     |
+| `api.env.SMTP_FROM_ADDRESS`    | `noreply@kubwave.local`                     | `From` address for system emails.                              |
+| `api.env.SMTP_FROM_NAME`       | `kubwave`                                   | `From` display name.                                           |
+| `api.env.APP_BASE_URL`         | `http://console.localhost`                  | Console origin for invite links.                               |
+| `api.databaseUrl`              | `""`                                        | Raw connection string (dev only; prod uses POSTGRES\_\* vars). |
+| `api.resources`                | `{requests: 100m/256Mi, limits: 1000m/1Gi}` | Resource requests/limits.                                      |
+| `api.probes`                   | —                                           | Startup, readiness, liveness probe config.                     |
+| `api.nodeSelector`             | `{}`                                        | Node selector.                                                 |
+| `api.secret.create`            | `true`                                      | Create the `console-creds` Secret (dev).                       |
+| `api.secret.name`              | `console-creds`                             | Secret name.                                                   |
+| `api.secret.existingSecret`    | `""`                                        | If set, the Secret is not rendered (prod).                     |
+| `api.secret.data.JWT_SECRET`   | `dev-jwt-secret...`                         | **Dev only.** Prod: CLI generates a random value.              |
+| `api.secret.data.SECRETS_KEY`  | `dev-secrets-key...`                        | **Dev only.** AES-256-GCM key-derivation seed.                 |
+| `api.secret.data.GITHUB_TOKEN` | `""`                                        | Optional GitHub token for release checks/private repos.        |
+
+---
+
+## `console`
+
+Nuxt 4 / Nitro SSR UI workload. No database access, no JWT secret, no Kubernetes RBAC.
+
+| Key                            | Default                                     | Description                           |
+| ------------------------------ | ------------------------------------------- | ------------------------------------- |
+| `console.replicas`             | `1`                                         | Deployment replicas.                  |
+| `console.image.repository`     | `console`                                   | Image repository.                     |
+| `console.image.tag`            | `dev`                                       | Image tag.                            |
+| `console.image.pullPolicy`     | `Never`                                     | Pull policy.                          |
+| `console.port`                 | `3000`                                      | Container port.                       |
+| `console.env.INTERNAL_API_URL` | `http://api:3001`                           | Server-side API base URL (Nitro SSR). |
+| `console.resources`            | `{requests: 100m/512Mi, limits: 1000m/2Gi}` | Resource requests/limits.             |
+| `console.probes`               | —                                           | Probe config.                         |
+| `console.nodeSelector`         | `{}`                                        | Node selector.                        |
+
+---
+
+## `worker`
+
+Backend worker entrypoint. Read-write Kubernetes RBAC. Does **not** hold `JWT_SECRET`.
+
+| Key                            | Default                                     | Description                                          |
+| ------------------------------ | ------------------------------------------- | ---------------------------------------------------- |
+| `worker.replicas`              | `1`                                         | Deployment replicas.                                 |
+| `worker.serviceAccount.create` | `true`                                      | Create the ServiceAccount.                           |
+| `worker.serviceAccount.name`   | `kubwave-worker`                            | ServiceAccount name.                                 |
+| `worker.image.repository`      | `backend`                                   | Backend image repository.                            |
+| `worker.image.tag`             | `dev`                                       | Image tag.                                           |
+| `worker.image.pullPolicy`      | `Never`                                     | Pull policy.                                         |
+| `worker.healthPort`            | `8080`                                      | Health-check HTTP port.                              |
+| `worker.env.POSTGRES_HOST`     | `postgres-rw`                               | CNPG read-write Service hostname.                    |
+| `worker.env.POSTGRES_PORT`     | `5432`                                      | Postgres port.                                       |
+| `worker.databaseUrl`           | `""`                                        | Raw connection string (dev only).                    |
+| `worker.reconcileIntervalMs`   | `5000`                                      | Reconcile loop tick interval.                        |
+| `worker.leaseTimeoutMs`        | `60000`                                     | Max lease duration before another replica steals it. |
+| `worker.resources`             | `{requests: 100m/256Mi, limits: 1000m/1Gi}` | Resource requests/limits.                            |
+| `worker.probes`                | —                                           | Probe config.                                        |
+| `worker.nodeSelector`          | `{}`                                        | Node selector.                                       |
+
+---
+
+## `postgres`
+
+Platform database. Two modes: CNPG (operator-managed) and legacy StatefulSet.
+
+| Key                                      | Default                             | Description                                       |
+| ---------------------------------------- | ----------------------------------- | ------------------------------------------------- |
+| `postgres.mode`                          | `cnpg`                              | `cnpg` or `statefulset`.                          |
+| `postgres.instances`                     | `1`                                 | Instance count (non-HA).                          |
+| `postgres.image.repository`              | `ghcr.io/cloudnative-pg/postgresql` | CNPG Postgres image.                              |
+| `postgres.image.tag`                     | `16`                                | Postgres major version.                           |
+| `postgres.port`                          | `5432`                              | Postgres port.                                    |
+| `postgres.storage.size`                  | `1Gi`                               | PVC size.                                         |
+| `postgres.storage.storageClassName`      | `""`                                | StorageClass (empty → cluster default).           |
+| `postgres.bootstrap.database`            | `kubwave`                           | Database name.                                    |
+| `postgres.bootstrap.owner`               | `app`                               | App role name.                                    |
+| `postgres.bootstrap.credentialsSecret`   | `postgres-app-creds`                | Credentials Secret name.                          |
+| `postgres.secret.create`                 | `true`                              | Create the Secret (dev).                          |
+| `postgres.secret.name`                   | `postgres-creds`                    | Secret name.                                      |
+| `postgres.secret.existingSecret`         | `""`                                | If set, the Secret is not rendered (prod).        |
+| `postgres.secret.data.POSTGRES_USER`     | `app`                               | Postgres user.                                    |
+| `postgres.secret.data.POSTGRES_PASSWORD` | `app`                               | **Dev only.** Prod: CLI generates a random value. |
+| `postgres.secret.data.POSTGRES_DB`       | `kubwave`                           | Database name.                                    |
+
+---
+
+## `ingress`
+
+Platform ingress — same-origin, path-routed to Console (`/`) and API (`/api`).
+
+| Key                      | Default             | Description                     |
+| ------------------------ | ------------------- | ------------------------------- |
+| `ingress.className`      | `""`                | IngressClass (empty → default). |
+| `ingress.host`           | `console.localhost` | Ingress hostname.               |
+| `ingress.annotations`    | `{}`                | Extra annotations.              |
+| `ingress.tls.enabled`    | `false`             | Enable TLS.                     |
+| `ingress.tls.secretName` | `console-tls`       | TLS Secret name.                |
+
+---
+
+## `workloadIngress`
+
+Ingress config for **tenant service domains** — the Worker reads these and stamps them
+onto every tenant Ingress.
+
+| Key                                     | Default       | Description                         |
+| --------------------------------------- | ------------- | ----------------------------------- |
+| `workloadIngress.className`             | `""`          | IngressClass for tenant Ingresses.  |
+| `workloadIngress.clusterIssuer`         | `""`          | cert-manager ClusterIssuer for TLS. |
+| `workloadIngress.annotations`           | `{}`          | Extra annotations (JSON → Worker).  |
+| `workloadIngress.controllerNamespace`   | `kube-system` | Ingress controller namespace.       |
+| `workloadIngress.controllerServiceName` | `traefik`     | Controller Service name.            |
+| `workloadIngress.loadBalancerIp`        | `""`          | Explicit LB IP for auto-domain.     |
+
+---
+
+## `workloadStorage`
+
+| Key                                | Default | Description                           |
+| ---------------------------------- | ------- | ------------------------------------- |
+| `workloadStorage.storageClassName` | `""`    | Default StorageClass for tenant PVCs. |
+
+---
+
+## `tenants`
+
+Per-environment namespace hardening the Worker applies to every tenant namespace. See
+[Tenant isolation](/guides/tenant-isolation/) for the full model.
+
+| Key                                          | Default                                                           | Description                                                                                                            |
+| -------------------------------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `tenants.podSecurity`                        | `baseline`                                                        | Pod Security Standards enforce level stamped on tenant namespaces. `restricted` for the strict profile; `""` disables. |
+| `tenants.egress.enabled`                     | `false`                                                           | Apply the egress NetworkPolicy to tenant runtime pods (opt-in, CNI-dependent).                                         |
+| `tenants.egress.blockedCidrs`                | `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16` | Internal/link-local ranges tenant pods cannot reach (incl. cloud metadata).                                            |
+| `tenants.egress.dnsNamespace`                | `kube-system`                                                     | CoreDNS namespace, re-allowed in the egress policy.                                                                    |
+| `tenants.egress.dnsPodLabels`                | `{k8s-app: kube-dns}`                                             | CoreDNS pod labels for the DNS egress allowance.                                                                       |
+| `tenants.egress.dnsServiceIp`                | `""`                                                              | Optional DNS Service ClusterIP CIDR for CNIs that enforce egress before Service resolution.                            |
+| `tenants.runtimeClass.default`               | `""`                                                              | `runtimeClassName` for tenant pods (`gvisor`, or empty for plain runc).                                                |
+| `tenants.runtimeClass.gvisor.install`        | `false`                                                           | Render the gVisor installer DaemonSet + RuntimeClass.                                                                  |
+| `tenants.runtimeClass.gvisor.version`        | `release/latest`                                                  | Pinned gVisor release the installer downloads (sha512-verified).                                                       |
+| `tenants.runtimeClass.gvisor.installerImage` | `debian:bookworm-slim`                                            | Image used by the installer DaemonSet.                                                                                 |
+
+---
+
+## `builds`
+
+In-cluster Dockerfile and source builds via BuildKit.
+
+| Key                                      | Default                             | Description                                                                                 |
+| ---------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------- |
+| `builds.serviceAccount.create`           | `true`                              | Create the builder ServiceAccount.                                                          |
+| `builds.serviceAccount.name`             | `kubwave-builder`                   | ServiceAccount name.                                                                        |
+| `builds.engine`                          | `buildkit`                          | Build engine.                                                                               |
+| `builds.builderImage`                    | `moby/buildkit:v0.31.0-rootless`    | BuildKit image.                                                                             |
+| `builds.buildToolsImage`                 | `build-tools:dev`                   | Clone + Nixpacks build-tools image.                                                         |
+| `builds.timeoutSeconds`                  | `1800`                              | Build Job active deadline (30 min).                                                         |
+| `builds.jobTtlSeconds`                   | `3600`                              | TTL before completed build Jobs are reaped.                                                 |
+| `builds.memoryRequest`                   | `1Gi`                               | Build container memory request.                                                             |
+| `builds.memoryLimit`                     | `2Gi`                               | Build container memory limit.                                                               |
+| `builds.registry.endpoint`               | `host.k3d.internal:5111`            | Registry endpoint (dev).                                                                    |
+| `builds.registry.insecure`               | `true`                              | Allow HTTP (dev).                                                                           |
+| `builds.registry.pushSecretName`         | `""`                                | Registry push auth Secret.                                                                  |
+| `builds.registry.pullSecretName`         | `""`                                | Registry pull auth Secret.                                                                  |
+| `builds.networkPolicy.enabled`           | `false`                             | Enable build-pod egress firewall.                                                           |
+| `builds.networkPolicy.blockedCidrs`      | `10.0.0.0/8` … `169.254.0.0/16`     | Internal/link-local CIDRs the build pod cannot reach.                                       |
+| `builds.networkPolicy.egressPorts`       | `80`, `443`                         | Public-internet ports the build may reach (git clone + CLI download).                       |
+| `builds.networkPolicy.dns`               | `{namespace, podLabels, serviceIp}` | CoreDNS allowance for build pods (mirrors `tenants.egress`).                                |
+| `builds.networkPolicy.ingressController` | `{enabled: false, …}`               | Optional egress allowance when `registry.<domain>` hairpins through the ingress controller. |
+
+---
+
+## `registry`
+
+Platform-managed container registry (disabled in dev — k3d runs its own).
+
+| Key                                | Default    | Description                                                   |
+| ---------------------------------- | ---------- | ------------------------------------------------------------- |
+| `registry.enabled`                 | `false`    | Enable the in-cluster registry.                               |
+| `registry.image.repository`        | `registry` | Registry image (Docker Distribution).                         |
+| `registry.image.tag`               | `2`        | Registry version.                                             |
+| `registry.port`                    | `5000`     | Registry port.                                                |
+| `registry.storage.size`            | `10Gi`     | PVC size.                                                     |
+| `registry.ingress.enabled`         | `false`    | Expose the registry via a TLS Ingress (prod).                 |
+| `registry.ingress.host`            | `""`       | Public registry host (must match `builds.registry.endpoint`). |
+| `registry.ingress.className`       | `""`       | IngressClass for the registry Ingress.                        |
+| `registry.ingress.clusterIssuer`   | `""`       | cert-manager ClusterIssuer for the registry certificate.      |
+| `registry.ingress.annotations`     | `{}`       | Extra annotations on the registry Ingress.                    |
+| `registry.auth.htpasswdSecretName` | `""`       | Auth Secret name.                                             |
+
+---
+
+## `certManager`
+
+| Key                                            | Default                        | Description                          |
+| ---------------------------------------------- | ------------------------------ | ------------------------------------ |
+| `certManager.clusterIssuer.create`             | `false`                        | Create a ClusterIssuer.              |
+| `certManager.clusterIssuer.name`               | `letsencrypt-prod`             | ClusterIssuer name.                  |
+| `certManager.clusterIssuer.email`              | `""`                           | ACME email.                          |
+| `certManager.clusterIssuer.server`             | Let's Encrypt prod             | ACME server.                         |
+| `certManager.clusterIssuer.privateKeySecret`   | `letsencrypt-prod-account-key` | Secret holding the ACME account key. |
+| `certManager.clusterIssuer.solverIngressClass` | `traefik`                      | IngressClass for the HTTP-01 solver. |
+
+---
+
+## Dev tools
+
+| Section            | Default | Description                                          |
+| ------------------ | ------- | ---------------------------------------------------- |
+| `adminer.enabled`  | `true`  | Adminer web UI (Postgres browser). Disabled in prod. |
+| `mailcrab.enabled` | `true`  | SMTP sink + web inbox. Disabled in prod.             |
+| `docs.enabled`     | `true`  | Docs site (Astro dev server). Disabled in prod.      |
+
+---
+
+## `update`
+
+Self-update Job configuration. The image is set by the CLI at install/upgrade time.
+
+| Key                            | Default           | Description                                |
+| ------------------------------ | ----------------- | ------------------------------------------ |
+| `update.serviceAccount.create` | `false`           | Create the updater ServiceAccount.         |
+| `update.serviceAccount.name`   | `kubwave-updater` | ServiceAccount name.                       |
+| `update.image.repository`      | `""`              | CLI image repository (set by `--set`).     |
+| `update.image.tag`             | `""`              | CLI image tag (set by `--set`).            |
+| `update.dependencies.mode`     | `disabled`        | Dependency handling: `disabled` or `auto`. |
+
+---
+
+## How values are set in production
+
+The CLI's `buildProductionValues()` in `apps/cli/src/lib/helm.ts` computes production
+values from user input and platform config. Key differences from dev:
+
+- Image references: `ghcr.io/kubwave/<app>:<version>` (set via `--set`)
+- Secrets: `existingSecret: console-creds`, `create: false` (pre-created by the CLI)
+- `pullPolicy: IfNotPresent`
+- Node selectors: provider-specific (e.g. `cfke.io/provider: hetzner`)
+- Hardened `securityContext` (non-root, read-only root filesystem, drop `ALL` capabilities)
+- Dev tools (`adminer`, `mailcrab`, `docs`): disabled
+- Registry + cert-manager: enabled

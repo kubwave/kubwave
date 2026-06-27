@@ -1,0 +1,327 @@
+id: supabase
+name: Supabase
+description: The open-source Firebase alternative — Postgres database, Auth, REST, Realtime and Storage behind a Kong API gateway with Studio.
+category: backend
+tags: [database, auth, realtime, storage, baas, postgres]
+logo: supabase.svg
+documentation: https://supabase.com/docs/guides/self-hosting
+schemaVersion: 1
+version: 1
+inputs:
+  - key: domain
+    label: Public domain
+    type: string
+    required: true
+    placeholder: supabase.example.com
+  - key: organization_name
+    label: Organization name
+    type: string
+    required: false
+    default: Default Organization
+  - key: project_name
+    label: Project name
+    type: string
+    required: false
+    default: Default Project
+secrets:
+  - { key: postgres_password, generate: password }
+  - { key: dashboard_password, generate: password }
+  - { key: jwt_secret, generate: password }
+  - { key: anon_key, generate: jwt, signWith: jwt_secret, claims: { role: anon, iss: supabase } }
+  - { key: service_role_key, generate: jwt, signWith: jwt_secret, claims: { role: service_role, iss: supabase } }
+  - { key: secret_key_base, generate: password }
+  - { key: secret_key_base2, generate: password }
+  - { key: pg_meta_crypto_key, generate: password }
+services:
+  # Postgres. Internal Supabase roles are created by the image's migrate.sh; our init SQL is named
+  # `zz-*` so it sorts AFTER migrate.sh (verified on cluster — earlier names fail fatally).
+  - name: db
+    primary: false
+    type: docker-image
+    config:
+      image: supabase/postgres
+      tag: '15.8.1.085'
+      containerPort: 5432
+      env:
+        # PGDATA stays at the image's default (the mount root) — supabase/postgres bakes data_directory
+        # there, so overriding PGDATA to a subdir crashes on restart. Instead the volume mounts via a
+        # `subPath` (see below) so initdb sees an empty dir, not the ext4 lost+found at the volume root.
+        - { key: POSTGRES_DB, value: postgres }
+        - { key: POSTGRES_PORT, value: '5432' }
+        - { key: JWT_EXP, value: '3600' }
+      secrets:
+        - { key: POSTGRES_PASSWORD, value: '{{ secrets.postgres_password }}' }
+        - { key: JWT_SECRET, value: '{{ secrets.jwt_secret }}' }
+      volumes:
+        # subPath mounts <volume>/pgdata at the data dir: the lost+found that ext4 PVs create lives at the
+        # volume root, outside this subdir, so initdb runs against an empty directory.
+        - { name: data, mountPath: /var/lib/postgresql/data, size: 8Gi, subPath: pgdata }
+      configFiles:
+        - path: /docker-entrypoint-initdb.d/zz-10-jwt.sql
+          content: |
+            \set jwt_secret `echo "$JWT_SECRET"`
+            \set jwt_exp `echo "$JWT_EXP"`
+            ALTER DATABASE postgres SET "app.settings.jwt_secret" TO :'jwt_secret';
+            ALTER DATABASE postgres SET "app.settings.jwt_exp" TO :'jwt_exp';
+        - path: /docker-entrypoint-initdb.d/zz-20-roles.sql
+          content: |
+            \set pgpass `echo "$POSTGRES_PASSWORD"`
+            ALTER USER authenticator WITH PASSWORD :'pgpass';
+            ALTER USER supabase_auth_admin WITH PASSWORD :'pgpass';
+            ALTER USER supabase_storage_admin WITH PASSWORD :'pgpass';
+            ALTER USER supabase_admin WITH PASSWORD :'pgpass';
+        # Realtime v2 migrates into the `_realtime` schema (its search_path); the image only creates
+        # the legacy `realtime` schema, so create `_realtime` (owned by the role realtime connects as).
+        - path: /docker-entrypoint-initdb.d/zz-30-realtime.sql
+          content: |
+            CREATE SCHEMA IF NOT EXISTS _realtime AUTHORIZATION supabase_admin;
+  # postgres-meta: powers Studio's database browser.
+  - name: meta
+    primary: false
+    type: docker-image
+    config:
+      image: supabase/postgres-meta
+      tag: v0.96.3
+      containerPort: 8080
+      env:
+        - { key: PG_META_PORT, value: '8080' }
+        - { key: PG_META_DB_HOST, value: '{{ services.db.host }}' }
+        - { key: PG_META_DB_PORT, value: '5432' }
+        - { key: PG_META_DB_NAME, value: postgres }
+        - { key: PG_META_DB_USER, value: supabase_admin }
+      secrets:
+        - { key: PG_META_DB_PASSWORD, value: '{{ secrets.postgres_password }}' }
+        # Must match Studio's PG_META_CRYPTO_KEY: Studio sends the DB connstring encrypted; meta decrypts it.
+        - { key: CRYPTO_KEY, value: '{{ secrets.pg_meta_crypto_key }}' }
+  # GoTrue auth. Email auto-confirm on (no SMTP configured in v1).
+  - name: auth
+    primary: false
+    type: docker-image
+    config:
+      image: supabase/gotrue
+      tag: v2.186.0
+      containerPort: 9999
+      env:
+        - { key: GOTRUE_API_HOST, value: 0.0.0.0 }
+        - { key: GOTRUE_API_PORT, value: '9999' }
+        - { key: API_EXTERNAL_URL, value: 'https://{{ inputs.domain }}' }
+        - { key: GOTRUE_DB_DRIVER, value: postgres }
+        - { key: GOTRUE_SITE_URL, value: 'https://{{ inputs.domain }}' }
+        - { key: GOTRUE_JWT_ADMIN_ROLES, value: service_role }
+        - { key: GOTRUE_JWT_AUD, value: authenticated }
+        - { key: GOTRUE_JWT_DEFAULT_GROUP_NAME, value: authenticated }
+        - { key: GOTRUE_JWT_EXP, value: '3600' }
+        - { key: GOTRUE_JWT_ISSUER, value: 'https://{{ inputs.domain }}/auth/v1' }
+        - { key: GOTRUE_EXTERNAL_EMAIL_ENABLED, value: 'true' }
+        - { key: GOTRUE_MAILER_AUTOCONFIRM, value: 'true' }
+        - { key: GOTRUE_EXTERNAL_PHONE_ENABLED, value: 'false' }
+        - { key: GOTRUE_SMS_AUTOCONFIRM, value: 'true' }
+      secrets:
+        - {
+            key: GOTRUE_DB_DATABASE_URL,
+            value: 'postgres://supabase_auth_admin:{{ secrets.postgres_password }}@{{ services.db.host }}:5432/postgres'
+          }
+        - { key: GOTRUE_JWT_SECRET, value: '{{ secrets.jwt_secret }}' }
+  # PostgREST: the REST API over the Postgres schema.
+  - name: rest
+    primary: false
+    type: docker-image
+    config:
+      image: postgrest/postgrest
+      tag: v12.2.12
+      containerPort: 3000
+      env:
+        - { key: PGRST_DB_SCHEMAS, value: 'public,storage,graphql_public' }
+        - { key: PGRST_DB_ANON_ROLE, value: anon }
+        - { key: PGRST_DB_USE_LEGACY_GUCS, value: 'false' }
+      secrets:
+        - { key: PGRST_DB_URI, value: 'postgres://authenticator:{{ secrets.postgres_password }}@{{ services.db.host }}:5432/postgres' }
+        - { key: PGRST_JWT_SECRET, value: '{{ secrets.jwt_secret }}' }
+        - { key: PGRST_APP_SETTINGS_JWT_SECRET, value: '{{ secrets.jwt_secret }}' }
+  # Realtime (Phoenix). Seeds a self-host tenant on boot; SECRET_KEY_BASE needs 64 chars (two secrets concatenated).
+  - name: realtime
+    primary: false
+    type: docker-image
+    config:
+      image: supabase/realtime
+      tag: v2.76.5
+      containerPort: 4000
+      env:
+        - { key: PORT, value: '4000' }
+        - { key: DB_HOST, value: '{{ services.db.host }}' }
+        - { key: DB_PORT, value: '5432' }
+        - { key: DB_USER, value: supabase_admin }
+        - { key: DB_NAME, value: postgres }
+        - { key: DB_AFTER_CONNECT_QUERY, value: 'SET search_path TO _realtime' }
+        - { key: DB_ENC_KEY, value: supabaserealtime }
+        - { key: ERL_AFLAGS, value: '-proto_dist inet_tcp' }
+        - { key: DNS_NODES, value: "''" }
+        - { key: RLIMIT_NOFILE, value: '10000' }
+        - { key: APP_NAME, value: realtime }
+        - { key: SEED_SELF_HOST, value: 'true' }
+        - { key: RUN_JANITOR, value: 'true' }
+      secrets:
+        - { key: DB_PASSWORD, value: '{{ secrets.postgres_password }}' }
+        - { key: API_JWT_SECRET, value: '{{ secrets.jwt_secret }}' }
+        - { key: SECRET_KEY_BASE, value: '{{ secrets.secret_key_base }}{{ secrets.secret_key_base2 }}' }
+  # Storage API (file backend; image transformation disabled to avoid a shared RWX volume with imgproxy).
+  - name: storage
+    primary: false
+    type: docker-image
+    config:
+      image: supabase/storage-api
+      tag: v1.48.26
+      containerPort: 5000
+      env:
+        - { key: POSTGREST_URL, value: 'http://{{ services.rest.host }}:3000' }
+        - { key: FILE_SIZE_LIMIT, value: '52428800' }
+        - { key: STORAGE_BACKEND, value: file }
+        - { key: FILE_STORAGE_BACKEND_PATH, value: /var/lib/storage }
+        - { key: TENANT_ID, value: stub }
+        - { key: REGION, value: stub }
+        - { key: GLOBAL_S3_BUCKET, value: stub }
+        - { key: ENABLE_IMAGE_TRANSFORMATION, value: 'false' }
+      secrets:
+        - { key: ANON_KEY, value: '{{ secrets.anon_key }}' }
+        - { key: SERVICE_KEY, value: '{{ secrets.service_role_key }}' }
+        - { key: AUTH_JWT_SECRET, value: '{{ secrets.jwt_secret }}' }
+        - { key: DATABASE_URL, value: 'postgres://supabase_storage_admin:{{ secrets.postgres_password }}@{{ services.db.host }}:5432/postgres' }
+      volumes:
+        - { name: data, mountPath: /var/lib/storage, size: 5Gi }
+  - name: studio
+    primary: false
+    type: docker-image
+    config:
+      image: supabase/studio
+      tag: 2026.06.03-sha-0bca601
+      containerPort: 3000
+      env:
+        - { key: STUDIO_PG_META_URL, value: 'http://{{ services.meta.host }}:8080' }
+        - { key: DEFAULT_ORGANIZATION_NAME, value: '{{ inputs.organization_name }}' }
+        - { key: DEFAULT_PROJECT_NAME, value: '{{ inputs.project_name }}' }
+        - { key: SUPABASE_URL, value: 'http://{{ services.kong.host }}:8000' }
+        - { key: SUPABASE_PUBLIC_URL, value: 'https://{{ inputs.domain }}' }
+        - { key: NEXT_ANALYTICS_BACKEND_PROVIDER, value: postgres }
+        - { key: POSTGRES_HOST, value: '{{ services.db.host }}' }
+        - { key: POSTGRES_PORT, value: '5432' }
+        - { key: POSTGRES_DB, value: postgres }
+      secrets:
+        - { key: POSTGRES_PASSWORD, value: '{{ secrets.postgres_password }}' }
+        - { key: AUTH_JWT_SECRET, value: '{{ secrets.jwt_secret }}' }
+        - { key: SUPABASE_ANON_KEY, value: '{{ secrets.anon_key }}' }
+        - { key: SUPABASE_SERVICE_KEY, value: '{{ secrets.service_role_key }}' }
+        - { key: PG_META_CRYPTO_KEY, value: '{{ secrets.pg_meta_crypto_key }}' }
+  # Kong API gateway: the single public entrypoint. Declarative (DB-less) config rendered with the
+  # generated keys + internal hosts; default entrypoint reads KONG_DECLARATIVE_CONFIG (no custom command).
+  - name: kong
+    primary: true
+    type: docker-image
+    config:
+      image: kong
+      tag: '3.9.1'
+      containerPort: 8000
+      env:
+        - { key: KONG_DATABASE, value: 'off' }
+        - { key: KONG_DECLARATIVE_CONFIG, value: /home/kong/kong.yml }
+        - { key: KONG_DNS_ORDER, value: 'LAST,A,CNAME' }
+        - { key: KONG_PLUGINS, value: 'request-transformer,cors,key-auth,acl,basic-auth' }
+        - { key: KONG_NGINX_PROXY_PROXY_BUFFER_SIZE, value: 160k }
+        - { key: KONG_NGINX_PROXY_PROXY_BUFFERS, value: '64 160k' }
+      domains:
+        - { host: '{{ inputs.domain }}', port: 8000 }
+      configFiles:
+        - path: /home/kong/kong.yml
+          content: |
+            _format_version: "3.0"
+            consumers:
+              - username: DASHBOARD
+              - username: anon
+                keyauth_credentials:
+                  - key: "{{ secrets.anon_key }}"
+              - username: service_role
+                keyauth_credentials:
+                  - key: "{{ secrets.service_role_key }}"
+            basicauth_credentials:
+              - consumer: DASHBOARD
+                username: "supabase"
+                password: "{{ secrets.dashboard_password }}"
+            acls:
+              - consumer: anon
+                group: anon
+              - consumer: service_role
+                group: admin
+            services:
+              - name: auth-v1
+                url: "http://{{ services.auth.host }}:9999/"
+                routes:
+                  - name: auth-v1
+                    strip_path: true
+                    paths: ["/auth/v1/"]
+                plugins:
+                  - name: cors
+              - name: rest-v1
+                url: "http://{{ services.rest.host }}:3000/"
+                routes:
+                  - name: rest-v1
+                    strip_path: true
+                    paths: ["/rest/v1/"]
+                plugins:
+                  - name: cors
+                  - name: key-auth
+                    config:
+                      hide_credentials: true
+                  - name: acl
+                    config:
+                      hide_groups_header: true
+                      allow: ["admin", "anon"]
+              - name: realtime-v1
+                url: "http://{{ services.realtime.host }}:4000/socket/"
+                routes:
+                  - name: realtime-v1
+                    strip_path: true
+                    # preserve_host lets the request-transformer's Host reach the upstream
+                    # (with the default preserve_host=false Kong overwrites Host with the upstream name).
+                    preserve_host: true
+                    paths: ["/realtime/v1/"]
+                plugins:
+                  - name: cors
+                  # Realtime resolves its tenant from the Host subdomain. Behind Kong the upstream
+                  # name (svc-<id>) doesn't match the seeded self-host tenant "realtime-dev", so every
+                  # socket is rejected with TenantNotFound -> the client sees "transport failure".
+                  # Force the Host to the seeded tenant so the websocket connects.
+                  - name: request-transformer
+                    config:
+                      replace:
+                        headers:
+                          - "host:realtime-dev"
+              - name: storage-v1
+                url: "http://{{ services.storage.host }}:5000/"
+                routes:
+                  - name: storage-v1
+                    strip_path: true
+                    paths: ["/storage/v1/"]
+                plugins:
+                  - name: cors
+              - name: meta
+                url: "http://{{ services.meta.host }}:8080/"
+                routes:
+                  - name: meta
+                    strip_path: true
+                    paths: ["/pg/"]
+                plugins:
+                  - name: key-auth
+                  - name: acl
+                    config:
+                      hide_groups_header: true
+                      allow: ["admin"]
+              - name: dashboard
+                url: "http://{{ services.studio.host }}:3000/"
+                routes:
+                  - name: dashboard
+                    strip_path: true
+                    paths: ["/"]
+                plugins:
+                  - name: cors
+                  - name: basic-auth
+                    config:
+                      hide_credentials: true

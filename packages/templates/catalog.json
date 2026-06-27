@@ -1,0 +1,756 @@
+[
+  {
+    "id": "ghost",
+    "name": "Ghost",
+    "description": "Professional publishing platform — a blog and newsletter backed by MySQL.",
+    "category": "cms",
+    "tags": [
+      "blog",
+      "cms",
+      "publishing",
+      "newsletter"
+    ],
+    "logo": "ghost.svg",
+    "documentation": "https://ghost.org/docs/",
+    "schemaVersion": 1,
+    "version": 1,
+    "inputs": [
+      {
+        "key": "url",
+        "label": "Public URL",
+        "type": "string",
+        "required": false,
+        "placeholder": "https://blog.example.com"
+      }
+    ],
+    "secrets": [
+      {
+        "key": "db_password",
+        "generate": "password"
+      },
+      {
+        "key": "db_root_password",
+        "generate": "password"
+      }
+    ],
+    "services": [
+      {
+        "name": "db",
+        "primary": false,
+        "type": "docker-image",
+        "config": {
+          "image": "mysql",
+          "tag": "8.4",
+          "containerPort": 3306,
+          "env": [
+            {
+              "key": "MYSQL_USER",
+              "value": "ghost"
+            },
+            {
+              "key": "MYSQL_DATABASE",
+              "value": "ghost"
+            }
+          ],
+          "secrets": [
+            {
+              "key": "MYSQL_PASSWORD",
+              "value": "{{ secrets.db_password }}"
+            },
+            {
+              "key": "MYSQL_ROOT_PASSWORD",
+              "value": "{{ secrets.db_root_password }}"
+            }
+          ],
+          "domains": [],
+          "volumes": [
+            {
+              "name": "data",
+              "mountPath": "/var/lib/mysql",
+              "size": "1Gi"
+            }
+          ],
+          "configFiles": []
+        }
+      },
+      {
+        "name": "ghost",
+        "primary": true,
+        "type": "docker-image",
+        "config": {
+          "image": "ghost",
+          "tag": "5",
+          "containerPort": 2368,
+          "defaultDomainEnabled": true,
+          "env": [
+            {
+              "key": "database__client",
+              "value": "mysql"
+            },
+            {
+              "key": "database__connection__host",
+              "value": "{{ services.db.host }}"
+            },
+            {
+              "key": "database__connection__port",
+              "value": "3306"
+            },
+            {
+              "key": "database__connection__user",
+              "value": "ghost"
+            },
+            {
+              "key": "database__connection__database",
+              "value": "ghost"
+            },
+            {
+              "key": "url",
+              "value": "{{ inputs.url }}"
+            }
+          ],
+          "secrets": [
+            {
+              "key": "database__connection__password",
+              "value": "{{ secrets.db_password }}"
+            }
+          ],
+          "domains": [],
+          "volumes": [],
+          "configFiles": []
+        }
+      }
+    ],
+    "logoSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" width=\"24\" height=\"24\"><rect width=\"24\" height=\"24\" rx=\"4\" fill=\"#15171a\"/></svg>\n"
+  },
+  {
+    "id": "supabase",
+    "name": "Supabase",
+    "description": "The open-source Firebase alternative — Postgres database, Auth, REST, Realtime and Storage behind a Kong API gateway with Studio.",
+    "category": "backend",
+    "tags": [
+      "database",
+      "auth",
+      "realtime",
+      "storage",
+      "baas",
+      "postgres"
+    ],
+    "logo": "supabase.svg",
+    "documentation": "https://supabase.com/docs/guides/self-hosting",
+    "schemaVersion": 1,
+    "version": 1,
+    "inputs": [
+      {
+        "key": "domain",
+        "label": "Public domain",
+        "type": "string",
+        "required": true,
+        "placeholder": "supabase.example.com"
+      },
+      {
+        "key": "organization_name",
+        "label": "Organization name",
+        "type": "string",
+        "required": false,
+        "default": "Default Organization"
+      },
+      {
+        "key": "project_name",
+        "label": "Project name",
+        "type": "string",
+        "required": false,
+        "default": "Default Project"
+      }
+    ],
+    "secrets": [
+      {
+        "key": "postgres_password",
+        "generate": "password"
+      },
+      {
+        "key": "dashboard_password",
+        "generate": "password"
+      },
+      {
+        "key": "jwt_secret",
+        "generate": "password"
+      },
+      {
+        "key": "anon_key",
+        "generate": "jwt",
+        "signWith": "jwt_secret",
+        "claims": {
+          "role": "anon",
+          "iss": "supabase"
+        },
+        "expiresInDays": 3650
+      },
+      {
+        "key": "service_role_key",
+        "generate": "jwt",
+        "signWith": "jwt_secret",
+        "claims": {
+          "role": "service_role",
+          "iss": "supabase"
+        },
+        "expiresInDays": 3650
+      },
+      {
+        "key": "secret_key_base",
+        "generate": "password"
+      },
+      {
+        "key": "secret_key_base2",
+        "generate": "password"
+      },
+      {
+        "key": "pg_meta_crypto_key",
+        "generate": "password"
+      }
+    ],
+    "services": [
+      {
+        "name": "db",
+        "primary": false,
+        "type": "docker-image",
+        "config": {
+          "image": "supabase/postgres",
+          "tag": "15.8.1.085",
+          "containerPort": 5432,
+          "env": [
+            {
+              "key": "POSTGRES_DB",
+              "value": "postgres"
+            },
+            {
+              "key": "POSTGRES_PORT",
+              "value": "5432"
+            },
+            {
+              "key": "JWT_EXP",
+              "value": "3600"
+            }
+          ],
+          "secrets": [
+            {
+              "key": "POSTGRES_PASSWORD",
+              "value": "{{ secrets.postgres_password }}"
+            },
+            {
+              "key": "JWT_SECRET",
+              "value": "{{ secrets.jwt_secret }}"
+            }
+          ],
+          "domains": [],
+          "volumes": [
+            {
+              "name": "data",
+              "mountPath": "/var/lib/postgresql/data",
+              "size": "8Gi",
+              "subPath": "pgdata"
+            }
+          ],
+          "configFiles": [
+            {
+              "path": "/docker-entrypoint-initdb.d/zz-10-jwt.sql",
+              "content": "\\set jwt_secret `echo \"$JWT_SECRET\"`\n\\set jwt_exp `echo \"$JWT_EXP\"`\nALTER DATABASE postgres SET \"app.settings.jwt_secret\" TO :'jwt_secret';\nALTER DATABASE postgres SET \"app.settings.jwt_exp\" TO :'jwt_exp';\n"
+            },
+            {
+              "path": "/docker-entrypoint-initdb.d/zz-20-roles.sql",
+              "content": "\\set pgpass `echo \"$POSTGRES_PASSWORD\"`\nALTER USER authenticator WITH PASSWORD :'pgpass';\nALTER USER supabase_auth_admin WITH PASSWORD :'pgpass';\nALTER USER supabase_storage_admin WITH PASSWORD :'pgpass';\nALTER USER supabase_admin WITH PASSWORD :'pgpass';\n"
+            },
+            {
+              "path": "/docker-entrypoint-initdb.d/zz-30-realtime.sql",
+              "content": "CREATE SCHEMA IF NOT EXISTS _realtime AUTHORIZATION supabase_admin;\n"
+            }
+          ]
+        }
+      },
+      {
+        "name": "meta",
+        "primary": false,
+        "type": "docker-image",
+        "config": {
+          "image": "supabase/postgres-meta",
+          "tag": "v0.96.3",
+          "containerPort": 8080,
+          "env": [
+            {
+              "key": "PG_META_PORT",
+              "value": "8080"
+            },
+            {
+              "key": "PG_META_DB_HOST",
+              "value": "{{ services.db.host }}"
+            },
+            {
+              "key": "PG_META_DB_PORT",
+              "value": "5432"
+            },
+            {
+              "key": "PG_META_DB_NAME",
+              "value": "postgres"
+            },
+            {
+              "key": "PG_META_DB_USER",
+              "value": "supabase_admin"
+            }
+          ],
+          "secrets": [
+            {
+              "key": "PG_META_DB_PASSWORD",
+              "value": "{{ secrets.postgres_password }}"
+            },
+            {
+              "key": "CRYPTO_KEY",
+              "value": "{{ secrets.pg_meta_crypto_key }}"
+            }
+          ],
+          "domains": [],
+          "volumes": [],
+          "configFiles": []
+        }
+      },
+      {
+        "name": "auth",
+        "primary": false,
+        "type": "docker-image",
+        "config": {
+          "image": "supabase/gotrue",
+          "tag": "v2.186.0",
+          "containerPort": 9999,
+          "env": [
+            {
+              "key": "GOTRUE_API_HOST",
+              "value": "0.0.0.0"
+            },
+            {
+              "key": "GOTRUE_API_PORT",
+              "value": "9999"
+            },
+            {
+              "key": "API_EXTERNAL_URL",
+              "value": "https://{{ inputs.domain }}"
+            },
+            {
+              "key": "GOTRUE_DB_DRIVER",
+              "value": "postgres"
+            },
+            {
+              "key": "GOTRUE_SITE_URL",
+              "value": "https://{{ inputs.domain }}"
+            },
+            {
+              "key": "GOTRUE_JWT_ADMIN_ROLES",
+              "value": "service_role"
+            },
+            {
+              "key": "GOTRUE_JWT_AUD",
+              "value": "authenticated"
+            },
+            {
+              "key": "GOTRUE_JWT_DEFAULT_GROUP_NAME",
+              "value": "authenticated"
+            },
+            {
+              "key": "GOTRUE_JWT_EXP",
+              "value": "3600"
+            },
+            {
+              "key": "GOTRUE_JWT_ISSUER",
+              "value": "https://{{ inputs.domain }}/auth/v1"
+            },
+            {
+              "key": "GOTRUE_EXTERNAL_EMAIL_ENABLED",
+              "value": "true"
+            },
+            {
+              "key": "GOTRUE_MAILER_AUTOCONFIRM",
+              "value": "true"
+            },
+            {
+              "key": "GOTRUE_EXTERNAL_PHONE_ENABLED",
+              "value": "false"
+            },
+            {
+              "key": "GOTRUE_SMS_AUTOCONFIRM",
+              "value": "true"
+            }
+          ],
+          "secrets": [
+            {
+              "key": "GOTRUE_DB_DATABASE_URL",
+              "value": "postgres://supabase_auth_admin:{{ secrets.postgres_password }}@{{ services.db.host }}:5432/postgres"
+            },
+            {
+              "key": "GOTRUE_JWT_SECRET",
+              "value": "{{ secrets.jwt_secret }}"
+            }
+          ],
+          "domains": [],
+          "volumes": [],
+          "configFiles": []
+        }
+      },
+      {
+        "name": "rest",
+        "primary": false,
+        "type": "docker-image",
+        "config": {
+          "image": "postgrest/postgrest",
+          "tag": "v12.2.12",
+          "containerPort": 3000,
+          "env": [
+            {
+              "key": "PGRST_DB_SCHEMAS",
+              "value": "public,storage,graphql_public"
+            },
+            {
+              "key": "PGRST_DB_ANON_ROLE",
+              "value": "anon"
+            },
+            {
+              "key": "PGRST_DB_USE_LEGACY_GUCS",
+              "value": "false"
+            }
+          ],
+          "secrets": [
+            {
+              "key": "PGRST_DB_URI",
+              "value": "postgres://authenticator:{{ secrets.postgres_password }}@{{ services.db.host }}:5432/postgres"
+            },
+            {
+              "key": "PGRST_JWT_SECRET",
+              "value": "{{ secrets.jwt_secret }}"
+            },
+            {
+              "key": "PGRST_APP_SETTINGS_JWT_SECRET",
+              "value": "{{ secrets.jwt_secret }}"
+            }
+          ],
+          "domains": [],
+          "volumes": [],
+          "configFiles": []
+        }
+      },
+      {
+        "name": "realtime",
+        "primary": false,
+        "type": "docker-image",
+        "config": {
+          "image": "supabase/realtime",
+          "tag": "v2.76.5",
+          "containerPort": 4000,
+          "env": [
+            {
+              "key": "PORT",
+              "value": "4000"
+            },
+            {
+              "key": "DB_HOST",
+              "value": "{{ services.db.host }}"
+            },
+            {
+              "key": "DB_PORT",
+              "value": "5432"
+            },
+            {
+              "key": "DB_USER",
+              "value": "supabase_admin"
+            },
+            {
+              "key": "DB_NAME",
+              "value": "postgres"
+            },
+            {
+              "key": "DB_AFTER_CONNECT_QUERY",
+              "value": "SET search_path TO _realtime"
+            },
+            {
+              "key": "DB_ENC_KEY",
+              "value": "supabaserealtime"
+            },
+            {
+              "key": "ERL_AFLAGS",
+              "value": "-proto_dist inet_tcp"
+            },
+            {
+              "key": "DNS_NODES",
+              "value": "''"
+            },
+            {
+              "key": "RLIMIT_NOFILE",
+              "value": "10000"
+            },
+            {
+              "key": "APP_NAME",
+              "value": "realtime"
+            },
+            {
+              "key": "SEED_SELF_HOST",
+              "value": "true"
+            },
+            {
+              "key": "RUN_JANITOR",
+              "value": "true"
+            }
+          ],
+          "secrets": [
+            {
+              "key": "DB_PASSWORD",
+              "value": "{{ secrets.postgres_password }}"
+            },
+            {
+              "key": "API_JWT_SECRET",
+              "value": "{{ secrets.jwt_secret }}"
+            },
+            {
+              "key": "SECRET_KEY_BASE",
+              "value": "{{ secrets.secret_key_base }}{{ secrets.secret_key_base2 }}"
+            }
+          ],
+          "domains": [],
+          "volumes": [],
+          "configFiles": []
+        }
+      },
+      {
+        "name": "storage",
+        "primary": false,
+        "type": "docker-image",
+        "config": {
+          "image": "supabase/storage-api",
+          "tag": "v1.48.26",
+          "containerPort": 5000,
+          "env": [
+            {
+              "key": "POSTGREST_URL",
+              "value": "http://{{ services.rest.host }}:3000"
+            },
+            {
+              "key": "FILE_SIZE_LIMIT",
+              "value": "52428800"
+            },
+            {
+              "key": "STORAGE_BACKEND",
+              "value": "file"
+            },
+            {
+              "key": "FILE_STORAGE_BACKEND_PATH",
+              "value": "/var/lib/storage"
+            },
+            {
+              "key": "TENANT_ID",
+              "value": "stub"
+            },
+            {
+              "key": "REGION",
+              "value": "stub"
+            },
+            {
+              "key": "GLOBAL_S3_BUCKET",
+              "value": "stub"
+            },
+            {
+              "key": "ENABLE_IMAGE_TRANSFORMATION",
+              "value": "false"
+            }
+          ],
+          "secrets": [
+            {
+              "key": "ANON_KEY",
+              "value": "{{ secrets.anon_key }}"
+            },
+            {
+              "key": "SERVICE_KEY",
+              "value": "{{ secrets.service_role_key }}"
+            },
+            {
+              "key": "AUTH_JWT_SECRET",
+              "value": "{{ secrets.jwt_secret }}"
+            },
+            {
+              "key": "DATABASE_URL",
+              "value": "postgres://supabase_storage_admin:{{ secrets.postgres_password }}@{{ services.db.host }}:5432/postgres"
+            }
+          ],
+          "domains": [],
+          "volumes": [
+            {
+              "name": "data",
+              "mountPath": "/var/lib/storage",
+              "size": "5Gi"
+            }
+          ],
+          "configFiles": []
+        }
+      },
+      {
+        "name": "studio",
+        "primary": false,
+        "type": "docker-image",
+        "config": {
+          "image": "supabase/studio",
+          "tag": "2026.06.03-sha-0bca601",
+          "containerPort": 3000,
+          "env": [
+            {
+              "key": "STUDIO_PG_META_URL",
+              "value": "http://{{ services.meta.host }}:8080"
+            },
+            {
+              "key": "DEFAULT_ORGANIZATION_NAME",
+              "value": "{{ inputs.organization_name }}"
+            },
+            {
+              "key": "DEFAULT_PROJECT_NAME",
+              "value": "{{ inputs.project_name }}"
+            },
+            {
+              "key": "SUPABASE_URL",
+              "value": "http://{{ services.kong.host }}:8000"
+            },
+            {
+              "key": "SUPABASE_PUBLIC_URL",
+              "value": "https://{{ inputs.domain }}"
+            },
+            {
+              "key": "NEXT_ANALYTICS_BACKEND_PROVIDER",
+              "value": "postgres"
+            },
+            {
+              "key": "POSTGRES_HOST",
+              "value": "{{ services.db.host }}"
+            },
+            {
+              "key": "POSTGRES_PORT",
+              "value": "5432"
+            },
+            {
+              "key": "POSTGRES_DB",
+              "value": "postgres"
+            }
+          ],
+          "secrets": [
+            {
+              "key": "POSTGRES_PASSWORD",
+              "value": "{{ secrets.postgres_password }}"
+            },
+            {
+              "key": "AUTH_JWT_SECRET",
+              "value": "{{ secrets.jwt_secret }}"
+            },
+            {
+              "key": "SUPABASE_ANON_KEY",
+              "value": "{{ secrets.anon_key }}"
+            },
+            {
+              "key": "SUPABASE_SERVICE_KEY",
+              "value": "{{ secrets.service_role_key }}"
+            },
+            {
+              "key": "PG_META_CRYPTO_KEY",
+              "value": "{{ secrets.pg_meta_crypto_key }}"
+            }
+          ],
+          "domains": [],
+          "volumes": [],
+          "configFiles": []
+        }
+      },
+      {
+        "name": "kong",
+        "primary": true,
+        "type": "docker-image",
+        "config": {
+          "image": "kong",
+          "tag": "3.9.1",
+          "containerPort": 8000,
+          "env": [
+            {
+              "key": "KONG_DATABASE",
+              "value": "off"
+            },
+            {
+              "key": "KONG_DECLARATIVE_CONFIG",
+              "value": "/home/kong/kong.yml"
+            },
+            {
+              "key": "KONG_DNS_ORDER",
+              "value": "LAST,A,CNAME"
+            },
+            {
+              "key": "KONG_PLUGINS",
+              "value": "request-transformer,cors,key-auth,acl,basic-auth"
+            },
+            {
+              "key": "KONG_NGINX_PROXY_PROXY_BUFFER_SIZE",
+              "value": "160k"
+            },
+            {
+              "key": "KONG_NGINX_PROXY_PROXY_BUFFERS",
+              "value": "64 160k"
+            }
+          ],
+          "secrets": [],
+          "domains": [
+            {
+              "host": "{{ inputs.domain }}",
+              "port": 8000
+            }
+          ],
+          "volumes": [],
+          "configFiles": [
+            {
+              "path": "/home/kong/kong.yml",
+              "content": "_format_version: \"3.0\"\nconsumers:\n  - username: DASHBOARD\n  - username: anon\n    keyauth_credentials:\n      - key: \"{{ secrets.anon_key }}\"\n  - username: service_role\n    keyauth_credentials:\n      - key: \"{{ secrets.service_role_key }}\"\nbasicauth_credentials:\n  - consumer: DASHBOARD\n    username: \"supabase\"\n    password: \"{{ secrets.dashboard_password }}\"\nacls:\n  - consumer: anon\n    group: anon\n  - consumer: service_role\n    group: admin\nservices:\n  - name: auth-v1\n    url: \"http://{{ services.auth.host }}:9999/\"\n    routes:\n      - name: auth-v1\n        strip_path: true\n        paths: [\"/auth/v1/\"]\n    plugins:\n      - name: cors\n  - name: rest-v1\n    url: \"http://{{ services.rest.host }}:3000/\"\n    routes:\n      - name: rest-v1\n        strip_path: true\n        paths: [\"/rest/v1/\"]\n    plugins:\n      - name: cors\n      - name: key-auth\n        config:\n          hide_credentials: true\n      - name: acl\n        config:\n          hide_groups_header: true\n          allow: [\"admin\", \"anon\"]\n  - name: realtime-v1\n    url: \"http://{{ services.realtime.host }}:4000/socket/\"\n    routes:\n      - name: realtime-v1\n        strip_path: true\n        # preserve_host lets the request-transformer's Host reach the upstream\n        # (with the default preserve_host=false Kong overwrites Host with the upstream name).\n        preserve_host: true\n        paths: [\"/realtime/v1/\"]\n    plugins:\n      - name: cors\n      # Realtime resolves its tenant from the Host subdomain. Behind Kong the upstream\n      # name (svc-<id>) doesn't match the seeded self-host tenant \"realtime-dev\", so every\n      # socket is rejected with TenantNotFound -> the client sees \"transport failure\".\n      # Force the Host to the seeded tenant so the websocket connects.\n      - name: request-transformer\n        config:\n          replace:\n            headers:\n              - \"host:realtime-dev\"\n  - name: storage-v1\n    url: \"http://{{ services.storage.host }}:5000/\"\n    routes:\n      - name: storage-v1\n        strip_path: true\n        paths: [\"/storage/v1/\"]\n    plugins:\n      - name: cors\n  - name: meta\n    url: \"http://{{ services.meta.host }}:8080/\"\n    routes:\n      - name: meta\n        strip_path: true\n        paths: [\"/pg/\"]\n    plugins:\n      - name: key-auth\n      - name: acl\n        config:\n          hide_groups_header: true\n          allow: [\"admin\"]\n  - name: dashboard\n    url: \"http://{{ services.studio.host }}:3000/\"\n    routes:\n      - name: dashboard\n        strip_path: true\n        paths: [\"/\"]\n    plugins:\n      - name: cors\n      - name: basic-auth\n        config:\n          hide_credentials: true\n"
+            }
+          ]
+        }
+      }
+    ],
+    "logoSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 109 113\" fill=\"none\"><path d=\"M63.7 110.3c-2.8 3.5-8.5 1.6-8.6-2.9L54 44h41.6c7.5 0 11.7 8.7 7 14.5l-38.9 51.8Z\" fill=\"url(#sb)\"/><path d=\"M45.3 2.7c2.8-3.5 8.5-1.6 8.6 2.9L54.5 69H13c-7.5 0-11.7-8.7-7-14.5L45.3 2.7Z\" fill=\"#3ECF8E\"/><defs><linearGradient id=\"sb\" x1=\"53.97\" y1=\"54.97\" x2=\"94.16\" y2=\"71.82\" gradientUnits=\"userSpaceOnUse\"><stop stop-color=\"#249361\"/><stop offset=\"1\" stop-color=\"#3ECF8E\"/></linearGradient></defs></svg>\n"
+  },
+  {
+    "id": "uptime-kuma",
+    "name": "Uptime Kuma",
+    "description": "Self-hosted monitoring tool with a fancy status page.",
+    "category": "monitoring",
+    "tags": [
+      "monitoring",
+      "status-page",
+      "uptime"
+    ],
+    "logo": "uptime-kuma.svg",
+    "documentation": "https://github.com/louislam/uptime-kuma",
+    "schemaVersion": 1,
+    "version": 1,
+    "inputs": [],
+    "secrets": [],
+    "services": [
+      {
+        "name": "uptime-kuma",
+        "primary": true,
+        "type": "docker-image",
+        "config": {
+          "image": "louislam/uptime-kuma",
+          "tag": "1",
+          "containerPort": 3001,
+          "defaultDomainEnabled": true,
+          "env": [],
+          "secrets": [],
+          "domains": [],
+          "volumes": [
+            {
+              "name": "data",
+              "mountPath": "/app/data",
+              "size": "1Gi"
+            }
+          ],
+          "configFiles": []
+        }
+      }
+    ],
+    "logoSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" xml:space=\"preserve\" viewBox=\"0 0 622 622\"><g transform=\"translate(320 320)\"><linearGradient id=\"a\" x1=\"-82.404\" x2=\"121.666\" y1=\"38.077\" y2=\"-157.263\" gradientTransform=\"matrix(1 0 0 -1 .001 -16)\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" style=\"stop-color:#5cdd8b\"/><stop offset=\"1\" style=\"stop-color:#86e6a9\"/></linearGradient><path d=\"M161.4-93.4c53.7 122.7 53.7 199.7 0 230.9-80.5 46.7-290.4 61-350.9-10.9-40.3-47.9-40.3-121.2 0-220 41-67.5 99.2-101.2 174.6-101.2 75.5 0 134.3 33.8 176.3 101.2z\" style=\"fill:url(#a);stroke:#f2f2f2;stroke-width:200;stroke-opacity:.51\"/></g></svg>"
+  }
+]

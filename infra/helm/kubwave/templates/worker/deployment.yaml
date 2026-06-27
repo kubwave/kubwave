@@ -1,0 +1,214 @@
+{{- $apiSecret := include "kubwave.secretName" (dict "secret" .Values.api.secret) -}}
+{{- $pgSecret  := include "kubwave.secretName" (dict "secret" .Values.postgres.secret) -}}
+{{- $imagePullSecretNames := list -}}
+{{- range (.Values.imagePullSecrets | default list) -}}
+{{- $imagePullSecretNames = append $imagePullSecretNames .name -}}
+{{- end -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "worker") | nindent 4 }}
+spec:
+  # The worker is a singleton reconcile loop — it does NOT scale with HA (no leader election;
+  # 3 concurrent reconcilers would triple non-idempotent work like build Jobs and the
+  # self-update Job). Always its own replica count (default 1), regardless of ha.enabled.
+  replicas: {{ .Values.worker.replicas }}
+  selector:
+    matchLabels:
+      {{- include "kubwave.selectorLabels" (dict "component" "worker") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kubwave.labels" (dict "root" $ "component" "worker") | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.worker.serviceAccount.create }}
+      serviceAccountName: {{ .Values.worker.serviceAccount.name }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.worker.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: worker
+          image: "{{ required "worker.image.repository is required" .Values.worker.image.repository }}:{{ required "worker.image.tag is required" .Values.worker.image.tag }}"
+          imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
+          {{- with .Values.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          # No inbound Service — this port exists only for the health probes.
+          ports:
+            - name: health
+              containerPort: {{ .Values.worker.healthPort }}
+          env:
+            - name: BACKEND_ENTRYPOINT
+              value: worker
+            {{- range $k, $v := .Values.worker.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $pgSecret }}
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $pgSecret }}
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $pgSecret }}
+                  key: POSTGRES_DB
+            {{- with .Values.worker.databaseUrl }}
+            - name: DATABASE_URL
+              value: {{ . | quote }}
+            {{- end }}
+            # The worker reads GITHUB_TOKEN from the api Secret (single source).
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $apiSecret }}
+                  key: GITHUB_TOKEN
+                  optional: true
+            # Decrypts user-service secrets to build each service's env Secret (api uses the same key).
+            - name: SECRETS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $apiSecret }}
+                  key: SECRETS_KEY
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            # Namespace the ingress controller runs in — used in the per-environment
+            # NetworkPolicy to allow external HTTP into tenant services (see workloadIngress).
+            - name: INGRESS_CONTROLLER_NAMESPACE
+              value: {{ .Values.workloadIngress.controllerNamespace | quote }}
+            # Ingress wiring the worker applies to tenant service domains. className/
+            # clusterIssuer are provider-specific (see values-cloudfleet-*.yaml); empty
+            # className → cluster default class, empty clusterIssuer → HTTP only.
+            # Annotations are passed as a JSON object the worker parses.
+            - name: INGRESS_CLASS_NAME
+              value: {{ .Values.workloadIngress.className | quote }}
+            - name: INGRESS_CLUSTER_ISSUER
+              value: {{ .Values.workloadIngress.clusterIssuer | quote }}
+            - name: INGRESS_ANNOTATIONS
+              value: {{ .Values.workloadIngress.annotations | toJson | quote }}
+            # Default-domain (sslip) base resolution. An explicit IP override wins (dev sets
+            # 127.0.0.1 — k3d is reached via localhost, not the klipper LB IP); empty → the
+            # worker reads the ingress controller Service's LoadBalancer IP. Service name
+            # defaults to `traefik` (k3d dev + the CLI's prod install).
+            - name: INGRESS_LB_IP
+              value: {{ .Values.workloadIngress.loadBalancerIp | quote }}
+            - name: INGRESS_CONTROLLER_SERVICE
+              value: {{ .Values.workloadIngress.controllerServiceName | default "traefik" | quote }}
+            # Default StorageClass for tenant PVCs (provider-specific, see workloadStorage).
+            - name: STORAGE_CLASS_NAME
+              value: {{ .Values.workloadStorage.storageClassName | quote }}
+            # ── Tenant namespace hardening (per-environment isolation; see `tenants` in values) ──
+            - name: TENANT_POD_SECURITY
+              value: {{ .Values.tenants.podSecurity | quote }}
+            - name: TENANT_RUNTIME_CLASS
+              value: {{ .Values.tenants.runtimeClass.default | quote }}
+            - name: TENANT_EGRESS_ENABLED
+              value: {{ .Values.tenants.egress.enabled | quote }}
+            - name: TENANT_EGRESS_BLOCKED_CIDRS
+              value: {{ join "," (.Values.tenants.egress.blockedCidrs | default (list)) | quote }}
+            - name: DNS_NAMESPACE
+              value: {{ .Values.tenants.egress.dnsNamespace | quote }}
+            - name: DNS_POD_LABELS
+              value: {{ (.Values.tenants.egress.dnsPodLabels | default (dict "k8s-app" "kube-dns")) | toJson | quote }}
+            - name: DNS_SERVICE_IP
+              value: {{ .Values.tenants.egress.dnsServiceIp | default "" | quote }}
+            # ── Image builds: registry endpoint + BuildKit Job settings (see `builds` in values) ──
+            - name: REGISTRY_ENDPOINT
+              value: {{ .Values.builds.registry.endpoint | quote }}
+            - name: REGISTRY_INSECURE
+              value: {{ .Values.builds.registry.insecure | quote }}
+            - name: BUILD_ENGINE
+              value: {{ .Values.builds.engine | quote }}
+            - name: BUILDER_IMAGE
+              value: {{ .Values.builds.builderImage | quote }}
+            # Source builds: clone + Nixpacks plan generation run from the dedicated build-tools image.
+            - name: BUILD_TOOLS_IMAGE
+              value: {{ .Values.builds.buildToolsImage | quote }}
+            # Expose top-level pull secrets so generated build Jobs can pull private platform images.
+            - name: BUILD_IMAGE_PULL_SECRETS
+              value: {{ join "," $imagePullSecretNames | quote }}
+            - name: BUILDER_SERVICE_ACCOUNT
+              value: {{ .Values.builds.serviceAccount.name | quote }}
+            - name: BUILD_TIMEOUT_SECONDS
+              value: {{ .Values.builds.timeoutSeconds | quote }}
+            - name: BUILD_JOB_TTL_SECONDS
+              value: {{ .Values.builds.jobTtlSeconds | quote }}
+            # Memory request/limit for the BuildKit build container — bounds the build so it can't
+            # exhaust a small build node and get the pod evicted mid-build.
+            - name: BUILD_MEMORY_REQUEST
+              value: {{ .Values.builds.memoryRequest | quote }}
+            - name: BUILD_MEMORY_LIMIT
+              value: {{ .Values.builds.memoryLimit | quote }}
+            {{- with .Values.builds.registry.pushSecretName }}
+            - name: REGISTRY_PUSH_SECRET_NAME
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.builds.registry.pullSecretName }}
+            - name: REGISTRY_PULL_SECRET_NAME
+              value: {{ . | quote }}
+            {{- end }}
+            # Version from the running image — pod-local so the version poller
+            # follows the actually-serving pod during a rolling update.
+            - name: APP_VERSION
+              value: {{ .Values.worker.image.tag | quote }}
+            # Trust the in-cluster API server's self-signed CA for Kubernetes client calls.
+            # The SA CA mount is always present on pods with automountServiceAccountToken.
+            - name: NODE_EXTRA_CA_CERTS
+              value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            # Pod name → a distinct lease holder id per reconcile-loop replica (queue crash-recovery).
+            - name: WORKER_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: RECONCILE_INTERVAL_MS
+              value: {{ .Values.worker.reconcileIntervalMs | quote }}
+            - name: LEASE_TIMEOUT_MS
+              value: {{ .Values.worker.leaseTimeoutMs | quote }}
+            - name: WORKER_HEALTH_PORT
+              value: {{ .Values.worker.healthPort | quote }}
+          startupProbe:
+            tcpSocket:
+              port: health
+            periodSeconds: {{ .Values.worker.probes.startup.periodSeconds }}
+            failureThreshold: {{ .Values.worker.probes.startup.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: health
+            initialDelaySeconds: {{ .Values.worker.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.worker.probes.readiness.periodSeconds }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: health
+            initialDelaySeconds: {{ .Values.worker.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.worker.probes.liveness.periodSeconds }}
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

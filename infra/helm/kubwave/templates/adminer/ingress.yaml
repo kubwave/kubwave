@@ -1,0 +1,25 @@
+{{- $adminer := .Values.adminer | default dict -}}
+{{- $adminerIngress := $adminer.ingress | default dict -}}
+{{- if and $adminer.enabled $adminerIngress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: adminer
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "adminer") | nindent 4 }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . | quote }}
+  {{- end }}
+  rules:
+    - host: {{ required "adminer.ingress.host is required" $adminerIngress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: adminer
+                port:
+                  number: {{ $adminer.port }}
+{{- end }}

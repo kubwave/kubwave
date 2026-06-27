@@ -1,0 +1,80 @@
+# This workflow runs the test suite, generates a Cobertura XML coverage report, and uploads it to GitHub. Once this workflow is committed, coverage results appear automatically on every pull request.
+name: Code Coverage
+
+# Run on pushes to the default branch (to establish the baseline) and on pull requests (to compare against it). Code Quality compares PR branch coverage to the default branch, so both triggers are needed.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# The `code-quality: write` permission is required to upload coverage data. No other elevated permissions are needed.
+permissions:
+  contents: read
+  code-quality: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      # Check out the PR head commit (not the merge commit) so coverage line numbers map correctly to the diff.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # The CLI imports `build/embedded/{helm,chart.tgz}` via Bun's `with { type: 'file' }`, which must
+      # exist on disk or the module fails to resolve and the CLI tests error out. Those placeholders are
+      # normally created by the `prebuild`/`precheck-types` hooks; the regular CI runs typecheck before
+      # tests, but this workflow runs `test:coverage` directly, so create them explicitly first.
+      - name: Prepare CLI embedded placeholders
+        run: bun run --filter=cli _prepare-embedded
+
+      # `turbo run test:coverage` runs `bun test --coverage` in every workspace that defines it,
+      # writing an lcov report to `<package>/coverage/lcov.info`.
+      - name: Run tests with coverage
+        run: bun run test:coverage
+        env:
+          # Unit tests mock the data layer; @kubwave/db builds a lazy client at import
+          # time and only needs a syntactically valid URL — no real database is contacted.
+          DATABASE_URL: postgres://test:test@127.0.0.1:5432/test
+          # The `test:coverage` task declares no turbo outputs, so a cache hit replays logs
+          # WITHOUT re-writing `coverage/lcov.info` — leaving nothing to upload. Force execution
+          # so the reports are always regenerated on disk, regardless of any (future) turbo cache.
+          TURBO_FORCE: 'true'
+
+      # Bun writes per-package lcov with paths relative to each package dir (e.g. `src/index.ts`),
+      # and cross-package tests (backend, cli) emit `../../packages/...` paths for the same files.
+      # `lcov-result-merger` rewrites every path to be repo-root relative (`--prepend-source-files`,
+      # resolving the `..`) and SUMS hits for files covered by more than one package — so the report
+      # reflects true combined coverage and GitHub can map each line to the diff. A naive concat would
+      # both leave unmappable paths and under-report shared files.
+      - name: Merge coverage reports
+        run: |
+          bunx lcov-result-merger@5 '{apps,packages}/*/coverage/lcov.info' coverage.lcov \
+            --prepend-source-files --prepend-path-fix='..'
+          if [ ! -s coverage.lcov ]; then
+            echo "::error::No lcov coverage reports were produced by 'bun run test:coverage'."
+            exit 1
+          fi
+
+      # The upload action only accepts Cobertura XML, so convert the merged lcov. `pipx` is
+      # preinstalled on GitHub-hosted runners, so no Python setup step is required.
+      - name: Convert lcov to Cobertura XML
+        run: pipx run lcov_cobertura coverage.lcov --output coverage.xml --base-dir .
+
+      # This step replaces any third-party coverage upload (Codecov, Coveralls, etc.). After this runs, the `github-code-quality[bot]` bot posts a coverage summary directly on the pull request.
+      - name: Upload coverage report
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/upload-code-coverage@v1
+        with:
+          file: coverage.xml
+          language: TypeScript
+          label: code-coverage/bun

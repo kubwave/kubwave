@@ -1,0 +1,142 @@
+{{- if .Values.worker.serviceAccount.create }}
+# Control-plane Role for the worker — READ-WRITE in the platform namespace:
+#   - batch/jobs: create/get/list/watch/delete  (update-run + Dockerfile-build Job management)
+#   - core/configmaps: get/list/create/delete   (template/marker reads; create the managed-Prometheus
+#                                                 config + per-build Dockerfile ConfigMaps; delete
+#                                                 reaps finished/orphaned dockerfile-build-<id> ones)
+#   - core/configmaps (kubwave-prometheus-config only): update
+#   - core/pods: get/list + pods/log: get       (update + build Job pod inspection / logs)
+#   - core/pods/exec: create                     (registry-gc: exec `registry garbage-collect` in the registry pod)
+#   - core/events: create                        (volume-autoscaler: surface expansions and at-cap
+#                                                 conditions as Events on the registry PVC / CNPG Cluster)
+# `update` on an existing ConfigMap stays scoped by resourceNames to the managed-Prometheus config,
+# so the worker can never overwrite the update-job-template or platform-marker (create on an existing
+# name fails AlreadyExists). delete is namespace-wide because RBAC can't scope it to a name prefix,
+# but the worker code only ever deletes its own dockerfile-build-* ConfigMaps.
+# The managed Prometheus workload (Deployment/Service/PVC) is covered by the cluster-wide
+# workloads ClusterRole below; only its ConfigMap needs this namespaced write grant.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Values.worker.serviceAccount.name }}
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "worker") | nindent 4 }}
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["kubwave-prometheus-config", "kubwave-platform"]
+    verbs: ["update"]
+  # HA reconciler: scale the CloudNativePG Cluster (.spec.instances) via read-modify-replace,
+  # and mirror ha_enabled into the platform marker ConfigMap (kubwave-platform, above) so a
+  # later helm upgrade renders the same replicas. Deployment patching is covered by the
+  # cluster-wide workloads ClusterRole below.
+  - apiGroups: ["postgresql.cnpg.io"]
+    resources: ["clusters"]
+    verbs: ["get", "list", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  # Build-pod logs: the deployers tail builder output to surface the build failure reason.
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  # Registry GC: exec `registry garbage-collect` inside the live registry pod to reclaim disk for
+  # blobs the prune un-referenced (backend worker registry GC). The registry runs in
+  # this (platform) namespace, so the namespaced Role is the right scope.
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+  # Volume autoscaler: surface expansions and at-cap conditions as Events on the
+  # registry PVC / CNPG Cluster (platform namespace) so they show in `kubectl describe`.
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Values.worker.serviceAccount.name }}
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "worker") | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ .Values.worker.serviceAccount.name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.worker.serviceAccount.name }}
+    namespace: {{ .Release.Namespace }}
+---
+# Workloads ClusterRole — READ-WRITE, CLUSTER-SCOPED: tenant workloads live in one
+# namespace PER ENVIRONMENT (kubwave-env-<id>), provisioned on demand, so the worker
+# can't be scoped to a fixed namespace. It manages Deployments/Services/Ingresses +
+# NetworkPolicies inside those namespaces, reads pods for health, and creates/deletes the
+# environment namespaces themselves (lazy provisioning + GC of empty environments). It also
+# stamps the per-namespace hardening: the Pod Security `enforce` label (namespaces update), the
+# isolation NetworkPolicy, and keeps the platform builder NetworkPolicy aligned with registry mode.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Values.worker.serviceAccount.name }}-workloads
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "worker") | nindent 4 }}
+rules:
+  # `update` lets the worker add the Pod Security enforce label to an environment namespace
+  # that predates the hardening (read-modify-replace); create/delete cover lazy provisioning + GC.
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  # Per-service env Secrets (svc-<id>-env): the worker decrypts the service config and
+  # writes the plaintext into a Secret the container consumes via secretKeyRef.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  # Volume autoscaler: read PVC fill levels via the kubelet Summary API (apiserver node
+  # proxy — same read path the API role uses for service metrics) and check
+  # StorageClass.allowVolumeExpansion before growing a volume. Both are cluster-scoped.
+  - apiGroups: [""]
+    resources: ["nodes/proxy"]
+    verbs: ["get"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Values.worker.serviceAccount.name }}-workloads
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "worker") | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Values.worker.serviceAccount.name }}-workloads
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.worker.serviceAccount.name }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

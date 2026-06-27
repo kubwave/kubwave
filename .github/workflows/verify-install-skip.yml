@@ -1,0 +1,56 @@
+# verify-install-skip.yml — no-op twin of verify-install.yml so it can be a REQUIRED
+# status check. Required checks are matched by job name; a path-filtered workflow that
+# never triggers leaves the PR stuck waiting for a status that never arrives. This twin
+# has the SAME workflow name and job names but the INVERTED path filter and reports
+# green instantly (the "skipped but required check" pattern).
+#
+# Keep `name:`, job names, the build-images matrix keys, and the path list in sync
+# with verify-install.yml — if they drift, required checks hang again.
+
+name: Verify install
+
+on:
+  #pull_request:
+  #  paths:
+  #    - 'infra/helm/**'
+  #    - 'apps/backend/**'
+  #    - 'apps/build-tools/**'
+  #    - 'apps/cli/**'
+  #    - 'apps/console/**'
+  #    - 'packages/**'
+  #    - 'package.json'
+  #    - 'bun.lock'
+  #    - '.github/workflows/verify-install.yml'
+  #    - '.github/workflows/verify-install-skip.yml'
+  #    - '.github/actions/verify-install/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-install-${{ github.event.pull_request.number || github.ref }}-skip
+  cancel-in-progress: true
+
+jobs:
+  build-images:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - app: backend
+          - app: console
+          - app: build-tools
+          - app: cli
+    steps:
+      - run: echo "No chart/app changes — verify-install not required for this PR."
+
+  build-chart:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "No chart/app changes — verify-install not required for this PR."
+
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "No chart/app changes — verify-install not required for this PR."

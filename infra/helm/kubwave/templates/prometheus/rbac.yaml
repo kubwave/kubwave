@@ -1,0 +1,47 @@
+{{- if .Values.worker.serviceAccount.create }}
+# Static RBAC for the platform-managed Prometheus (Phase 3 of service metrics).
+#
+# Always rendered, but the Prometheus workload itself is provisioned at RUNTIME by the
+# worker only when an admin selects the "managed" metrics provider — so these objects
+# are harmless no-ops until then. Shipping the RBAC statically (rather than having the
+# worker create it) avoids granting the worker rbac.authorization.k8s.io escalate/bind,
+# and keeps it out of the four Helm --set value paths (it's a plain template).
+#
+# Prometheus scrapes the kubelet (cAdvisor for CPU/mem/network, /metrics for volume
+# stats) through the apiserver node proxy, so it needs read on nodes + nodes/proxy.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubwave-prometheus
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "prometheus") | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubwave-prometheus
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "prometheus") | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "nodes/proxy", "nodes/metrics", "services", "endpoints", "pods"]
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/metrics", "/metrics/cadvisor"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubwave-prometheus
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "prometheus") | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubwave-prometheus
+subjects:
+  - kind: ServiceAccount
+    name: kubwave-prometheus
+    namespace: {{ .Release.Namespace }}
+{{- end }}

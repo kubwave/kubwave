@@ -1,0 +1,182 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+	--font-sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
+	--font-mono: 'Geist Mono', ui-monospace, 'SF Mono', monospace;
+
+	/* Wave — brand primary (cyan-teal). Used sparingly: primary actions, focus, active state. */
+	--color-wave-50: #ecfdff;
+	--color-wave-100: #cff7fd;
+	--color-wave-200: #a0eefa;
+	--color-wave-300: #5fdff0;
+	--color-wave-400: #1fc8e0;
+	--color-wave-500: #0ab5ce;
+	--color-wave-600: #0892ab;
+	--color-wave-700: #0a7488;
+	--color-wave-800: #0f5c6e;
+	--color-wave-900: #134c5c;
+	--color-wave-950: #06303c;
+}
+
+/* Slate canvas, Wave accent. Primary stays the bright cyan in both modes; its foreground is dark
+   ink so white-on-cyan never drops below contrast. Type ladder: page text-2xl, section/card-title
+   text-base, label/body text-sm, meta text-xs. */
+:root {
+	--radius: 0.75rem;
+	--ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+	--background: #ffffff;
+	--foreground: #0f172a;
+
+	--card: #ffffff;
+	--card-foreground: #0f172a;
+	--popover: #ffffff;
+	--popover-foreground: #0f172a;
+
+	--primary: #0ab5ce;
+	--primary-foreground: #04252e;
+	/* legible cyan for link/accent TEXT (the bright fill fails contrast as text) */
+	--primary-text: #0a7488;
+
+	--secondary: #f1f5f9;
+	--secondary-foreground: #334155;
+	--muted: #f6f8fa;
+	--muted-foreground: #475569;
+	/* a second, still-legible (~4.6:1) text tier — replaces opacity-muted text */
+	--muted-subtle: #64748b;
+	--accent: #eceff3;
+	--accent-foreground: #0f172a;
+
+	--destructive: #dc2626;
+	--destructive-foreground: #ffffff;
+	--success: #16a34a;
+	--success-foreground: #15803d;
+	--warning: #d97706;
+	--warning-foreground: #b45309;
+	--info: #0369a1;
+
+	--border: #dce2ea;
+	--input: #dce2ea;
+	--ring: #0892ab;
+}
+
+.dark {
+	--background: #0a0f1c;
+	--foreground: #e6edf3;
+
+	--card: #1b2433;
+	--card-foreground: #e6edf3;
+	--popover: #1b2433;
+	--popover-foreground: #e6edf3;
+
+	--primary: #1fc8e0;
+	--primary-foreground: #06303c;
+	--primary-text: #5fdff0;
+
+	--secondary: #1e293b;
+	--secondary-foreground: #e6edf3;
+	--muted: #0f172a;
+	--muted-foreground: #94a1b2;
+	--muted-subtle: #7e8a99;
+	--accent: #1e293b;
+	--accent-foreground: #e6edf3;
+
+	--destructive: #f87171;
+	--destructive-foreground: #0a0f1c;
+	--success: #22c55e;
+	--success-foreground: #4ade80;
+	--warning: #f59e0b;
+	--warning-foreground: #fbbf24;
+	--info: #38bdf8;
+
+	/* one clear step up from --card so hairlines read on the navy canvas, one more to --input */
+	--border: #2b3a4f;
+	--input: #3a4a60;
+	--ring: #1fc8e0;
+}
+
+/* Bridge the design tokens to Tailwind utilities (bg-background, text-muted-foreground, …). */
+@theme inline {
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-primary-text: var(--primary-text);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-muted-subtle: var(--muted-subtle);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-destructive-foreground: var(--destructive-foreground);
+	--color-success: var(--success);
+	--color-success-foreground: var(--success-foreground);
+	--color-warning: var(--warning);
+	--color-warning-foreground: var(--warning-foreground);
+	--color-info: var(--info);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+
+	--radius-sm: calc(var(--radius) - 4px);
+	--radius-md: calc(var(--radius) - 2px);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+	* {
+		border-color: var(--border);
+	}
+
+	body {
+		background-color: var(--background);
+		color: var(--foreground);
+		font-feature-settings: 'cv11', 'ss01';
+		-webkit-font-smoothing: antialiased;
+		text-rendering: optimizeLegibility;
+	}
+
+	::selection {
+		background: color-mix(in oklch, var(--primary) 22%, transparent);
+	}
+
+	/* Accessibility: honor reduced-motion globally — near-instant everything, no removal of state. */
+	@media (prefers-reduced-motion: reduce) {
+		*,
+		*::before,
+		*::after {
+			animation-duration: 0.01ms !important;
+			animation-iteration-count: 1 !important;
+			transition-duration: 0.01ms !important;
+			scroll-behavior: auto !important;
+		}
+	}
+}
+
+/* Opacity-only content fade between routes — continuity without a slideshow feel. */
+.page-enter-active,
+.page-leave-active {
+	transition: opacity 150ms var(--ease-out);
+}
+.page-enter-from,
+.page-leave-to {
+	opacity: 0;
+}
+
+/* Faint technical grid for auth and empty canvases. Subtle, never a glow. */
+.bg-grid {
+	background-image:
+		linear-gradient(to right, color-mix(in oklch, var(--foreground) 5%, transparent) 1px, transparent 1px),
+		linear-gradient(to bottom, color-mix(in oklch, var(--foreground) 5%, transparent) 1px, transparent 1px);
+	background-size: 44px 44px;
+}

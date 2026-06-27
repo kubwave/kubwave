@@ -1,0 +1,181 @@
+%% kubwave cluster architecture
+%% Sources: infra/helm/kubwave/values.yaml, templates/*, apps/backend/src/modules/worker/jobs/*, packages/kube/src/workloads.ts
+%% Render with Mermaid, for example: mmdc -i infra/helm/kubwave/cluster-architecture.mmd -o cluster-architecture.svg
+
+flowchart TB
+  %% ---------------------------------------------------------------------------
+  %% External entry points
+  %% ---------------------------------------------------------------------------
+  user["User / Browser"]
+  dns["DNS<br/>console.localhost / app.example.com<br/>tenant domains"]
+  lb["LoadBalancer / NodePorts<br/>dev k3d: 80/443 -> loadbalancer<br/>prod: provider LB"]
+
+  subgraph ingressNs["Namespace: kube-system / ingress controller namespace"]
+    ingressCtrl["Traefik / Ingress Controller<br/>selected by IngressClass or cluster default"]
+  end
+
+  user --> dns --> lb --> ingressCtrl
+
+  %% ---------------------------------------------------------------------------
+  %% Platform namespace installed by the Helm chart
+  %% ---------------------------------------------------------------------------
+  subgraph platform["Namespace: kubwave (Helm release)"]
+    platformIngress["Ingress: console<br/>host: ingress.host<br/>/api -> Service api<br/>/ -> Service console"]
+
+    consoleSvc["Service: console<br/>ClusterIP :3000"]
+    consoleDep["Deployment: console<br/>Nuxt UI<br/>no DB secret<br/>no Kubernetes RBAC"]
+
+    apiSvc["Service: api<br/>ClusterIP :3001"]
+    apiDep["Deployment: api<br/>NestJS backend API + auth<br/>runs DB migrations on boot"]
+    apiSA["ServiceAccount: kubwave-api"]
+    apiSecret["Secret: console-creds<br/>JWT_SECRET<br/>optional GITHUB_TOKEN"]
+
+    workerDep["Deployment: worker<br/>backend reconcile/update/version loops<br/>health only, no inbound Service"]
+    workerSA["ServiceAccount: kubwave-worker"]
+
+    pgSvc["Service: postgres-rw<br/>CNPG read-write (current primary)<br/>also -ro / -r; ClusterIP :5432"]
+    pgSts["Cluster (CNPG): postgres<br/>operator-managed Postgres 16<br/>failover, per-instance PVC<br/>(operator in cnpg-system)<br/>legacy StatefulSet via postgres.mode=statefulset"]
+    pgPVC["PVC: per-instance (CNPG-managed)<br/>legacy postgres-data kept on migration<br/>helm keep"]
+    pgSecret["Secret: postgres-creds (POSTGRES_USER/PASSWORD/DB)<br/>+ postgres-app-creds (basic-auth, CNPG initdb)<br/>same password; helm keep"]
+
+    markerCM["ConfigMap: kubwave-platform<br/>installed version/channel marker"]
+    updateTemplateCM["ConfigMap: update-job-template<br/>worker starts self-update Jobs from this template"]
+
+    updaterSA["ServiceAccount: kubwave-updater<br/>optional, update.serviceAccount.create"]
+    updateJob["Job: kubwave-update-*<br/>optional self-update pipeline<br/>prepare -> wait-dependencies -> finalize"]
+
+    adminer["Dev optional: Adminer<br/>Deployment + Service + Ingress<br/>adminer.localhost -> postgres-rw"]
+    mailcrab["Dev optional: Mailcrab<br/>Deployment + Service + Ingress<br/>mailcrab.localhost<br/>SMTP :1025, UI :1080"]
+  end
+
+  ingressCtrl -->|"host ingress.host<br/>/ -> :3000"| platformIngress
+  platformIngress --> consoleSvc --> consoleDep
+  platformIngress -->|"path /api -> :3001"| apiSvc --> apiDep
+
+  consoleDep -->|"INTERNAL_API_URL=http://api:3001<br/>browser uses same-origin /api"| apiSvc
+  apiDep -->|"SQL + migrations"| pgSvc --> pgSts --> pgPVC
+  workerDep -->|"SQL queue + desired state"| pgSvc
+  adminer -.->|"dev DB UI"| pgSvc
+  apiDep -.->|"dev SMTP"| mailcrab
+
+  apiDep --> apiSecret
+  workerDep -->|"reads optional GITHUB_TOKEN"| apiSecret
+  apiDep --> pgSecret
+  workerDep --> pgSecret
+  pgSts --> pgSecret
+
+  workerDep --> markerCM
+  workerDep --> updateTemplateCM
+  workerDep -.->|"create/watch/delete update Jobs"| updateJob
+  updateJob -.-> updaterSA
+
+  %% ---------------------------------------------------------------------------
+  %% RBAC installed by Helm
+  %% ---------------------------------------------------------------------------
+  subgraph rbac["RBAC summary"]
+    apiRole["Role: kubwave-api<br/>namespace kubwave<br/>jobs get/list<br/>pods get/list<br/>pods/log get"]
+    apiClusterRole["ClusterRole: kubwave-api-workloads<br/>cluster-wide read only<br/>deployments get/list/watch<br/>pods get/list/watch"]
+
+    workerRole["Role: kubwave-worker<br/>namespace kubwave<br/>jobs create/get/list/watch/delete<br/>configmaps get/list<br/>pods get/list"]
+    workerClusterRole["ClusterRole: kubwave-worker-workloads<br/>cluster-wide read/write<br/>namespaces create/delete<br/>deployments/services CRUD<br/>ingresses/networkpolicies CRUD<br/>pods read"]
+
+    updaterRole["Optional updater Role<br/>namespace kubwave<br/>Helm release resources CRUD<br/>RBAC bind/escalate for in-namespace roles"]
+    updaterClusterRole["Optional updater ClusterRole<br/>namespaces, ClusterIssuers, app cluster RBAC<br/>dependency auto mode also manages CRDs, IngressClasses,<br/>cert-manager and Traefik resources"]
+  end
+
+  apiSA --> apiRole
+  apiSA --> apiClusterRole
+  workerSA --> workerRole
+  workerSA --> workerClusterRole
+  updaterSA -.-> updaterRole
+  updaterSA -.-> updaterClusterRole
+
+  apiDep --> apiSA
+  workerDep --> workerSA
+
+  %% ---------------------------------------------------------------------------
+  %% Tenant namespaces provisioned lazily by the worker
+  %% ---------------------------------------------------------------------------
+  subgraph tenantA["Namespace: kubwave-env-&lt;environmentId&gt; (example: production)"]
+    netpolA["NetworkPolicy: kubwave-isolation<br/>podSelector: all pods<br/>allow ingress only from same namespace<br/>and ingress controller namespace<br/>egress unrestricted"]
+
+    svcFrontendDep["Deployment: svc-&lt;frontendServiceId&gt;<br/>container: app<br/>image: ghcr.io/acme/frontend:v1<br/>replicas: 1"]
+    svcFrontendSvc["Service: svc-&lt;frontendServiceId&gt;<br/>ClusterIP<br/>ports: containerPort + domain ports"]
+    svcFrontendIng["Ingress: svc-&lt;frontendServiceId&gt;<br/>frontend.example.com -> service port 3000<br/>optional TLS via workloadIngress.clusterIssuer"]
+
+    svcApiDep["Deployment: svc-&lt;apiServiceId&gt;<br/>container: app<br/>image: ghcr.io/acme/service-api:v1<br/>env from service config"]
+    svcApiSvc["Service: svc-&lt;apiServiceId&gt;<br/>ClusterIP"]
+    svcApiIng["Ingress: svc-&lt;apiServiceId&gt;<br/>api.example.com -> service port 8080"]
+  end
+
+  subgraph tenantB["Namespace: kubwave-env-&lt;environmentId&gt; (example: staging)"]
+    netpolB["NetworkPolicy: kubwave-isolation<br/>same isolation rules"]
+    stagingDep["Deployment/Service/Ingress<br/>for staging services"]
+  end
+
+  workerDep -->|"creates/deletes namespaces<br/>creates NetworkPolicy<br/>converges Deployments/Services/Ingresses<br/>garbage-collects orphaned resources"| tenantA
+  workerDep -->|"same pattern per environment"| tenantB
+
+  apiDep -.->|"live status read only<br/>environmentNamespace(environmentId)<br/>resourceName(serviceId)=svc-&lt;serviceId&gt;"| tenantA
+  apiDep -.->|"live status read only"| tenantB
+
+  svcFrontendDep --> svcFrontendSvc --> svcFrontendIng
+  svcApiDep --> svcApiSvc --> svcApiIng
+
+  ingressCtrl -->|"tenant domain frontend.example.com"| svcFrontendIng
+  ingressCtrl -->|"tenant domain api.example.com"| svcApiIng
+
+  svcFrontendDep -->|"allowed by same-namespace NetworkPolicy"| svcApiSvc
+  stagingDep -.->|"blocked by target namespace ingress policy<br/>when CNI enforces NetworkPolicy"| svcApiSvc
+
+  tenantA -->|"namespace label<br/>kubwave/environment-id"| workerDep
+  tenantB -->|"GC scans namespaces with<br/>app.kubernetes.io/managed-by=kubwave-worker"| workerDep
+
+  %% ---------------------------------------------------------------------------
+  %% Optional cluster-scoped dependencies
+  %% ---------------------------------------------------------------------------
+  subgraph clusterScoped["Cluster-scoped dependencies / objects"]
+    clusterIssuer["Optional ClusterIssuer: letsencrypt-prod<br/>rendered when certManager.clusterIssuer.create=true"]
+    storage["StorageClass<br/>dev: cluster default<br/>prod Hetzner: hcloud-volumes"]
+  end
+
+  svcFrontendIng -.->|"cert-manager.io/cluster-issuer<br/>and spec.tls when enabled"| clusterIssuer
+  svcApiIng -.->|"same tenant TLS behavior"| clusterIssuer
+  pgPVC -.-> storage
+  updateJob -.->|"Helm upgrade may manage ClusterIssuer / dependencies"| clusterScoped
+
+  %% ---------------------------------------------------------------------------
+  %% Data model behind the resources
+  %% ---------------------------------------------------------------------------
+  subgraph dbModel["Postgres data model driving tenant state"]
+    teams["teams / team_members / users"]
+    projects["projects"]
+    environments["environments<br/>id -> namespace kubwave-env-&lt;id&gt;"]
+    servicesTable["services<br/>type=docker-image<br/>config: image, tag, containerPort, env, domains"]
+    deploymentsTable["deployments<br/>work queue + rollout logs<br/>pending -> deploying -> succeeded/failed"]
+  end
+
+  apiDep -->|"CRUD teams/projects/environments/services<br/>enqueue deployments"| dbModel
+  workerDep -->|"claim pending rows<br/>write rollout phases/logs"| deploymentsTable
+  teams --> projects --> environments --> servicesTable --> deploymentsTable
+
+  %% ---------------------------------------------------------------------------
+  %% Styling
+  %% ---------------------------------------------------------------------------
+  classDef external fill:#f8fafc,stroke:#64748b,color:#0f172a;
+  classDef ns fill:#eef6ff,stroke:#2563eb,color:#0f172a;
+  classDef workload fill:#f0fdf4,stroke:#16a34a,color:#052e16;
+  classDef service fill:#fff7ed,stroke:#ea580c,color:#431407;
+  classDef secret fill:#fef2f2,stroke:#dc2626,color:#450a0a;
+  classDef rbac fill:#faf5ff,stroke:#7e22ce,color:#3b0764;
+  classDef optional fill:#f8fafc,stroke:#94a3b8,stroke-dasharray: 4 3,color:#334155;
+  classDef data fill:#ecfeff,stroke:#0891b2,color:#083344;
+
+  class user,dns,lb external;
+  class platform,ingressNs,tenantA,tenantB,clusterScoped ns;
+  class consoleDep,apiDep,workerDep,pgSts,svcFrontendDep,svcApiDep,stagingDep workload;
+  class platformIngress,consoleSvc,apiSvc,pgSvc,svcFrontendSvc,svcFrontendIng,svcApiSvc,svcApiIng,ingressCtrl service;
+  class apiSecret,pgSecret secret;
+  class apiSA,workerSA,updaterSA,apiRole,apiClusterRole,workerRole,workerClusterRole,updaterRole,updaterClusterRole rbac;
+  class updateJob,adminer,mailcrab,clusterIssuer,storage optional;
+  class dbModel,teams,projects,environments,servicesTable,deploymentsTable,markerCM,updateTemplateCM data;

@@ -1,0 +1,69 @@
+---
+title: Deploy a service
+description: The four kinds of service — container image, Dockerfile, public repo, private repo — plus docker-compose import and auto-deploy.
+---
+
+import { Card, CardGrid, Aside, LinkCard } from '@astrojs/starlight/components';
+
+A **service** is one workload running in an environment. You create it from the console inside a
+project's environment, and you can build it from four kinds of source. Every type ends up the same
+way: a container image running as a Kubernetes Deployment, behind a Service and (optionally) an
+Ingress.
+
+## Service types
+
+<CardGrid>
+	<Card title="Container image" icon="rocket">
+		A prebuilt image from any registry. Give the platform an **image** and a **tag** — no build happens, it's pulled and run as-is.
+	</Card>
+	<Card title="Dockerfile" icon="document">
+		A Dockerfile you paste into the console. The platform builds it in-cluster with **BuildKit** and pushes the result to the internal registry. The
+		build context is just the Dockerfile, so it must be self-contained (a `FROM` line, no local `COPY` from your machine).
+	</Card>
+	<Card title="Public repo" icon="github">
+		A public Git repository, built from source. **Nixpacks** auto-detects the stack and generates a Dockerfile for you — or point it at the repo's own
+		Dockerfile instead.
+	</Card>
+	<Card title="Private repo" icon="seti:lock">
+		A private Git repository, built exactly like a public repo but cloned over an **SSH deploy key** held by your team.
+	</Card>
+</CardGrid>
+
+### Building from a Git repo
+
+Both repo types share the same build options:
+
+- **Repository & branch** — the Git URL and a branch (defaults to `main`). Optionally pin a specific
+  **commit** so deploys are reproducible, or set a **root directory** to build from a sub-folder of a
+  monorepo.
+- **Builder** — `nixpacks` (the default) auto-detects your language and produces a Dockerfile, so the
+  repo needs no Dockerfile of its own. Switch to `dockerfile` to build the repo's existing
+  Dockerfile, optionally at a custom **Dockerfile path**.
+- **Build & start commands** — optional overrides when the auto-detected defaults aren't right.
+
+The difference between the two types is only how the clone authenticates: a **public repo** uses an
+`http(s)` URL and clones anonymously; a **private repo** uses an SSH URL (`git@host:org/repo.git`)
+and a **team deploy key**. Add the key under your team's SSH keys, then give the repo read access to
+its public half.
+
+## Import from docker-compose
+
+To stand up several related services at once, paste a `docker-compose.yml` into the environment's
+import flow. Each service in the file becomes its own kubwave service, with its image, ports, and
+environment carried over — a quick way to bring an existing compose stack into the platform.
+
+## Auto-deploy
+
+Services that build from a Git repo can opt into **auto-deploy**. The platform periodically polls the
+repository, and when the tracked branch gets a new commit it kicks off a fresh build and rollout
+automatically — no manual redeploy needed.
+
+<Aside type="note">
+	Auto-deploy applies to the **public repo** and **private repo** types. Image and Dockerfile services are deployed on demand.
+</Aside>
+
+## Deployments and rollback
+
+Every deploy — manual or automatic — produces an immutable **deployment**: a snapshot of the service
+config and the image it built. Each one keeps its own build and runtime logs, and rolling back is
+just re-activating an earlier deployment.

@@ -1,0 +1,38 @@
+{{- $registry := .Values.registry | default dict -}}
+{{- $ingress := $registry.ingress | default dict -}}
+{{- if and $registry.enabled $ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kubwave-registry
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "registry") | nindent 4 }}
+  annotations:
+    {{- with $ingress.clusterIssuer }}
+    cert-manager.io/cluster-issuer: {{ . | quote }}
+    {{- end }}
+    {{- with $ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- with $ingress.className }}
+  ingressClassName: {{ . | quote }}
+  {{- end }}
+  {{- if $ingress.clusterIssuer }}
+  tls:
+    - hosts:
+        - {{ $ingress.host | quote }}
+      secretName: kubwave-registry-tls
+  {{- end }}
+  rules:
+    - host: {{ $ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kubwave-registry
+                port:
+                  number: {{ $registry.port }}
+{{- end }}

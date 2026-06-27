@@ -1,0 +1,32 @@
+{
+	"name": "@kubwave/crypto",
+	"version": "0.0.0",
+	"description": "kubwave cryptography helpers for service secrets.",
+	"private": true,
+	"license": "Apache-2.0",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/kubwave/kubwave.git",
+		"directory": "packages/crypto"
+	},
+	"bugs": {
+		"url": "https://github.com/kubwave/kubwave/issues"
+	},
+	"homepage": "https://github.com/kubwave/kubwave/tree/main/packages/crypto",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"check-types": "tsc --noEmit",
+		"test": "bun test --isolate --timeout 30000 test",
+		"test:coverage": "bun test --isolate --coverage --coverage-reporter=text --coverage-reporter=lcov --timeout 30000 test"
+	},
+	"devDependencies": {
+		"@types/bun": "^1.3.14",
+		"typescript": "^6.0.3"
+	},
+	"dependencies": {
+		"sshpk": "^1.18.0"
+	}
+}

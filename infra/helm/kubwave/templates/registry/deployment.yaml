@@ -1,0 +1,73 @@
+{{- $registry := .Values.registry | default dict -}}
+{{- if $registry.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kubwave-registry
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "registry") | nindent 4 }}
+spec:
+  replicas: 1
+  # One RWO PVC backs the registry, so never run two pods at once — Recreate stops the old pod
+  # (releasing the volume) before starting the new one.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "kubwave.selectorLabels" (dict "component" "registry") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kubwave.labels" (dict "root" $ "component" "registry") | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $registry.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: registry
+          image: "{{ $registry.image.repository }}:{{ $registry.image.tag }}"
+          imagePullPolicy: {{ $registry.image.pullPolicy }}
+          ports:
+            - name: registry
+              containerPort: {{ $registry.port }}
+          env:
+            - name: REGISTRY_HTTP_ADDR
+              value: "0.0.0.0:{{ $registry.port }}"
+            # Allow manifest deletes so the worker's registry-prune sweep can remove superseded
+            # image tags (backend worker registry prune job). Note: this only
+            # un-references blobs; reclaiming disk still needs an offline `registry garbage-collect`.
+            - name: REGISTRY_STORAGE_DELETE_ENABLED
+              value: "true"
+            {{- with $registry.auth.htpasswdSecretName }}
+            - name: REGISTRY_AUTH
+              value: htpasswd
+            - name: REGISTRY_AUTH_HTPASSWD_REALM
+              value: kubwave-registry
+            - name: REGISTRY_AUTH_HTPASSWD_PATH
+              value: /auth/htpasswd
+            {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/registry
+            {{- if $registry.auth.htpasswdSecretName }}
+            - name: auth
+              mountPath: /auth
+              readOnly: true
+            {{- end }}
+          resources:
+            {{- toYaml $registry.resources | nindent 12 }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ $registry.storage.pvcName }}
+        {{- with $registry.auth.htpasswdSecretName }}
+        - name: auth
+          secret:
+            secretName: {{ . }}
+        {{- end }}
+{{- end }}

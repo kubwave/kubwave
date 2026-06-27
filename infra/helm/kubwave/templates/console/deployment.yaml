@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: console
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "console") | nindent 4 }}
+spec:
+  replicas: {{ include "kubwave.replicas" (dict "root" $ "fallback" .Values.console.replicas) }}
+  selector:
+    matchLabels:
+      {{- include "kubwave.selectorLabels" (dict "component" "console") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kubwave.labels" (dict "root" $ "component" "console") | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.console.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if (.Values.ha | default dict).enabled }}
+      {{- include "kubwave.haSpread" (dict "root" $ "component" "console") | nindent 6 }}
+      {{- end }}
+      containers:
+        - name: console
+          image: "{{ required "console.image.repository is required" .Values.console.image.repository }}:{{ required "console.image.tag is required" .Values.console.image.tag }}"
+          imagePullPolicy: {{ .Values.console.image.pullPolicy }}
+          {{- with .Values.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.console.port }}
+          env:
+            {{- range $k, $v := .Values.console.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            # Version from the running image — pod-local so the display follows the
+            # actually-serving pod during a rolling update.
+            - name: APP_VERSION
+              value: {{ .Values.console.image.tag | quote }}
+          startupProbe:
+            # httpGet (not tcpSocket): `nuxt dev` binds :3000 in ~1s but then spends 1-2 min
+            # of CPU-bound Vite cold-start optimization before it serves any HTTP. A tcpSocket
+            # probe succeeds on bind, so liveness/readiness engage mid-warmup and kill the pod
+            # (intermittent crash loop). Gating startup on /health keeps liveness/readiness
+            # disabled until the dev server actually serves. The 60×5s=300s budget covers warmup.
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: {{ .Values.console.probes.startup.periodSeconds }}
+            failureThreshold: {{ .Values.console.probes.startup.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: {{ .Values.console.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.console.probes.readiness.periodSeconds }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: {{ .Values.console.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.console.probes.liveness.periodSeconds }}
+          resources:
+            {{- toYaml .Values.console.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

@@ -1,0 +1,100 @@
+{{- /*
+Egress NetworkPolicy for tenant build Jobs (Dockerfile + public-repo + private-repo) that run in the platform
+namespace. A build pod clones an ARBITRARY, tenant-supplied public Git repo and downloads the
+Nixpacks CLI, so without an egress restriction it can also reach in-cluster Services and the cloud
+metadata endpoint (169.254.169.254) — an SSRF / internal-port-probe primitive, since the clone
+result + error text is surfaced back to the tenant via the deployment's failure log. This policy
+confines builder egress to: DNS, the public internet on HTTP(S) (git clone + CLI download), and —
+when the chart runs the in-cluster registry — the registry pods (image push). Private-repo SSH
+builds get a transient per-build NetworkPolicy from the worker for the SSH port parsed from repoUrl.
+Everything else internal is denied.
+
+OPT-IN and CNI-DEPENDENT. Gated on builds.networkPolicy.enabled (default false). A CNI that does
+not enforce NetworkPolicy (flannel — k3d dev) IGNORES this entirely, so isolation is only real on a
+policy-enforcing CNI (prod: Cilium/Calico). Before enabling in prod, confirm your pod + service
+CIDRs fall inside builds.networkPolicy.blockedCidrs (so internal traffic is actually denied) and
+then verify a build still clones and pushes. IPv4 only — a dual-stack cluster also needs the IPv6
+ULA range added (the ipBlock here is 0.0.0.0/0).
+*/ -}}
+{{- $np := .Values.builds.networkPolicy | default dict -}}
+{{- if $np.enabled }}
+{{- $dns := $np.dns | default dict -}}
+{{- $ingressController := $np.ingressController | default dict -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kubwave-builder-egress
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "builder") | nindent 4 }}
+spec:
+  # Selects every build pod (Dockerfile + public-repo + private-repo) by the shared component label the worker
+  # stamps on each build Job/pod (buildJobLabels → app.kubernetes.io/component: builder).
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: builder
+  policyTypes:
+    - Ingress
+    - Egress
+  # Default-deny ingress: no `ingress:` rules → all inbound is dropped. Nothing connects TO a build
+  # pod (the worker reads build status via the API server, not the pod network), so this is free
+  # hardening on top of the egress confinement below.
+  egress:
+    # DNS — resolve the git host, the CLI download host, and the registry Service.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $dns.namespace | default "kube-system" }}
+          podSelector:
+            matchLabels:
+              {{- toYaml ($dns.podLabels | default (dict "k8s-app" "kube-dns")) | nindent 14 }}
+        {{- with $dns.serviceIp }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Public internet ONLY — 0.0.0.0/0 minus the internal/link-local ranges, so a tenant repoUrl or
+    # CLI URL can't reach in-cluster Services or the cloud metadata endpoint (169.254.169.254/16).
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              {{- toYaml ($np.blockedCidrs | default (list "10.0.0.0/8" "172.16.0.0/12" "192.168.0.0/16" "169.254.0.0/16")) | nindent 14 }}
+      ports:
+        {{- range ($np.egressPorts | default (list 80 443)) }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+    {{- /* In-cluster registry push: its ClusterIP is RFC1918 (blocked above), so re-allow the
+           registry pods explicitly. Only when the chart runs the in-cluster registry; an external
+           (public-TLS) registry is already reachable via the public-internet rule on 443. */}}
+    {{- if (.Values.registry | default dict).enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "kubwave.selectorLabels" (dict "component" "registry") | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.registry.port }}
+    {{- end }}
+    {{- /* Some providers hairpin registry.<domain> through the in-cluster ingress controller rather
+           than treating the LoadBalancer IP as ordinary public internet. Re-allow that path when
+           configured, including the controller's container target ports if they differ from 80/443. */}}
+    {{- if $ingressController.enabled }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $ingressController.namespace | default .Values.workloadIngress.controllerNamespace | quote }}
+          podSelector:
+            matchLabels:
+              {{- toYaml ($ingressController.podLabels | default (dict "app.kubernetes.io/name" "traefik")) | nindent 14 }}
+      ports:
+        {{- range ($ingressController.ports | default (list 80 443 8000 8443)) }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+    {{- end }}
+{{- end }}

@@ -1,0 +1,17 @@
+{{- $registry := .Values.registry | default dict -}}
+{{- if $registry.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubwave-registry
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "registry") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "kubwave.selectorLabels" (dict "component" "registry") | nindent 4 }}
+  ports:
+    - name: registry
+      port: {{ $registry.port }}
+      targetPort: registry
+{{- end }}

@@ -1,0 +1,6 @@
+{
+	"mcpServers": {
+		"nuxt-remote": { "type": "http", "url": "https://nuxt.com/mcp" },
+		"shadcn": { "command": "npx", "args": ["shadcn-vue@latest", "mcp"] }
+	}
+}

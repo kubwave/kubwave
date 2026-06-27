@@ -1,0 +1,71 @@
+{{- if .Values.platformMarker.create }}
+{{- $ingress := get .Values "ingress" | default dict -}}
+{{- $workloadIngress := get .Values "workloadIngress" | default dict -}}
+{{- $workloadStorage := get .Values "workloadStorage" | default dict -}}
+{{- $registry := get .Values "registry" | default dict -}}
+{{- $registryIngress := get $registry "ingress" | default dict -}}
+{{- $registryStorage := get $registry "storage" | default dict -}}
+{{- $builds := get .Values "builds" | default dict -}}
+{{- $buildRegistry := get $builds "registry" | default dict -}}
+{{- $update := get .Values "update" | default dict -}}
+{{- $updateDependencies := get $update "dependencies" | default dict -}}
+{{- $traefik := get $updateDependencies "traefik" | default dict -}}
+{{- $ingressHost := get $ingress "host" | default "" -}}
+{{- $workloadIngressClass := get $workloadIngress "className" | default "" -}}
+{{- $workloadIngressNamespace := get $workloadIngress "controllerNamespace" | default "kube-system" -}}
+{{- $registryIngressClass := get $registryIngress "className" | default $workloadIngressClass -}}
+{{- $registryClusterIssuer := get $registryIngress "clusterIssuer" | default (get $workloadIngress "clusterIssuer" | default "") -}}
+{{- $registryStorageClass := get $registryStorage "storageClassName" | default (get $workloadStorage "storageClassName" | default "") -}}
+{{- $registryNodeSelector := get $registry "nodeSelector" | default dict -}}
+{{- $registryEnabled := get $registry "enabled" | default false -}}
+{{- $buildRegistryEndpoint := get $buildRegistry "endpoint" | default "" -}}
+{{- $registryMode := ternary "platform" (ternary "external" "unconfigured" (ne $buildRegistryEndpoint "")) $registryEnabled -}}
+{{- $traefikValues := get $traefik "values" | default dict -}}
+{{- $traefikDependency := dict "kind" "traefik" "namespace" $workloadIngressNamespace "releaseName" "traefik" "ingressClassName" $workloadIngressClass "helmValues" $traefikValues -}}
+# Seeded only on `helm install` (not `upgrade`). The CLI's update flow
+# overwrites this ConfigMap with the real tag via writeVersionMarker in
+# apps/cli/src/lib/version-marker.ts — keeping the CLI as the source of truth
+# while still giving fresh dev clusters a valid Installed Version on first boot.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kubwave-platform
+  annotations:
+    helm.sh/hook: post-install
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "platform-marker") | nindent 4 }}
+data:
+  current_version: {{ .Chart.AppVersion | quote }}
+  installed_at: {{ now | date "2006-01-02T15:04:05Z" | quote }}
+  installed_by: "helm"
+  # A pre-release appVersion (e.g. 0.1.0-alpha.37) belongs to the preview channel —
+  # the stable channel rejects pre-release targets (validateTargetForChannel). Match
+  # that here so a raw `helm install` of a pre-release seeds a consistent channel and
+  # the update job inherits it instead of failing prepare with a channel mismatch.
+  channel: {{ ternary "preview" "stable" (contains "-" (.Chart.AppVersion | toString)) | quote }}
+  {{- with $ingressHost }}
+  domain: {{ . | quote }}
+  {{- end }}
+  {{- with $registryStorageClass }}
+  storage_class: {{ . | quote }}
+  {{- end }}
+  {{- if $registryNodeSelector }}
+  node_selector_json: {{ $registryNodeSelector | toJson | quote }}
+  {{- end }}
+  registry_mode: {{ $registryMode | quote }}
+  registry_insecure: {{ (get $buildRegistry "insecure" | default false) | toString | quote }}
+  registry_ingress_enabled: {{ (get $registryIngress "enabled" | default false) | toString | quote }}
+  {{- with $buildRegistryEndpoint }}
+  registry_host: {{ . | quote }}
+  {{- end }}
+  {{- with $registryIngressClass }}
+  registry_ingress_class_name: {{ . | quote }}
+  {{- end }}
+  {{- with $registryClusterIssuer }}
+  registry_cluster_issuer: {{ . | quote }}
+  cluster_issuer_name: {{ . | quote }}
+  {{- end }}
+  dependencies_json: {{ dict "traefik" $traefikDependency "certManager" (dict) "cnpg" (dict) | toJson | quote }}
+{{- end }}

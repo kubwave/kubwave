@@ -1,0 +1,256 @@
+# Cloudfleet on Hetzner — production overrides. Apply on top of values.yaml:
+#
+#   helm upgrade --install kubwave ./infra/helm/kubwave \
+#     --namespace kubwave --create-namespace \
+#     -f infra/helm/kubwave/values-cloudfleet-hetzner.yaml \
+#     --set api.image.repository=ghcr.io/kubwave/backend      --set api.image.tag=0.1.0 \
+#     --set console.image.repository=ghcr.io/kubwave/console  --set console.image.tag=0.1.0 \
+#     --set worker.image.repository=ghcr.io/kubwave/backend   --set worker.image.tag=0.1.0 \
+#     --set builds.buildToolsImage=ghcr.io/kubwave/build-tools:0.1.0 \
+#     --set ingress.host=app.your-domain.tld \
+#     --set api.env.APP_BASE_URL=https://app.your-domain.tld \
+#     --set certManager.clusterIssuer.email=ops@your-domain.tld
+#
+# Secrets (console-creds, postgres-creds) are NOT rendered by Helm here — the
+# operator pre-creates them. Every workload pins cfke.io/provider: hetzner so pods
+# only schedule on the Hetzner-backed nodes (Hetzner CSI volumes attach only there).
+
+imagePullSecrets:
+  - name: regcred
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+  readOnlyRootFilesystem: true
+
+api:
+  serviceAccount:
+    create: true
+  image:
+    repository: '' # --set api.image.repository=ghcr.io/<org>/backend
+    tag: '' # --set api.image.tag=0.1.0
+    pullPolicy: IfNotPresent
+  env:
+    SMTP_HOST: '' # don't point at the (absent) dev mailcrab; DB settings take over
+    APP_BASE_URL: '' # REQUIRED: set to the real console origin via --set
+  probes:
+    readiness:
+      initialDelaySeconds: 3
+      periodSeconds: 10
+    liveness:
+      initialDelaySeconds: 15
+      periodSeconds: 30
+  secret:
+    create: false
+    existingSecret: console-creds # operator must `kubectl create secret …` before install
+  nodeSelector:
+    cfke.io/provider: hetzner
+
+console:
+  image:
+    repository: '' # --set console.image.repository=ghcr.io/<org>/console
+    tag: '' # --set console.image.tag=0.1.0
+    pullPolicy: IfNotPresent
+  probes:
+    readiness:
+      initialDelaySeconds: 3
+      periodSeconds: 10
+    liveness:
+      initialDelaySeconds: 15
+      periodSeconds: 30
+  # The base values.yaml raises console memory for the dev Turbopack server (it OOMKills
+  # at 1Gi). Prod runs the lean standalone build, so pin it back to the smaller footprint.
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 1000m, memory: 1Gi }
+  nodeSelector:
+    cfke.io/provider: hetzner
+
+worker:
+  serviceAccount:
+    create: true
+  image:
+    repository: '' # --set worker.image.repository=ghcr.io/<org>/backend
+    tag: '' # --set worker.image.tag=0.1.0
+    pullPolicy: IfNotPresent
+  env:
+    # Re-enable the catalog poller in prod (base values.yaml disables it for dev): pull published
+    # catalog.json updates without redeploying the backend.
+    TEMPLATE_CATALOG_POLL_ENABLED: 'true'
+  nodeSelector:
+    cfke.io/provider: hetzner
+
+postgres:
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    fsGroup: 999
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: [ALL]
+  storage:
+    size: 10Gi
+    storageClassName: hcloud-volumes # Hetzner CSI; matches the nodeSelector above
+  resources:
+    requests:
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+  secret:
+    create: false
+    existingSecret: postgres-creds # operator must `kubectl create secret …` before install
+  nodeSelector:
+    cfke.io/provider: hetzner
+
+ingress:
+  className: traefik
+  host: '' # set via --set ingress.host=app.your-domain.tld
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls:
+    enabled: true
+
+# Tenant service domains route through Traefik with cert-manager-issued TLS, mirroring
+# the platform ingress above. The worker stamps cert-manager.io/cluster-issuer +
+# spec.tls onto each tenant Ingress from clusterIssuer.
+workloadStorage:
+  storageClassName: 'hcloud-volumes'
+
+workloadIngress:
+  className: traefik
+  clusterIssuer: letsencrypt-prod
+  # The CLI installs Traefik into its own `traefik` namespace (not kube-system as in
+  # k3d/dev). The per-environment NetworkPolicy must allow ingress from there, or a
+  # policy-enforcing CNI (Cilium) blocks Traefik → tenant pod and every service is
+  # unreachable. Must match the namespace the traefik dependency is installed into.
+  controllerNamespace: traefik
+  # The CLI installs Traefik as a Service named `traefik` in the namespace above.
+  controllerServiceName: traefik
+  # Empty → the worker auto-detects the sslip default-domain base from the Traefik
+  # Service's LoadBalancer IP (the Hetzner LB address).
+  loadBalancerIp: ''
+
+adminer:
+  enabled: false
+
+mailcrab:
+  enabled: false
+
+# Docs ship to Cloudflare in prod (apps/docs/wrangler.jsonc), not the cluster.
+docs:
+  enabled: false
+
+certManager:
+  clusterIssuer:
+    create: true
+    email: '' # set via --set certManager.clusterIssuer.email=ops@your-domain.tld
+
+update:
+  serviceAccount:
+    create: true
+  image:
+    repository: '' # --set update.image.repository=ghcr.io/<org>/cli
+    tag: '' # --set update.image.tag=0.1.0
+  nodeSelector:
+    cfke.io/provider: hetzner
+  dependencies:
+    mode: auto
+    traefik:
+      values:
+        ingressClass:
+          enabled: true
+          isDefaultClass: true
+        deployment:
+          replicas: 2
+        podDisruptionBudget:
+          enabled: true
+          minAvailable: 1
+        # Soft anti-affinity: spread the 2 replicas across nodes for real HA and a
+        # drainable node during upgrades, but still schedule both on a single-node fleet.
+        affinity:
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm:
+                  topologyKey: kubernetes.io/hostname
+                  labelSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: traefik
+        service:
+          type: LoadBalancer
+        nodeSelector:
+          cfke.io/provider: hetzner
+
+# Dockerfile builds push to the in-cluster registry below, exposed via a TLS Ingress so the
+# nodes' container runtime trusts it with a public-CA cert (no per-node containerd config). The
+# image-ref host MUST be that public ingress host.
+builds:
+  engine: buildkit
+  builderImage: moby/buildkit:v0.31.0-rootless
+  buildToolsImage: '' # --set builds.buildToolsImage=ghcr.io/<org>/build-tools:0.1.0
+  registry:
+    endpoint: '' # REQUIRED: the registry ingress host, e.g. registry.app.your-domain.tld
+    insecure: false
+    # Operator-created dockerconfigjson Secret (in kubwave) with push creds, mounted into BuildKit.
+    pushSecretName: registry-creds
+    # The worker copies registry-creds into each tenant namespace under this name for pulls.
+    pullSecretName: kubwave-registry-pull
+  # Confine build pods to DNS + public HTTP(S) internet (+ in-cluster registry). Cloudfleet ships a
+  # policy-enforcing CNI (Cilium), so this actually bites here. Private-repo SSH builds get a
+  # transient per-build policy for the repoUrl SSH port. Default blockedCidrs cover the standard
+  # pod/service CIDRs + the cloud-metadata endpoint.
+  networkPolicy:
+    enabled: true
+    dns:
+      namespace: kube-system
+      podLabels:
+        k8s-app: coredns
+      serviceIp: 10.96.0.10/32
+    ingressController:
+      enabled: true
+      namespace: traefik
+      podLabels:
+        app.kubernetes.io/name: traefik
+      ports:
+        - 80
+        - 443
+        - 8000
+        - 8443
+
+# Tenant namespace hardening — Cilium enforces NetworkPolicy here, so egress confinement is real.
+# Pod Security `baseline` and the blockedCidrs/dnsNamespace defaults are inherited from values.yaml.
+tenants:
+  egress:
+    enabled: true
+    dnsPodLabels:
+      k8s-app: coredns
+    dnsServiceIp: 10.96.0.10/32
+
+registry:
+  enabled: true
+  storage:
+    size: 50Gi
+    storageClassName: hcloud-volumes # Hetzner CSI; matches the nodeSelector below
+  ingress:
+    enabled: true
+    host: '' # REQUIRED: must match builds.registry.endpoint, e.g. registry.app.your-domain.tld
+    className: traefik
+    clusterIssuer: letsencrypt-prod
+  auth:
+    htpasswdSecretName: registry-htpasswd # operator-created htpasswd Secret (basic-auth)
+  nodeSelector:
+    cfke.io/provider: hetzner
+
+platformMarker:
+  create: false

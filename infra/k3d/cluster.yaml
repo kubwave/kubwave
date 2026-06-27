@@ -1,0 +1,35 @@
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: kubwave
+servers: 1
+agents: 0
+ports:
+  - port: '80:80'
+    nodeFilters:
+      - loadbalancer
+  - port: '443:443'
+    nodeFilters:
+      - loadbalancer
+registries:
+  create:
+    name: kubwave-registry
+    hostPort: '5111'
+  # In-cluster Dockerfile builds reference the registry as `host.k3d.internal:5111` — the only
+  # address a POD can BOTH resolve (CoreDNS knows host.k3d.internal; it does NOT know the registry
+  # container name) AND reach (it maps to the Docker host, where the registry's hostPort 5111 is
+  # published). The node's containerd can't resolve host.k3d.internal, so mirror that ref to the
+  # registry's cluster-network name for the kubelet PULL. Net: BuildKit (in-pod) pushes straight to
+  # host.k3d.internal:5111; the kubelet (on-node) follows this mirror to http://kubwave-registry:5000.
+  config: |
+    mirrors:
+      "host.k3d.internal:5111":
+        endpoint:
+          - "http://kubwave-registry:5000"
+options:
+  # metrics-server is left ENABLED (k3s default): the HorizontalPodAutoscaler scales on
+  # resource utilisation served by the metrics.k8s.io API, which metrics-server provides.
+  # (The service-metrics tab reads the kubelet Summary API directly and doesn't need it.)
+  kubeconfig:
+    updateDefaultKubeconfig: true
+    switchCurrentContext: true

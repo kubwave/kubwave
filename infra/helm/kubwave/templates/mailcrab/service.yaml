@@ -1,0 +1,20 @@
+{{- $mailcrab := .Values.mailcrab | default dict -}}
+{{- if $mailcrab.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: mailcrab
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "mailcrab") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "kubwave.selectorLabels" (dict "component" "mailcrab") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $mailcrab.httpPort }}
+      targetPort: http
+    - name: smtp
+      port: {{ $mailcrab.smtpPort }}
+      targetPort: smtp
+{{- end }}

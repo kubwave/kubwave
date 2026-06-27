@@ -1,0 +1,5 @@
+[test]
+# Console grades only its OWN code; exclude the shared packages it pulls in
+# transitively (via the `api` workspace dep) so they're not counted here — they
+# are covered by their own suites.
+coveragePathIgnorePatterns = ["**/packages/**"]

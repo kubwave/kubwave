@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Format
+        run: bun run format:check
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Verify template catalog
+        run: bun run --filter=@kubwave/templates check:catalog
+
+      - name: Typecheck
+        run: bun run check-types
+
+      - name: Test
+        run: bun run test
+        env:
+          # Unit tests mock the data layer; @kubwave/db builds a lazy client at import
+          # time and only needs a syntactically valid URL — no real database is contacted.
+          DATABASE_URL: postgres://test:test@127.0.0.1:5432/test
+
+      - name: Build
+        run: bun run build

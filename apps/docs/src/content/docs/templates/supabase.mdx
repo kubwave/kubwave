@@ -1,0 +1,167 @@
+---
+title: Supabase
+description: A self-hosted Supabase stack — Postgres, Auth, REST, Realtime and Storage behind Kong, with Studio. Plus how to add your own Edge Functions via an image.
+---
+
+import { Aside, CardGrid, Card } from '@astrojs/starlight/components';
+
+This template brings up a faithful self-hosted [Supabase](https://supabase.com) stack — Postgres with
+Auth, REST, Realtime and Storage, all behind a **Kong** API gateway, with the **Studio** dashboard. One
+click instantiates eight wired-up services. (Edge Functions are **opt-in** — you add your own image; see
+below.)
+
+## What you get
+
+| Service          | Image                    | Role                                                            |
+| ---------------- | ------------------------ | --------------------------------------------------------------- |
+| `kong` (primary) | `kong`                   | API gateway and the single public entrypoint (gets the domain). |
+| `db`             | `supabase/postgres`      | Postgres with the Supabase roles, extensions and init SQL.      |
+| `auth`           | `supabase/gotrue`        | Authentication (GoTrue).                                        |
+| `rest`           | `postgrest/postgrest`    | Auto-generated REST API over your schema.                       |
+| `realtime`       | `supabase/realtime`      | Realtime subscriptions over websockets.                         |
+| `storage`        | `supabase/storage-api`   | Object storage (file backend).                                  |
+| `meta`           | `supabase/postgres-meta` | Powers Studio's database browser.                               |
+| `studio`         | `supabase/studio`        | The dashboard.                                                  |
+
+## Inputs
+
+- **`domain`** (required) — the public domain the stack is served on, e.g. `supabase.example.com`. Kong
+  gets the default route here, and the public URLs (`API_EXTERNAL_URL`, `GOTRUE_SITE_URL`, Studio's
+  public URL) are built from it.
+- **`organization_name`** / **`project_name`** — display names shown in Studio (defaults provided).
+
+## Generated secrets
+
+You don't type any passwords. The template generates them per instance and wires them across the
+services:
+
+- `postgres_password`, `dashboard_password`, `secret_key_base`, `secret_key_base2`, `pg_meta_crypto_key` — random values.
+- `jwt_secret` — the shared signing key.
+- `anon_key` / `service_role_key` — **HS256 JWTs** signed from `jwt_secret` at instantiation, carrying
+  the `anon` / `service_role` roles. These are your Supabase API keys.
+
+## Accessing it
+
+Open **`https://<domain>`** for Studio. It's behind HTTP basic-auth — user **`supabase`**, password = the
+generated `dashboard_password`.
+
+The API is reachable through Kong on the same domain:
+
+- REST → `https://<domain>/rest/v1/`
+- Auth → `https://<domain>/auth/v1/`
+- Realtime → `wss://<domain>/realtime/v1/`
+- Storage → `https://<domain>/storage/v1/`
+
+Pass the `anon` key (public) or `service_role` key (admin) as both an `apikey` header and a
+`Bearer` token.
+
+<Aside type="caution">
+	Use **`https://`**, not `http://`. The Realtime client connects over `wss://` (a TLS websocket); on a plain-HTTP endpoint the dashboard's realtime
+	features fail with a `transport failure`. The realtime service itself is fine — it's the browser↔TLS path that needs HTTPS.
+</Aside>
+
+## Edge Functions (bring your own)
+
+Edge Functions are **not part of the template** — the platform can't push function _code_ into a running
+pod, so there's no useful stock runtime to ship. Instead you deploy functions by **baking them into an
+image** and running that as another service, which fits how kubwave deploys everything else.
+
+### 1. Build an image with your functions
+
+```dockerfile
+FROM supabase/edge-runtime:v1.74.0
+# Your functions, including a `main` router at /home/deno/functions/main/index.ts.
+COPY ./functions /home/deno/functions
+```
+
+Your `functions/` folder needs a `main/index.ts` router (use Supabase's standard one) plus each function
+in its own sibling folder — `functions/hello/index.ts`, `functions/webhook/index.ts`, and so on.
+
+### 2. Ship the image — neither way needs cluster access
+
+<CardGrid>
+	<Card title="Let kubwave build it" icon="github">
+		Put the Dockerfile + `functions/` in a Git repo and create a **public repo** (or private repo) service with the **dockerfile** builder. Turn on
+		**auto-deploy** and every `git push` rebuilds and rolls your functions — no external CI.
+	</Card>
+	<Card title="Build in GitHub Actions" icon="seti:docker">
+		Build and push the image in CI, then create a **container image** service that points at it. CI only pushes an image the platform pulls — it never
+		touches the cluster.
+	</Card>
+</CardGrid>
+
+A GitHub Actions build looks like:
+
+```yaml
+name: deploy-functions
+on:
+  push:
+    branches: [main]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: <your-registry>
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          push: true
+          tags: <your-registry>/supabase-functions:${{ github.sha }}
+```
+
+### 3. Add it as a service and wire it in
+
+Create the service in the same environment as your Supabase stack:
+
+- **Port** — `9000`.
+- **Arguments** — `start`, then `--main-service`, then `/home/deno/functions/main` (one token per row,
+  under the service's **Command & Arguments** settings). This is the edge-runtime entrypoint; without it
+  the container exits with `exec: "start": not found`.
+- **Environment** — point it at the stack: `SUPABASE_URL` = the internal Kong host
+  (`http://<kong-service-host>:8000`), plus `JWT_SECRET`, `SUPABASE_ANON_KEY`,
+  `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_DB_URL` set to the same generated values the other Supabase
+  services use.
+
+### 4. Route it through Kong
+
+Edit the **`kong`** service's `kong.yml` config file (under its **Config files** settings) and add a
+route to your functions service's internal host:
+
+```yaml
+- name: functions-v1
+  url: 'http://<your-functions-service-host>:9000/'
+  routes:
+    - name: functions-v1
+      strip_path: true
+      paths: ['/functions/v1/']
+  plugins:
+    - name: cors
+```
+
+Then call your functions through the gateway:
+
+```
+POST https://<domain>/functions/v1/hello
+Authorization: Bearer <anon-or-service_role-key>
+apikey: <anon-or-service_role-key>
+```
+
+<Aside type="note">
+	**Don't use `scp` + restart from the Supabase docs.** That method assumes a docker-compose host with a bind-mounted `volumes/functions` folder and
+	SSH access — neither exists on Kubernetes. The image route above is the supported way here.
+</Aside>
+
+<Aside type="caution">
+	Studio's **Functions** tab is a hosted-platform feature for managing functions from the dashboard; on self-hosted Supabase it can't list or deploy
+	functions and may error. Manage functions through your image/repo as above.
+</Aside>
+
+## Not included
+
+- **Logs / Analytics** (Logflare + Vector) is not part of this template: Vector needs host-level access
+  to the node's pod logs (a `hostPath` mount), which kubwave's sandboxed tenant model doesn't grant. The
+  Studio **Logs** tab stays empty.

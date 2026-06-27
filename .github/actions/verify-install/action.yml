@@ -1,0 +1,320 @@
+# Composite action: install the chart into a fresh kind cluster (with the CNPG
+# operator) and verify BOTH a clean install and that the in-cluster self-update Job
+# rolls every workload onto the target tag. This is the bug-prone logic that broke
+# repeatedly at release time (missing CRD, cold image-pull timeout, docs dev image),
+# so it lives in ONE place shared by release/PR verification — they can't drift.
+#
+# Caller contract (download/build these before `uses:` this action):
+#   • image tarballs at /tmp/images/image-{backend,console,build-tools,cli}.tar
+#   • packaged chart at ./kubwave-<version>.tgz
+name: Verify install
+description: Verify a fresh install + in-cluster self-update in a kind cluster.
+
+inputs:
+  version:
+    description: Image tag + chart version to verify with.
+    required: true
+  image-prefix:
+    description: Registry prefix for the app images (e.g. ghcr.io/kubwave).
+    required: true
+  helm-version:
+    description: Helm version (without leading v).
+    required: true
+  kind-version:
+    description: kind version (with leading v).
+    required: true
+  kind-node-image:
+    description: kind node image (kindest/node:vX.Y.Z).
+    required: true
+  kubectl-version:
+    description: kubectl version (with leading v).
+    required: true
+  baseline-tag:
+    description: Tag used to simulate the pre-update "old" version of backend/console.
+    default: release-verify-baseline
+
+runs:
+  using: composite
+  steps:
+    - name: Install Helm
+      uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
+      with:
+        version: v${{ inputs.helm-version }}
+
+    - name: Create kind cluster
+      uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
+      with:
+        cluster_name: release-verify
+        version: ${{ inputs.kind-version }}
+        node_image: ${{ inputs.kind-node-image }}
+        kubectl_version: ${{ inputs.kubectl-version }}
+
+    - name: Check kind API
+      shell: bash
+      run: |
+        set -euo pipefail
+        kubectl cluster-info
+
+    # Everything the install needs in kind, loaded concurrently. The app-image loads
+    # are independent per app; the CNPG operator install only needs the cluster; the
+    # Postgres-image pull only needs the runner — so all three overlap instead of
+    # running as serial steps. Loading images serially was ~150s of the verify job.
+    - name: Load images + CNPG operator into kind (parallel)
+      shell: bash
+      env:
+        IMAGE_PREFIX: ${{ inputs.image-prefix }}
+        VERSION: ${{ inputs.version }}
+        VERIFY_BASELINE_TAG: ${{ inputs.baseline-tag }}
+      run: |
+        set -euo pipefail
+        PG_IMAGE="ghcr.io/cloudnative-pg/postgresql:16"
+
+        # (1) CNPG operator — the chart defaults to postgres.mode=cnpg, which renders a
+        # Cluster CR (postgresql.cnpg.io/v1). A real install gets the operator from the
+        # CLI's managed-dependency step; verify runs bare helm with deps disabled, so
+        # install it the same way the CLI does (apps/cli/src/lib/dependencies.ts:
+        # cnpg/cloudnative-pg, latest point release) and wait for its CRD to be Established.
+        install_operator() {
+          helm repo add cnpg https://cloudnative-pg.github.io/charts
+          helm repo update cnpg
+          helm install cnpg cnpg/cloudnative-pg \
+            --namespace cnpg-system --create-namespace \
+            --wait --timeout 180s
+          kubectl wait --for=condition=Established \
+            crd/clusters.postgresql.cnpg.io --timeout=120s
+        }
+
+        # (2) App image — docker load + kind load at the release tag, plus a baseline
+        # tag for every non-CLI platform image (the self-update test rolls baseline -> VERSION).
+        load_app() {
+          local app="$1"
+          docker load -i "/tmp/images/image-${app}.tar"
+          kind load docker-image "${IMAGE_PREFIX}/${app}:${VERSION}" --name release-verify
+          if [ "${app}" != "cli" ]; then
+            docker tag "${IMAGE_PREFIX}/${app}:${VERSION}" "${IMAGE_PREFIX}/${app}:${VERIFY_BASELINE_TAG}"
+            kind load docker-image "${IMAGE_PREFIX}/${app}:${VERIFY_BASELINE_TAG}" --name release-verify
+          fi
+        }
+
+        install_operator > /tmp/cnpg-operator.log 2>&1 &
+        operator_pid=$!
+        # (3) Preload the Postgres image: in cnpg mode the operator provisions the Cluster
+        # pod with it at runtime, and `helm install --wait` blocks on api -> DB, so a cold
+        # pull would sit on the install's critical path and can exhaust the timeout. Pull
+        # concurrently; kind-load it after (the Cluster uses pullPolicy: IfNotPresent).
+        docker pull "${PG_IMAGE}" > /tmp/pg-pull.log 2>&1 &
+        pull_pid=$!
+
+        app_pids=()
+        for app in backend console build-tools cli; do
+          load_app "${app}" &
+          app_pids+=($!)
+        done
+
+        rc=0
+        for pid in "${app_pids[@]}"; do wait "${pid}" || rc=1; done
+        wait "${pull_pid}" || { echo "::error::postgres image pull failed"; cat /tmp/pg-pull.log; rc=1; }
+        if [ "${rc}" -eq 0 ]; then
+          kind load docker-image "${PG_IMAGE}" --name release-verify
+        fi
+        wait "${operator_pid}" || { echo "::error::CNPG operator install failed"; rc=1; }
+        cat /tmp/cnpg-operator.log
+        [ "${rc}" -eq 0 ]
+
+    - name: Smoke test CLI image helm binary
+      shell: bash
+      env:
+        IMAGE_PREFIX: ${{ inputs.image-prefix }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        docker run --rm \
+          --entrypoint /usr/local/bin/helm \
+          "${IMAGE_PREFIX}/cli:${VERSION}" \
+          version --client
+
+    - name: Verify install deployment
+      shell: bash
+      env:
+        IMAGE_PREFIX: ${{ inputs.image-prefix }}
+        VERSION: ${{ inputs.version }}
+        VERIFY_BASELINE_TAG: ${{ inputs.baseline-tag }}
+      run: |
+        set -euo pipefail
+        kubectl create namespace kubwave || true
+        kubectl -n kubwave create secret generic console-creds \
+          --from-literal=JWT_SECRET=verify-jwt-secret \
+          --from-literal=SECRETS_KEY=verify-secrets-key \
+          --dry-run=client -o yaml | kubectl apply -f -
+        kubectl -n kubwave create secret generic postgres-creds \
+          --from-literal=POSTGRES_USER=app \
+          --from-literal=POSTGRES_PASSWORD=app \
+          --from-literal=POSTGRES_DB=kubwave \
+          --dry-run=client -o yaml | kubectl apply -f -
+        kubectl -n kubwave create secret generic postgres-app-creds \
+          --type=kubernetes.io/basic-auth \
+          --from-literal=username=app \
+          --from-literal=password=app \
+          --dry-run=client -o yaml | kubectl apply -f -
+        # `helm install --wait` reports only "context deadline exceeded" on timeout, with no
+        # hint at which workload hung. Dump the cnpg Cluster, pods, and events on any failure.
+        dump_diagnostics() {
+          echo "--- cnpg cluster ---"
+          kubectl -n kubwave get cluster -o wide || true
+          kubectl -n kubwave describe cluster postgres || true
+          echo "--- pods ---"
+          kubectl -n kubwave get pods -o wide || true
+          for pod in $(kubectl -n kubwave get pods -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+            echo "--- describe ${pod} ---"
+            kubectl -n kubwave describe pod "${pod}" || true
+            echo "--- logs ${pod} (all containers, tail) ---"
+            kubectl -n kubwave logs "${pod}" --all-containers --tail=50 || true
+          done
+          echo "--- events ---"
+          kubectl -n kubwave get events --sort-by=.lastTimestamp | tail -50 || true
+        }
+        trap 'rc=$?; [ "$rc" -ne 0 ] && dump_diagnostics; exit $rc' EXIT
+        helm install kubwave \
+          "kubwave-${VERSION}.tgz" \
+          --namespace kubwave \
+          --set api.image.repository="${IMAGE_PREFIX}/backend" \
+          --set api.image.tag="${VERIFY_BASELINE_TAG}" \
+          --set api.image.pullPolicy=IfNotPresent \
+          --set api.secret.create=false \
+          --set api.secret.existingSecret=console-creds \
+          --set console.image.repository="${IMAGE_PREFIX}/console" \
+          --set console.image.tag="${VERIFY_BASELINE_TAG}" \
+          --set console.image.pullPolicy=IfNotPresent \
+          --set worker.image.repository="${IMAGE_PREFIX}/backend" \
+          --set worker.image.tag="${VERIFY_BASELINE_TAG}" \
+          --set worker.image.pullPolicy=IfNotPresent \
+          --set builds.buildToolsImage="${IMAGE_PREFIX}/build-tools:${VERIFY_BASELINE_TAG}" \
+          --set postgres.secret.create=false \
+          --set postgres.secret.existingSecret=postgres-creds \
+          --set-string builds.registry.endpoint="" \
+          --set builds.registry.insecure=false \
+          --set update.serviceAccount.create=true \
+          --set update.image.repository="${IMAGE_PREFIX}/cli" \
+          --set update.image.tag="${VERSION}" \
+          --set update.dependencies.mode=disabled \
+          --set adminer.enabled=false \
+          --set mailcrab.enabled=false \
+          --set docs.enabled=false \
+          --wait --timeout 300s
+
+    - name: Check install rollout
+      shell: bash
+      env:
+        IMAGE_PREFIX: ${{ inputs.image-prefix }}
+        VERIFY_BASELINE_TAG: ${{ inputs.baseline-tag }}
+      run: |
+        set -euo pipefail
+        kubectl -n kubwave get pods
+        # cnpg mode: the DB is a CloudNativePG Cluster (named `postgres`), not a
+        # StatefulSet. Gate on the Cluster's Ready condition instead.
+        kubectl -n kubwave wait --for=condition=Ready cluster/postgres --timeout=240s
+        for app in api console worker; do
+          case "${app}" in api|worker) img=backend ;; *) img="${app}" ;; esac
+          kubectl -n kubwave rollout status "deployment/${app}" --timeout=90s
+          test "$(kubectl -n kubwave get "deployment/${app}" -o jsonpath='{.spec.template.spec.containers[0].image}')" = "${IMAGE_PREFIX}/${img}:${VERIFY_BASELINE_TAG}"
+        done
+
+    - name: Verify web update job pipeline
+      shell: bash
+      env:
+        IMAGE_PREFIX: ${{ inputs.image-prefix }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        RUN_ID="00000000-0000-4000-8000-000000000001"
+        JOB_NAME="kubwave-update-${RUN_ID}"
+
+        # The live baseline worker runs an update-run reconciler that reaps every
+        # updater-labelled Job lacking a matching update_runs row every ~15s
+        # (apps/backend/src/modules/worker/jobs/updates/reaper.ts). This step applies the
+        # Job out-of-band, so without a seed row the worker deletes it before it can
+        # finish and the poll below times out on a vanished Job. Seed the row the
+        # worker itself would have written after createNamespacedJob (status=running,
+        # job_name set) so the reaper spares it — and reconciles it to 'succeeded'
+        # on completion, exercising the real worker path too.
+        # cnpg mode: exec into a CNPG instance pod and connect to the primary over the
+        # postgres-rw Service (routes writes to the current primary regardless of which
+        # instance we land on), rather than the removed statefulset/postgres.
+        PG_POD=$(kubectl -n kubwave get pods -l 'cnpg.io/cluster=postgres' \
+          -o jsonpath='{.items[0].metadata.name}')
+        # The api pod reports Ready (and satisfies `helm install --wait`) as soon as it is
+        # listening; its boot migrations run in the BACKGROUND afterwards, guarded by an
+        # advisory lock (apps/backend/src/api-boot.ts). So a Ready install does NOT yet
+        # guarantee the schema exists — the seed INSERT below otherwise races those
+        # migrations and intermittently hits `relation "update_runs" does not exist`. Wait
+        # for the migration that creates update_runs to land before seeding.
+        echo "Waiting for boot migrations to create the update_runs table..."
+        deadline=$(( $(date +%s) + 180 ))
+        until kubectl -n kubwave exec "${PG_POD}" -- \
+          env PGPASSWORD=app psql -tAq -v ON_ERROR_STOP=1 -h postgres-rw -U app -d kubwave -c \
+          "SELECT to_regclass('public.update_runs');" 2>/dev/null | grep -qx update_runs; do
+          if [ "$(date +%s)" -ge "${deadline}" ]; then
+            echo "::error::update_runs table did not appear within timeout (boot migrations stuck?)"
+            kubectl -n kubwave logs deployment/api --tail=50 || true
+            exit 1
+          fi
+          sleep 3
+        done
+        kubectl -n kubwave exec "${PG_POD}" -- \
+          env PGPASSWORD=app psql -v ON_ERROR_STOP=1 -h postgres-rw -U app -d kubwave -c \
+          "INSERT INTO update_runs (id, from_version, to_version, status, job_name, started_at) VALUES ('${RUN_ID}', '0.0.0-verify-baseline', '${VERSION}', 'running', '${JOB_NAME}', now());"
+
+        kubectl -n kubwave get configmap update-job-template -o jsonpath='{.data.job\.yaml}' > /tmp/update-job.yaml
+        sed \
+          -e "s/{{RUN_ID}}/${RUN_ID}/g" \
+          -e "s/{{TARGET_VERSION}}/${VERSION}/g" \
+          -e "s#{{TARGET_REGISTRY}}#${IMAGE_PREFIX}#g" \
+          -e "s#{{TARGET_IMAGE}}#${IMAGE_PREFIX}/cli:${VERSION}#g" \
+          /tmp/update-job.yaml | kubectl apply -f -
+
+        dump_diagnostics() {
+          echo "--- update job ---"
+          kubectl -n kubwave get "job/${JOB_NAME}" -o yaml || true
+          echo "--- update pods ---"
+          kubectl -n kubwave get pods -l "job-name=${JOB_NAME}" -o wide || true
+          for pod in $(kubectl -n kubwave get pods -l "job-name=${JOB_NAME}" -o jsonpath='{.items[*].metadata.name}'); do
+            echo "--- pod ${pod} yaml ---"
+            kubectl -n kubwave get pod "${pod}" -o yaml || true
+            for container in prepare helm-plan helm-upgrade finalize; do
+              echo "--- logs ${pod}/${container} ---"
+              kubectl -n kubwave logs "${pod}" -c "${container}" || true
+            done
+          done
+        }
+
+        # `kubectl wait --for=condition=Complete` never returns on a Failed Job —
+        # it blocks until --timeout and then errors. That made every job failure
+        # (e.g. a prepare-phase abort) burn the full timeout instead of failing
+        # fast. Poll both conditions and act on whichever the Job reaches first;
+        # the Job's own conditions are the source of truth.
+        deadline=$(( $(date +%s) + 420 ))
+        while true; do
+          if [ "$(kubectl -n kubwave get "job/${JOB_NAME}" -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' 2>/dev/null || true)" = "True" ]; then
+            echo "Update job completed successfully."
+            break
+          fi
+          if [ "$(kubectl -n kubwave get "job/${JOB_NAME}" -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || true)" = "True" ]; then
+            echo "Update job failed."
+            dump_diagnostics
+            exit 1
+          fi
+          if [ "$(date +%s)" -ge "${deadline}" ]; then
+            echo "Update job did not finish within timeout."
+            dump_diagnostics
+            exit 1
+          fi
+          sleep 5
+        done
+
+        # The self-update must bump ALL three workloads from baseline → release tag,
+        # not just console (the pre-split behaviour). This is the gate on that fix.
+        for app in api console worker; do
+          case "${app}" in api|worker) img=backend ;; *) img="${app}" ;; esac
+          kubectl -n kubwave rollout status "deployment/${app}" --timeout=90s
+          test "$(kubectl -n kubwave get "deployment/${app}" -o jsonpath='{.spec.template.spec.containers[0].image}')" = "${IMAGE_PREFIX}/${img}:${VERSION}"
+        done
+        test "$(kubectl -n kubwave get configmap/kubwave-platform -o jsonpath='{.data.current_version}')" = "${VERSION}"

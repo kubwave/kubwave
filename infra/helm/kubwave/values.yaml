@@ -1,0 +1,446 @@
+# Default values for the dev profile (k3d + Tilt). The Cloudfleet-on-Hetzner prod
+# overrides live in values-cloudfleet-hetzner.yaml.
+#
+# Three runtime workloads: backend API, console (Nuxt 4 / Vue 3), and backend worker.
+# API and worker use the same backend image with different BACKEND_ENTRYPOINT values.
+# Same-origin ingress: / → console, /api → api. Only api + worker hold DB credentials;
+# console holds none.
+
+imagePullSecrets: []
+
+# Security contexts — empty in dev (Tilt needs a writable filesystem),
+# set in values-cloudfleet-hetzner.yaml for production.
+podSecurityContext: {}
+containerSecurityContext: {}
+
+# High-availability mode. A single switch (also driven by the CLI `--ha` install flag and
+# the admin settings UI → worker reconciler) that scales api/console/worker + the CNPG
+# database to `replicas` and soft-spreads them across nodes via kubwave.haSpread.
+# ALL scheduling constraints are SOFT (preferred / ScheduleAnyway), so a cluster with
+# fewer than `replicas` nodes still schedules everything — it just won't be spread.
+# Off by default (dev is single-node).
+ha:
+  enabled: false
+  replicas: 3
+  topologyKey: kubernetes.io/hostname
+
+# Tenant workloads are isolated per environment: the worker provisions one namespace
+# per environment on demand (`kubwave-env-<environmentId>`) with a NetworkPolicy that
+# blocks cross-environment traffic. There is no single static workloads namespace.
+
+# ── api (NestJS backend entrypoint) — HTTP API + auth + DB migrations on boot. Read-only k8s RBAC. ──
+api:
+  replicas: 1
+  serviceAccount:
+    create: true
+    name: kubwave-api
+  image:
+    repository: backend
+    tag: dev
+    pullPolicy: Never # Tilt rewrites image + pullPolicy in dev
+  port: 3001
+  env:
+    # CNPG read-write Service (always the current primary). The legacy StatefulSet
+    # Service was `postgres`; postgres.mode=statefulset still serves that name.
+    POSTGRES_HOST: postgres-rw
+    POSTGRES_PORT: '5432'
+    # Dev email → in-cluster mailcrab sink. Admin-editable SMTP (DB) overrides per field.
+    SMTP_HOST: mailcrab
+    SMTP_PORT: '1025'
+    SMTP_FROM_ADDRESS: noreply@kubwave.local
+    SMTP_FROM_NAME: kubwave
+    # Console origin used to build invite accept links in emails.
+    APP_BASE_URL: http://console.localhost
+  databaseUrl: ''
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 1000m, memory: 1Gi }
+  probes:
+    startup: { periodSeconds: 5, failureThreshold: 60 }
+    readiness: { initialDelaySeconds: 2, periodSeconds: 10 }
+    liveness: { initialDelaySeconds: 10, periodSeconds: 30 }
+  nodeSelector: {}
+  # JWT_SECRET + SECRETS_KEY + (optional) GITHUB_TOKEN. The worker reads GITHUB_TOKEN
+  # and SECRETS_KEY from the same Secret; only the api reads JWT_SECRET. SECRETS_KEY
+  # encrypts user-service secrets at rest (api encrypts, worker decrypts). In prod the
+  # installer generates a random value (see apps/cli createSecrets); this dev default is
+  # any high-entropy string (the key is SHA-256-derived, so no length constraint).
+  secret:
+    create: true
+    name: console-creds
+    existingSecret: '' # if set, Secret is not rendered (prod supplies it)
+    data:
+      JWT_SECRET: dev-jwt-secret-not-for-production
+      SECRETS_KEY: dev-secrets-key-not-for-production
+      GITHUB_TOKEN: ''
+
+# ── console (Nuxt / Nitro) — pure API consumer. No DB/JWT, no k8s RBAC. ──
+console:
+  replicas: 1
+  image:
+    repository: console
+    tag: dev
+    pullPolicy: Never
+  port: 3000
+  env:
+    # Server-side (Nitro SSR + auth middleware) reach the api via its in-cluster
+    # Service; the browser uses /api same-origin through the ingress.
+    INTERNAL_API_URL: http://api:3001
+  resources:
+    # nuxt dev (Vite HMR) is far hungrier than the prod Nitro build —
+    # 1Gi OOMKills the dev container. Prod overrides this in values-cloudfleet-hetzner.yaml.
+    requests: { cpu: 100m, memory: 512Mi }
+    limits: { cpu: 1000m, memory: 2Gi }
+  probes:
+    startup: { periodSeconds: 5, failureThreshold: 60 }
+    readiness: { initialDelaySeconds: 2, periodSeconds: 10 }
+    liveness: { initialDelaySeconds: 10, periodSeconds: 30 }
+  nodeSelector: {}
+
+# ── worker (backend worker entrypoint) — reconcile loop, update-run reconciler, version poller. ──
+# Read-write k8s RBAC (workloads CRUD + update-Job create/watch/delete).
+worker:
+  replicas: 1
+  serviceAccount:
+    create: true
+    name: kubwave-worker
+  image:
+    repository: backend
+    tag: dev
+    pullPolicy: Never
+  healthPort: 8080
+  env:
+    POSTGRES_HOST: postgres-rw # CNPG read-write Service (current primary)
+    POSTGRES_PORT: '5432'
+    # Dev: don't poll the remote catalog. main has no catalog.json yet (→ 404 every 30 min), and a
+    # successful remote fetch would mask local edits since the API prefers the stored remote catalog
+    # over the bundled one. Off → the API serves the bundled catalog.json baked into the image, i.e.
+    # your local templates. Prod re-enables this in values-cloudfleet-hetzner.yaml.
+    TEMPLATE_CATALOG_POLL_ENABLED: 'false'
+  databaseUrl: ''
+  reconcileIntervalMs: '5000'
+  leaseTimeoutMs: '60000'
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 1000m, memory: 1Gi }
+  probes:
+    startup: { periodSeconds: 5, failureThreshold: 30 }
+    readiness: { initialDelaySeconds: 2, periodSeconds: 10 }
+    liveness: { initialDelaySeconds: 10, periodSeconds: 30 }
+  nodeSelector: {}
+
+postgres:
+  # `cnpg` (default) → the database is a CloudNativePG `Cluster` (operator-managed
+  # replication, failover, PDB and the postgres-rw/-ro/-r Services; see
+  # templates/postgres/cluster.yaml). `statefulset` → the legacy hand-rolled
+  # single-instance StatefulSet, kept one release as a migration fallback.
+  mode: cnpg
+  # Non-HA instance/replica count. When ha.enabled the chart uses ha.replicas instead.
+  instances: 1
+  podSecurityContext: {}
+  containerSecurityContext: {}
+  image:
+    # CloudNativePG-flavoured Postgres image (bundles barman-cloud/pgaudit). The vanilla
+    # `postgres` image does NOT run under CNPG. Used as Cluster.spec.imageName in cnpg
+    # mode and as the container image in legacy statefulset mode.
+    repository: ghcr.io/cloudnative-pg/postgresql
+    tag: '16'
+    pullPolicy: IfNotPresent
+  port: 5432
+  storage:
+    # If volume autoscaling has grown this volume, only ever RAISE this — helm cannot shrink a PVC and the upgrade would fail.
+    size: 1Gi
+    storageClassName: '' # empty → cluster default
+    pvcName: postgres-data # legacy StatefulSet PVC name (statefulset mode only)
+  # App role + database created by CNPG initdb. `credentialsSecret` is a
+  # kubernetes.io/basic-auth Secret (username/password) whose password MUST match
+  # postgres-creds.POSTGRES_PASSWORD, so api/worker (which read postgres-creds) can log
+  # in via postgres-rw. Dev renders it from postgres.secret.data (bootstrap-secret.yaml);
+  # prod installs have the CLI create it alongside postgres-creds.
+  bootstrap:
+    database: kubwave
+    owner: app
+    credentialsSecret: postgres-app-creds
+  nodeSelector: {}
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 1000m, memory: 512Mi }
+  secret:
+    create: true
+    name: postgres-creds
+    existingSecret: ''
+    data:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: kubwave
+
+# Same-origin ingress: one host, path-routed to console (/) and api (/api).
+ingress:
+  className: '' # leave empty in dev (Traefik default class)
+  host: console.localhost
+  annotations: {}
+  tls:
+    enabled: false
+    secretName: console-tls
+
+# Provider-specific storage defaults for tenant workloads. The storageClassName is
+# passed to the worker and used when creating PVCs for services with volumes.
+# Empty string → cluster default StorageClass.
+workloadStorage:
+  storageClassName: ''
+
+# Ingress the WORKER generates per tenant service domain (one Ingress per service, a
+# rule per domain). Provider-specific — overridden per provider (see
+# values-cloudfleet-*.yaml). Dev defaults: no explicit class (Traefik default), and no
+# clusterIssuer → plain HTTP, no cert-manager TLS. annotations is handed to the worker
+# as JSON and merged onto every tenant Ingress.
+workloadIngress:
+  className: '' # empty → cluster default IngressClass
+  clusterIssuer: '' # empty → HTTP only (no spec.tls); set a cert-manager issuer for TLS
+  annotations: {}
+  # Namespace the cluster's ingress controller runs in. The per-environment NetworkPolicy
+  # allows ingress from this namespace so external HTTP still reaches tenant services while
+  # cross-environment traffic stays denied. k3d/dev ships Traefik in kube-system; override
+  # for a provider with a dedicated controller namespace (e.g. ingress-nginx, traefik).
+  controllerNamespace: kube-system
+  # Name of the ingress controller Service the worker reads for the sslip default-domain
+  # base (its LoadBalancer IP). k3d + the CLI prod install both name it `traefik`.
+  controllerServiceName: traefik
+  # Explicit ingress IP for the sslip default domain. Empty → the worker reads the
+  # controller Service's LoadBalancer status and uses the first IPv4 entry, so prod
+  # installs auto-detect the real ingress. Set explicitly to override (e.g. k3d +
+  # Tilt pins `127.0.0.1` so `*.127-0-0-1.sslip.io` resolves to the host loopback
+  # where Traefik is host-mapped). A wrong literal here silently routes every
+  # auto-domain at the wrong address, so defaulting to empty is the safe choice.
+  loadBalancerIp: ''
+
+# ── Tenant namespace hardening (per-environment isolation) ──
+# Defence-in-depth the WORKER applies to every per-environment tenant namespace it provisions.
+# These are independent knobs used by the backend worker's namespace reconciler.
+tenants:
+  # Pod Security Standards enforce level, stamped as the `pod-security.kubernetes.io/enforce`
+  # label on each tenant namespace. Enforced by the API-server admission plugin, so it bites on
+  # ANY cluster (unlike NetworkPolicy). `baseline` rejects the escape primitives (privileged,
+  # hostPath, host namespaces/ports) while still allowing ordinary root containers, so normal
+  # tenant images keep working. Set '' to disable, or 'restricted' for the strict profile (most
+  # off-the-shelf images fail it — runAsNonRoot + drop-ALL required).
+  podSecurity: baseline
+  # Egress confinement on tenant RUNTIME pods (the build-pod equivalent is builds.networkPolicy):
+  # deny the internal/link-local ranges — other namespaces (platform Postgres/registry/API), the
+  # kubelet, and the 169.254.169.254 cloud-metadata SSRF target — while still allowing
+  # same-namespace traffic, DNS, and the public internet. OPT-IN and CNI-dependent: flannel (k3d
+  # dev) ignores NetworkPolicy, so this only bites on a policy-enforcing CNI (prod: Cilium/Calico).
+  # Confirm blockedCidrs cover your pod + service CIDRs before enabling, then verify a tenant
+  # service still resolves DNS and reaches out.
+  egress:
+    enabled: false
+    blockedCidrs:
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+      - 192.168.0.0/16
+      - 169.254.0.0/16
+    # CoreDNS/kube-dns location, re-allowed explicitly (its ClusterIP is inside blockedCidrs).
+    dnsNamespace: kube-system
+    dnsPodLabels:
+      k8s-app: kube-dns
+    # Optional DNS Service ClusterIP CIDR, for CNIs/providers that enforce egress before Service
+    # traffic is resolved to CoreDNS pod endpoints.
+    dnsServiceIp: ''
+  # Kernel isolation for user-supplied tenant pods. default '' = plain runc (OSS default; nothing installs).
+  # Selecting gvisor makes the worker stamp runtimeClassName on user-supplied workloads (managed DB engines
+  # stay exempt) and renders the gVisor installer + RuntimeClass. gVisor installs on all Linux nodes.
+  # (The field is runtime-agnostic; a future Kata runtime reuses the same default/scheduling shape.)
+  runtimeClass:
+    default: ''
+    gvisor:
+      install: false
+      # Pinned gVisor release path; the installer downloads runsc for this release and verifies sha512.
+      version: 'release/latest'
+      installerImage: 'debian:bookworm-slim'
+
+# ── Image builds (BuildKit → platform registry) ──
+# Tenant "dockerfile" and source services are built in-cluster by a BuildKit Job (in the platform namespace,
+# created + watched by the worker) and pushed to a registry the cluster can pull from.
+builds:
+  serviceAccount:
+    create: true
+    name: kubwave-builder
+  engine: buildkit
+  builderImage: moby/buildkit:v0.31.0-rootless
+  # "public-repo" services build from source with NO Dockerfile: an init container clones the repo
+  # and a second init container runs Nixpacks from this build-tools image to GENERATE a Dockerfile.
+  # BuildKit then builds/pushes it from the separate builder image above.
+  buildToolsImage: build-tools:dev
+  timeoutSeconds: '1800' # hard cap on a single build (activeDeadlineSeconds)
+  jobTtlSeconds: '3600' # how long a finished build Job lingers before Kubernetes TTL-reaps it
+  # Memory request/limit on the BuildKit build container. The request reserves headroom; the limit
+  # caps a runaway build to a clean in-container OOMKill. Defaults suit a ~4Gi build node — raise
+  # both for bigger build nodes / heavier images.
+  memoryRequest: '1Gi'
+  memoryLimit: '2Gi'
+  registry:
+    # host:port baked into the built image ref — it must be reachable from BOTH the BuildKit build POD
+    # (push) and the NODE's container runtime (pull). Dev: host.k3d.internal:5111 — the Docker host
+    # where the k3d registry's hostPort is published. The POD reaches it via CoreDNS's host.k3d.internal
+    # entry; infra/k3d/cluster.yaml adds a containerd mirror so the kubelet PULL of that same ref
+    # resolves to the registry too. (The registry container name itself is NOT pod-resolvable.)
+    endpoint: host.k3d.internal:5111
+    insecure: true # plain HTTP (dev) → BuildKit uses insecure registry output + buildkitd config
+    # dockerconfigjson Secrets for an authenticated registry (prod). Empty in dev (anonymous).
+    # pushSecretName is mounted into the BuildKit Job (platform ns); the worker COPIES it into each
+    # tenant namespace under pullSecretName so tenant pods can pull. Both empty → no auth, no pull secret.
+    pushSecretName: ''
+    pullSecretName: ''
+  # Egress firewall for build pods (Dockerfile + public-repo + private-repo). A build clones an arbitrary tenant
+  # repo, so this confines it to DNS + the public internet + the in-cluster registry, denying other
+  # internal Services and the cloud metadata endpoint (SSRF mitigation). OPT-IN and CNI-dependent:
+  # flannel (k3d dev) ignores NetworkPolicy, so this only bites on a policy-enforcing CNI (prod).
+  # Enable in prod after confirming the blockedCidrs cover your pod + service CIDRs, then verify a
+  # build still clones + pushes. Private-repo SSH builds get a transient per-build policy for the
+  # SSH port parsed from repoUrl. (templates/builder/networkpolicy.yaml)
+  networkPolicy:
+    enabled: false
+    # Internal/link-local ranges the build pod is BLOCKED from (everything else on 0.0.0.0/0 is
+    # allowed). 169.254.0.0/16 covers the 169.254.169.254 cloud metadata endpoint. IPv4 only.
+    blockedCidrs:
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+      - 192.168.0.0/16
+      - 169.254.0.0/16
+    # Ports the build may reach on the public internet (git clone over http/https + CLI download).
+    # Private-repo SSH ports are not listed here; the worker creates a per-build exception.
+    egressPorts:
+      - 80
+      - 443
+    # CoreDNS/kube-dns location, re-allowed explicitly (its ClusterIP is inside blockedCidrs).
+    dns:
+      namespace: kube-system
+      podLabels:
+        k8s-app: kube-dns
+      # Optional DNS Service ClusterIP CIDR, for CNIs/providers that enforce egress before Service
+      # traffic is resolved to CoreDNS pod endpoints.
+      serviceIp: ''
+    # Optional egress allowance for providers where registry.<domain> hairpins through the in-cluster
+    # ingress controller instead of behaving like ordinary public internet traffic.
+    ingressController:
+      enabled: false
+      namespace: ''
+      podLabels:
+        app.kubernetes.io/name: traefik
+      ports:
+        - 80
+        - 443
+        - 8000
+        - 8443
+
+# Platform-managed in-cluster registry (registry:2). Disabled in dev — k3d already runs one
+# (see builds.registry.endpoint). Enabled in prod, where it's exposed via a TLS Ingress so the
+# nodes' container runtime trusts it with a public-CA cert and no per-node configuration.
+registry:
+  enabled: false
+  image:
+    repository: registry
+    tag: '2'
+    pullPolicy: IfNotPresent
+  port: 5000
+  storage:
+    # If volume autoscaling has grown this volume, only ever RAISE this — helm cannot shrink a PVC and the upgrade would fail.
+    size: 10Gi
+    storageClassName: '' # empty → cluster default
+    pvcName: kubwave-registry-data # keep stable across chart upgrades
+  # Public, node-trusted endpoint (prod). The host here MUST match builds.registry.endpoint.
+  ingress:
+    enabled: false
+    host: ''
+    className: ''
+    clusterIssuer: ''
+    annotations: {}
+  # Operator-created htpasswd Secret protecting the internet-exposed registry (prod). When set it's
+  # wired into registry:2 via REGISTRY_AUTH=htpasswd. Empty → anonymous (in-cluster/dev only).
+  auth:
+    htpasswdSecretName: ''
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  nodeSelector: {}
+
+adminer:
+  enabled: true
+  image:
+    repository: adminer
+    tag: 5-standalone
+    pullPolicy: IfNotPresent
+  port: 8080
+  env:
+    ADMINER_DEFAULT_SERVER: postgres-rw
+    ADMINER_DESIGN: pepa-linha-dark
+  resources:
+    requests: { cpu: 20m, memory: 32Mi }
+    limits: { cpu: 200m, memory: 128Mi }
+  ingress:
+    enabled: true
+    host: adminer.localhost
+  nodeSelector: {}
+
+# Dev-only SMTP sink with a web inbox at mailcrab.localhost. The api sends to
+# mailcrab:1025. Disabled in prod.
+mailcrab:
+  enabled: true
+  image:
+    repository: marlonb/mailcrab
+    tag: latest
+    pullPolicy: IfNotPresent
+  httpPort: 1080
+  smtpPort: 1025
+  resources:
+    requests: { cpu: 20m, memory: 32Mi }
+    limits: { cpu: 200m, memory: 128Mi }
+  ingress:
+    enabled: true
+    host: mailcrab.localhost
+  nodeSelector: {}
+
+# Dev-only docs site (Astro Starlight, `astro dev` with HMR). In prod the static
+# build ships to Cloudflare (apps/docs/wrangler.jsonc), so this is disabled there.
+docs:
+  enabled: true
+  image:
+    repository: docs
+    tag: dev
+    pullPolicy: Never
+  port: 4321
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 1000m, memory: 1Gi }
+  ingress:
+    enabled: true
+    host: docs.localhost
+  nodeSelector: {}
+
+certManager:
+  clusterIssuer:
+    create: false
+    name: letsencrypt-prod
+    email: ''
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecret: letsencrypt-prod-account-key
+    solverIngressClass: traefik
+
+update:
+  serviceAccount:
+    create: false
+    name: kubwave-updater
+  image:
+    repository: '' # set via CLI or --set update.image.repository=ghcr.io/kubwave/cli
+    tag: '' # set via CLI or --set update.image.tag=0.1.0
+  nodeSelector: {}
+  dependencies:
+    mode: disabled # disabled | auto
+    traefik:
+      values:
+        ingressClass:
+          enabled: true
+          isDefaultClass: true
+
+platformMarker:
+  create: true

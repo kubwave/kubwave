@@ -1,0 +1,20 @@
+{{- $registry := .Values.registry | default dict -}}
+{{- if $registry.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $registry.storage.pvcName }}
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "registry") | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- with $registry.storage.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $registry.storage.size }}
+{{- end }}

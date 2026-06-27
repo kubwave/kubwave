@@ -1,0 +1,61 @@
+kubwave
+Copyright 2026 KinTex
+
+This product includes software developed by third parties, distributed
+under their respective licenses. Attribution notices for bundled components
+that require it are listed below.
+
+---
+
+## Helm
+
+The kubwave CLI embeds the Helm binary (https://helm.sh), which is
+Copyright The Helm Authors and licensed under the Apache License 2.0.
+A copy of the Apache License 2.0 is included in this repository as LICENSE.
+
+## Bun
+
+The kubwave container images for the API and Worker workloads are built
+on top of the official Bun images (oven/bun, https://bun.sh), which are
+licensed under the MIT License.
+
+Copyright (c) 2022 Jarred Sumner
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+## Node.js
+
+The kubwave Console container image is built on top of the official Node.js
+image (node, https://nodejs.org), which is licensed under the MIT License.
+See https://github.com/nodejs/node/blob/main/LICENSE for the full text.
+
+## Distroless
+
+The kubwave CLI container image is built on top of the Google Distroless
+base image (gcr.io/distroless/cc-debian12), which is licensed under the
+Apache License 2.0. A copy of the Apache License 2.0 is included in this
+repository as LICENSE.
+
+---
+
+All other components are either authored within this project (and licensed
+under the Apache License 2.0) or are npm dependencies whose license terms
+are satisfied through the dependency metadata in the `node_modules` tree
+and `bun.lock` file. No npm package source code is redistributed outside of
+the Docker images that contain the full `node_modules` directory.

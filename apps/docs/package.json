@@ -1,0 +1,39 @@
+{
+	"name": "docs",
+	"description": "kubwave public documentation site.",
+	"private": true,
+	"license": "Apache-2.0",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/kubwave/kubwave.git",
+		"directory": "apps/docs"
+	},
+	"bugs": {
+		"url": "https://github.com/kubwave/kubwave/issues"
+	},
+	"homepage": "https://docs.kubwave.com",
+	"type": "module",
+	"engines": {
+		"node": "24.x"
+	},
+	"scripts": {
+		"dev": "astro dev",
+		"build": "astro build",
+		"preview": "astro preview",
+		"check-types": "astro check",
+		"astro": "astro",
+		"deploy": "wrangler deploy"
+	},
+	"dependencies": {
+		"@astrojs/check": "^0.9.0",
+		"@astrojs/starlight": "^0.40.0",
+		"@fontsource-variable/inter": "^5.2.5",
+		"@fontsource-variable/jetbrains-mono": "^5.2.5",
+		"astro": "^6.4.8",
+		"sharp": "^0.35.2"
+	},
+	"devDependencies": {
+		"typescript": "^6.0.3",
+		"wrangler": "^4.0.0"
+	}
+}

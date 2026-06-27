@@ -1,0 +1,80 @@
+{{- $registry := .Values.registry | default dict -}}
+{{- $builds := .Values.builds | default dict -}}
+{{- $buildRegistry := $builds.registry | default dict -}}
+{{- $nodeTrust := $registry.nodeTrust | default dict -}}
+{{- /*
+  Teaches every node's containerd to trust the in-cluster registry over plain HTTP, so
+  the kubelet can PULL Dockerfile-built images from a ClusterIP that is never exposed
+  via a TLS ingress. Drops /etc/containerd/certs.d/<endpoint>/hosts.toml pointing the
+  image-ref host at the registry's live ClusterIP (re-resolved on a loop). Only needed
+  for the insecure (HTTP) in-cluster registry — a TLS/public registry trusts via its CA,
+  and dev (k3d) wires its own containerd mirror, so this is gated on enabled + insecure.
+*/ -}}
+{{- if and $registry.enabled $buildRegistry.insecure }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kubwave-registry-containerd-trust
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "registry-trust") | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "kubwave.selectorLabels" (dict "component" "registry-trust") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kubwave.labels" (dict "root" $ "component" "registry-trust") | nindent 8 }}
+    spec:
+      # Configure every node that could run a tenant pod: restrict only by OS and
+      # tolerate all taints (incl. control-plane).
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+        - operator: Exists
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: containerd-trust
+          image: {{ $nodeTrust.image | default "busybox:1.36.1" | quote }}
+          securityContext:
+            # Required to write the node's /etc/containerd/certs.d via the hostPath mount.
+            privileged: true
+          env:
+            - name: REGISTRY_ENDPOINT
+              value: {{ $buildRegistry.endpoint | quote }}
+          # The loop never exits and has no probes, so the pod is Ready as soon as it
+          # starts — a transient DNS miss only delays a file write, it never fails the
+          # rollout (so `helm upgrade --atomic --wait` won't roll back on it).
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -u
+              HOST="$REGISTRY_ENDPOINT"
+              NAME="${HOST%:*}"
+              PORT="${HOST##*:}"
+              DIR="/host/etc/containerd/certs.d/${HOST}"
+              mkdir -p "$DIR"
+              echo "containerd-trust: managing ${DIR} (resolving ${NAME}:${PORT})"
+              while true; do
+                IP="$(nslookup "$NAME" 2>/dev/null | awk '/^Name:/{s=1} s&&/^Address/{print $NF; exit}')"
+                if [ -n "$IP" ]; then
+                  printf 'server = "http://%s:%s"\n[host."http://%s:%s"]\ncapabilities = ["pull", "resolve"]\nskip_verify = true\n' "$IP" "$PORT" "$IP" "$PORT" > "$DIR/hosts.toml"
+                fi
+                sleep 30
+              done
+          volumeMounts:
+            - name: containerd-certs-d
+              mountPath: /host/etc/containerd/certs.d
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 50m, memory: 64Mi }
+      volumes:
+        - name: containerd-certs-d
+          hostPath:
+            path: /etc/containerd/certs.d
+            type: DirectoryOrCreate
+{{- end }}

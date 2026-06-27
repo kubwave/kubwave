@@ -1,0 +1,139 @@
+{{- $gv := .Values.tenants.runtimeClass.gvisor | default dict -}}
+{{- if $gv.install }}
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: gvisor
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "gvisor") | nindent 4 }}
+handler: runsc
+scheduling:
+  # Pods requesting `gvisor` schedule ONLY onto nodes the installer has finished + labelled.
+  nodeSelector:
+    kubwave.io/gvisor-ready: "true"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubwave-gvisor-installer
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "gvisor") | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubwave-gvisor-installer
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubwave-gvisor-installer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubwave-gvisor-installer
+subjects:
+  - kind: ServiceAccount
+    name: kubwave-gvisor-installer
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kubwave-gvisor-installer
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "gvisor") | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "kubwave.selectorLabels" (dict "component" "gvisor") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kubwave.labels" (dict "root" $ "component" "gvisor") | nindent 8 }}
+    spec:
+      serviceAccountName: kubwave-gvisor-installer
+      hostPID: true
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+        - operator: Exists
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: installer
+          image: {{ $gv.installerImage | default "debian:bookworm-slim" | quote }}
+          securityContext:
+            privileged: true
+          env:
+            - name: GVISOR_VERSION
+              value: {{ $gv.version | default "release/latest" | quote }}
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          # Installs runsc on the host, registers it with containerd (idempotent via `runsc install`),
+          # restarts containerd once, then labels the node ready. Loops so the pod stays Ready and the
+          # rollout never fails on a transient download (so `helm upgrade --wait` won't roll back).
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -u
+              ARCH="$(uname -m)"   # x86_64 | aarch64 — matches the gVisor release path
+              URL="https://storage.googleapis.com/gvisor/releases/${GVISOR_VERSION}/${ARCH}"
+              ensure_tools() {
+                command -v curl >/dev/null 2>&1 && command -v nsenter >/dev/null 2>&1 && return 0
+                apt-get update >/dev/null 2>&1 || true
+                apt-get install -y --no-install-recommends curl ca-certificates util-linux >/dev/null 2>&1 || true
+              }
+              ensure_tools
+              install_gvisor() {
+                cd /tmp || return 1
+                curl -fsSL -o runsc "${URL}/runsc" || return 1
+                curl -fsSL -o runsc.sha512 "${URL}/runsc.sha512" || return 1
+                curl -fsSL -o containerd-shim-runsc-v1 "${URL}/containerd-shim-runsc-v1" || return 1
+                curl -fsSL -o containerd-shim-runsc-v1.sha512 "${URL}/containerd-shim-runsc-v1.sha512" || return 1
+                sha512sum -c runsc.sha512 || return 1
+                sha512sum -c containerd-shim-runsc-v1.sha512 || return 1
+                chmod a+rx runsc containerd-shim-runsc-v1
+                cp -f runsc containerd-shim-runsc-v1 /host/usr/local/bin/ || return 1
+                # `runsc install` edits the host containerd config version-correctly; run it in the host ns.
+                nsenter -t 1 -m -u -i -n -p -- /usr/local/bin/runsc install || return 1
+                nsenter -t 1 -m -u -i -n -p -- systemctl restart containerd || return 1
+                return 0
+              }
+              label_ready() {
+                TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+                curl -fsSL --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+                  -H "Authorization: Bearer ${TOKEN}" \
+                  -H 'Content-Type: application/strategic-merge-patch+json' \
+                  -X PATCH "https://kubernetes.default.svc/api/v1/nodes/${NODE_NAME}" \
+                  -d '{"metadata":{"labels":{"kubwave.io/gvisor-ready":"true"}}}' >/dev/null
+              }
+              if nsenter -t 1 -m -u -i -n -p -- /usr/local/bin/runsc --version >/dev/null 2>&1; then
+                echo "gvisor: already installed on ${NODE_NAME}"
+              else
+                echo "gvisor: installing on ${NODE_NAME} from ${URL}"
+                until install_gvisor; do echo "gvisor: install failed, retrying in 30s"; sleep 30; done
+              fi
+              label_ready && echo "gvisor: labelled ${NODE_NAME} ready" || echo "gvisor: label patch failed (will retry)"
+              while true; do sleep 3600; label_ready || true; done
+          volumeMounts:
+            - name: host-bin
+              mountPath: /host/usr/local/bin
+          resources:
+            requests: { cpu: 20m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 256Mi }
+      volumes:
+        - name: host-bin
+          hostPath:
+            path: /usr/local/bin
+            type: DirectoryOrCreate
+{{- end }}

@@ -1,0 +1,107 @@
+---
+title: Tenant isolation
+description: How kubwave isolates tenant workloads at the kernel level with gVisor — the trust model that decides what gets sandboxed, how to enable it, and its performance trade-offs.
+---
+
+import { Aside, LinkCard } from '@astrojs/starlight/components';
+
+By default, tenant pods share the node's host kernel (plain `runc`). On a single-tenant
+install that's fine — every workload is yours. When you host **untrusted or mutually
+distrusting tenants** on shared nodes, a kernel exploit from one compromised container can
+reach the host and every co-tenant on that node.
+
+kubwave closes this with a Kubernetes `RuntimeClass`: the kubelet starts sandboxed containers
+inside **gVisor** (`runsc`), an in-process kernel that intercepts and re-implements syscalls,
+instead of running them directly against the Linux kernel. This sits **alongside** Pod Security
+Standards and egress confinement — they all stay active.
+
+<Aside type="caution">
+	Kernel isolation only matters for **shared, multi-tenant clusters**. A self-hosted install serving your own apps does not need it, and it is **off
+	by default**.
+</Aside>
+
+## What gets sandboxed
+
+Trust is decided by **provenance** — how the image arrived on the platform — never by inspecting
+the workload at runtime. There are three buckets:
+
+| Workload              | Examples                                | Sandboxed?           |
+| --------------------- | --------------------------------------- | -------------------- |
+| **Managed databases** | `postgres`, `mysql`, `mariadb`, `mongo` | **No** — full speed  |
+| **Catalog templates** | Supabase stack, Ghost, …                | **Yes** (by default) |
+| **User-supplied**     | image, Dockerfile, or Git repo services | **Yes** — always     |
+
+Managed databases are exempt because they run a kubwave-pinned image, hold only the tenant's own
+data, and are reachable only inside the tenant namespace — they are already isolated by namespace
+and NetworkPolicy, and gVisor's I/O overhead would hurt them without adding meaningful protection.
+This is the same model Supabase and Neon use.
+
+<Aside type="note">
+	A **custom** database a tenant brings as their own image (image / Dockerfile / repo) is user-supplied — so it **is** sandboxed, and runs slower than
+	a managed engine. That is the security guarantee working as intended: the platform cannot vouch for a tenant's own image. Want a fast database? Use
+	a managed engine.
+</Aside>
+
+## Enabling gVisor
+
+Pass the runtime class at install (or update):
+
+```sh
+# Enable gVisor for all sandboxed tenant pods
+kubwave install --tenant-runtime-class gvisor
+
+# Explicitly disable (the default)
+kubwave install --tenant-runtime-class off
+```
+
+Selecting `gvisor` does three things from a single switch:
+
+- **Stamps the runtime class** — the worker sets `runtimeClassName: gvisor` on every non-exempt
+  tenant pod.
+- **Creates the `gvisor` RuntimeClass** — scheduled to run only on nodes that report ready, so a
+  pod never lands on a node where gVisor isn't installed yet.
+- **Installs gVisor on every node** — a DaemonSet installs `runsc`, registers it with containerd,
+  and labels the node ready.
+
+The choice is persisted, so `kubwave update` keeps it without repeating the flag. With `off` (the
+default) nothing is rendered and no pod gets a runtime class — plain `runc`, unchanged.
+
+<LinkCard title="CLI reference" href="/reference/cli/" description="All kubwave install and update flags." />
+
+## On the node
+
+The installer DaemonSet runs once per node and:
+
+1. Downloads `runsc` for the node's architecture (`x86_64`/`aarch64`) and **verifies its checksum**.
+2. Registers the runtime with containerd and restarts it **once** — running containers survive the
+   brief pause.
+3. Labels the node ready, so the scheduler may now place sandboxed pods on it.
+
+Because it's a DaemonSet, **it rides the autoscaler**: every new node the cluster adds installs
+gVisor automatically, and the ready-label gate keeps sandboxed pods off a node until its install
+finishes. No manual node preparation, no race.
+
+## Performance
+
+gVisor re-implements the Linux syscall interface in user space, which adds overhead to
+**file I/O**, **network I/O**, and **syscall-heavy startup** (JVM, large Python imports). CPU-bound
+work is largely unaffected.
+
+This is exactly why managed databases are exempt. If a data-heavy workload needs full speed, run it
+as a managed engine rather than a custom sandboxed image.
+
+## Verifying it works
+
+After enabling, confirm on a node and a tenant namespace:
+
+```sh
+# Nodes that finished installing gVisor
+kubectl get nodes -l kubwave.io/gvisor-ready=true
+
+# Which tenant pods are sandboxed (managed DBs show an empty runtime class)
+kubectl get pods -n <tenant-namespace> \
+  -o jsonpath='{range .items[*]}{.metadata.name}{" → "}{.spec.runtimeClassName}{"\n"}{end}'
+
+# The gVisor kernel is active inside a sandboxed pod (not the host kernel)
+kubectl exec -n <tenant-namespace> <pod> -- dmesg | head -1   # → "Starting gVisor..."
+```

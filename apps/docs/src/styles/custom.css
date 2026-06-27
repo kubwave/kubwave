@@ -1,0 +1,228 @@
+/* kubwave docs — modern, dark-first developer-tool theme.
+   Overrides Starlight defaults. Designed for dark; light kept as clean Starlight. */
+
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
+
+/* Theme-agnostic tokens (apply to both light and dark). */
+:root {
+	--sl-font: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--sl-font-mono: 'JetBrains Mono Variable', ui-monospace, 'SFMono-Regular', 'Menlo', monospace;
+
+	/* Wide content column. */
+	--sl-content-width: 80rem;
+	--sl-line-height-headings: 1.2;
+
+	/* Wave brand accent (cyan-teal). Dark-mode defaults; light overrides below. */
+	--sl-color-accent-low: #06303c;
+	--sl-color-accent: #0ab5ce;
+	--sl-color-accent-high: #1fc8e0;
+}
+
+/* ---- Dark theme (primary design target) ---- */
+:root[data-theme='dark'] {
+	/* Deep, slightly blue-tinted near-black surfaces. */
+	--sl-color-bg: #07080f;
+	--sl-color-bg-nav: color-mix(in oklab, #07080f 78%, transparent);
+	--sl-color-bg-sidebar: #090a13;
+	--sl-color-bg-inline-code: #161827;
+
+	--sl-color-black: #0a0b14;
+	--sl-color-gray-7: #0e0f1a;
+	--sl-color-gray-6: #121426;
+	--sl-color-gray-5: #2a2d40;
+	--sl-color-gray-4: #3b3f57;
+	--sl-color-gray-3: #7c8199;
+	--sl-color-gray-2: #b3b8cc;
+	--sl-color-gray-1: #e7e9f2;
+	--sl-color-white: #f7f8fc;
+
+	--sl-color-text: #c8ccdd;
+	--sl-color-text-accent: var(--sl-color-accent-high);
+
+	/* Hairlines: faint, cool. */
+	--sl-color-hairline: color-mix(in oklab, #ffffff 8%, transparent);
+	--sl-color-hairline-light: color-mix(in oklab, #ffffff 12%, transparent);
+	--sl-color-hairline-shade: color-mix(in oklab, #ffffff 5%, transparent);
+}
+
+/* ---- Light theme (functional, secondary): keep Starlight defaults + accent ---- */
+:root[data-theme='light'] {
+	/* On white, links/text must be wave-600+ for AA contrast (never 400/500). */
+	--sl-color-accent-low: #cff7fd;
+	--sl-color-accent: #0892ab;
+	--sl-color-accent-high: #0f5c6e;
+	--sl-color-text-accent: var(--sl-color-accent);
+	--sl-color-bg-inline-code: #eef0f8;
+}
+
+/* ---- Page background: faint grid + soft top glow (dark only), behind everything ---- */
+:root[data-theme='dark'] body::before {
+	content: '';
+	position: fixed;
+	/* Start below the 64px header so grid lines never bleed through the glass nav. */
+	inset: 72px 0 0 0;
+	z-index: -1;
+	pointer-events: none;
+	background-image:
+		linear-gradient(to right, color-mix(in oklab, #ffffff 3.5%, transparent) 1px, transparent 1px),
+		linear-gradient(to bottom, color-mix(in oklab, #ffffff 3.5%, transparent) 1px, transparent 1px);
+	background-size: 56px 56px;
+	mask-image: radial-gradient(ellipse 78% 65% at 50% 0%, #000 0%, transparent 72%);
+	-webkit-mask-image: radial-gradient(ellipse 78% 65% at 50% 0%, #000 0%, transparent 72%);
+}
+
+:root[data-theme='dark'] body::after {
+	content: '';
+	position: fixed;
+	inset-block-start: 0;
+	inset-inline: 0;
+	height: 36rem;
+	z-index: -1;
+	pointer-events: none;
+	background: radial-gradient(ellipse 70% 100% at 50% -20%, color-mix(in oklab, var(--sl-color-accent) 18%, transparent), transparent 70%);
+}
+
+/* The custom Hero owns its own background; neutralize Starlight's splash gradient. */
+.hero {
+	background: none;
+}
+
+/* ---- Typography ---- */
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3 {
+	letter-spacing: -0.015em;
+	font-weight: 650;
+	color: var(--sl-color-white);
+}
+
+.sl-markdown-content h2 {
+	margin-top: 2.4rem;
+	padding-bottom: 0.4rem;
+	border-bottom: 1px solid var(--sl-color-hairline-shade);
+}
+
+/* ---- Links in prose: accent + animated underline ---- */
+.sl-markdown-content a:not(:where(.not-content *)) {
+	text-decoration: none;
+	background-image: linear-gradient(var(--sl-color-text-accent), var(--sl-color-text-accent));
+	background-position: 0 100%;
+	background-repeat: no-repeat;
+	background-size: 0% 1.5px;
+	transition: background-size 0.2s ease;
+}
+
+.sl-markdown-content a:not(:where(.not-content *)):hover {
+	background-size: 100% 1.5px;
+	color: var(--sl-color-white);
+}
+
+/* ---- Cards / CardGrid ---- */
+.card {
+	border: 1px solid var(--sl-color-hairline);
+	border-radius: 0.8rem;
+	background: color-mix(in oklab, var(--sl-color-gray-6) 35%, transparent);
+	transition:
+		border-color 0.2s ease,
+		background 0.2s ease,
+		transform 0.2s ease;
+}
+
+.card:hover {
+	border-color: color-mix(in oklab, var(--sl-color-accent) 55%, var(--sl-color-hairline));
+	background: color-mix(in oklab, var(--sl-color-accent) 7%, var(--sl-color-gray-6));
+	transform: translateY(-2px);
+}
+
+.card .icon {
+	/* Starlight sizes the SVG at 1.333em of this font-size — bump it up. */
+	font-size: 1.85rem;
+	border: 1px solid var(--sl-color-hairline);
+	background: color-mix(in oklab, var(--sl-color-accent) 14%, transparent);
+	color: var(--sl-color-accent-high);
+	border-radius: 0.6rem;
+	padding: 0.32em;
+}
+
+.card .title {
+	color: var(--sl-color-white);
+	font-weight: 600;
+}
+
+/* ---- Header / nav ---- */
+.header {
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+}
+
+/* Center the search box in the middle column of the header. */
+@media (min-width: 50rem) {
+	.header > div:nth-child(2) {
+		justify-content: center;
+	}
+
+	.header site-search {
+		width: 100%;
+		display: none;
+		justify-content: center;
+	}
+
+	.header site-search button {
+		width: 100%;
+		max-width: 24rem;
+	}
+}
+
+/* ---- Sidebar ---- */
+.sidebar-content a {
+	border-radius: 0.4rem;
+	transition:
+		color 0.15s ease,
+		background 0.15s ease;
+}
+
+.sidebar-content a:hover {
+	background: color-mix(in oklab, var(--sl-color-gray-1) 8%, transparent);
+}
+
+.sidebar-content a[aria-current='page'],
+.sidebar-content a[aria-current='page']:hover {
+	background: color-mix(in oklab, var(--sl-color-accent) 18%, transparent);
+	color: var(--sl-color-white);
+	font-weight: 600;
+}
+
+/* Group headings in the sidebar read as mono labels. */
+.sidebar-content summary .large,
+summary.group-label .large {
+	font-family: var(--sl-font-mono);
+	font-size: var(--sl-text-xs);
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--sl-color-gray-3);
+}
+
+/* ---- Inline code ---- */
+.sl-markdown-content code:not(:where(.not-content *)) {
+	border: 1px solid var(--sl-color-hairline);
+	border-radius: 0.35rem;
+	padding: 0.15em 0.4em;
+	font-size: 0.875em;
+	color: var(--sl-color-text-accent);
+}
+
+/* ---- Tables ---- */
+.sl-markdown-content th {
+	color: var(--sl-color-white);
+	border-bottom-color: var(--sl-color-hairline-light);
+}
+
+.sl-markdown-content tr:nth-child(2n) {
+	background: color-mix(in oklab, var(--sl-color-gray-1) 4%, transparent);
+}
+
+/* ---- Blockquotes / asides keep an accent edge ---- */
+.sl-markdown-content blockquote {
+	border-inline-start-color: var(--sl-color-accent);
+}

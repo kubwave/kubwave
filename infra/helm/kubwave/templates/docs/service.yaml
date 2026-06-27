@@ -1,0 +1,17 @@
+{{- $docs := .Values.docs | default dict -}}
+{{- if $docs.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: docs
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "docs") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "kubwave.selectorLabels" (dict "component" "docs") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $docs.port }}
+      targetPort: http
+{{- end }}

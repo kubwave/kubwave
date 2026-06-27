@@ -1,0 +1,18 @@
+{{- if .Values.certManager.clusterIssuer.create }}
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: {{ .Values.certManager.clusterIssuer.name }}
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "cert-manager") | nindent 4 }}
+spec:
+  acme:
+    server: {{ .Values.certManager.clusterIssuer.server }}
+    email: {{ required "certManager.clusterIssuer.email is required when create=true" .Values.certManager.clusterIssuer.email | quote }}
+    privateKeySecretRef:
+      name: {{ .Values.certManager.clusterIssuer.privateKeySecret }}
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: {{ .Values.certManager.clusterIssuer.solverIngressClass }}
+{{- end }}

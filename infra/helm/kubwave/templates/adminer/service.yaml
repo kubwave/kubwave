@@ -1,0 +1,17 @@
+{{- $adminer := .Values.adminer | default dict -}}
+{{- if $adminer.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: adminer
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "adminer") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "kubwave.selectorLabels" (dict "component" "adminer") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $adminer.port }}
+      targetPort: http
+{{- end }}

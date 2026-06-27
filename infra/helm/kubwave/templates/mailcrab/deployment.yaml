@@ -1,0 +1,34 @@
+{{- $mailcrab := .Values.mailcrab | default dict -}}
+{{- if $mailcrab.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mailcrab
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "mailcrab") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kubwave.selectorLabels" (dict "component" "mailcrab") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kubwave.labels" (dict "root" $ "component" "mailcrab") | nindent 8 }}
+    spec:
+      {{- with $mailcrab.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: mailcrab
+          image: "{{ $mailcrab.image.repository }}:{{ $mailcrab.image.tag }}"
+          imagePullPolicy: {{ $mailcrab.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $mailcrab.httpPort }}
+            - name: smtp
+              containerPort: {{ $mailcrab.smtpPort }}
+          resources:
+            {{- toYaml $mailcrab.resources | nindent 12 }}
+{{- end }}

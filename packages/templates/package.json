@@ -1,0 +1,35 @@
+{
+	"name": "@kubwave/templates",
+	"version": "0.0.0",
+	"description": "kubwave service template catalog (source + build).",
+	"private": true,
+	"author": "KinTex",
+	"license": "Apache-2.0",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/kubwave/kubwave.git",
+		"directory": "packages/templates"
+	},
+	"bugs": {
+		"url": "https://github.com/kubwave/kubwave/issues"
+	},
+	"homepage": "https://github.com/kubwave/kubwave/tree/main/packages/templates",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"build:catalog": "bun run src/build-catalog.ts",
+		"check:catalog": "bun run src/build-catalog.ts --check",
+		"check-types": "tsc --noEmit",
+		"test": "bun test --isolate test"
+	},
+	"dependencies": {
+		"zod": "^4.4.3"
+	},
+	"devDependencies": {
+		"@types/bun": "^1.3.14",
+		"typescript": "^6.0.3",
+		"yaml": "^2.9.0"
+	}
+}

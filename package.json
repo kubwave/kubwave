@@ -1,0 +1,40 @@
+{
+	"name": "kubwave",
+	"description": "Open-source, self-hosted PaaS control plane for Kubernetes.",
+	"private": true,
+	"author": "KinTex",
+	"license": "Apache-2.0",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/kubwave/kubwave.git"
+	},
+	"bugs": {
+		"url": "https://github.com/kubwave/kubwave/issues"
+	},
+	"homepage": "https://kubwave.com",
+	"engines": {
+		"node": ">=24"
+	},
+	"packageManager": "bun@1.3.14",
+	"scripts": {
+		"build": "turbo run build",
+		"dev": "./scripts/dev.sh",
+		"dev:local": "turbo run dev",
+		"lint": "oxlint --deny-warnings apps packages",
+		"test": "turbo run test",
+		"test:coverage": "turbo run test:coverage",
+		"format": "prettier --write \"**/*.{ts,tsx,js,mjs,vue,json,md,yaml,yml,mdx,css}\"",
+		"format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,vue,json,md,yaml,yml,mdx,css}\"",
+		"check-types": "turbo run check-types"
+	},
+	"devDependencies": {
+		"oxlint": "^1.69.0",
+		"prettier": "^3.7.4",
+		"turbo": "^2.9.14",
+		"typescript": "^6.0.3"
+	},
+	"workspaces": [
+		"apps/*",
+		"packages/*"
+	]
+}

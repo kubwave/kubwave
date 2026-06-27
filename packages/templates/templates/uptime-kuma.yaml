@@ -1,0 +1,25 @@
+id: uptime-kuma
+name: Uptime Kuma
+description: Self-hosted monitoring tool with a fancy status page.
+category: monitoring
+tags: [monitoring, status-page, uptime]
+logo: uptime-kuma.svg
+documentation: https://github.com/louislam/uptime-kuma
+schemaVersion: 1
+version: 1
+inputs: []
+secrets: []
+services:
+  - name: uptime-kuma
+    primary: true
+    type: docker-image
+    config:
+      image: louislam/uptime-kuma
+      tag: '1'
+      containerPort: 3001
+      defaultDomainEnabled: true
+      env: []
+      secrets: []
+      domains: []
+      volumes:
+        - { name: data, mountPath: /app/data, size: 1Gi }

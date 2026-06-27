@@ -1,0 +1,186 @@
+# verify-install.yml — PR gate that runs the SAME install/self-update verification as
+# the release `verify` job, but at PR time instead of release time. It builds the four
+# images + the chart, then runs the shared composite (.github/actions/verify-install)
+# against a fresh kind cluster.
+#
+# Path-filtered so PRs that don't touch the chart or app source skip the (expensive)
+# image builds. workflow_dispatch is provided for manual re-runs. Make this a required
+# status check to block merging a PR that breaks a fresh install or the self-update.
+#
+name: Verify install
+
+on:
+  #pull_request:
+  #  paths:
+  #    - 'infra/helm/**'
+  #    - 'apps/backend/**'
+  #    - 'apps/build-tools/**'
+  #    - 'apps/cli/**'
+  #    - 'apps/console/**'
+  #    - 'packages/**'
+  #    - 'package.json'
+  #    - 'bun.lock'
+  #    - '.github/workflows/verify-install.yml'
+  #    - '.github/workflows/verify-install-skip.yml'
+  #    - '.github/actions/verify-install/**'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: verify-install-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_PREFIX: ghcr.io/kubwave
+  # Keep in sync with HELM_VERSION in release.yml.
+  HELM_VERSION: '3.16.4'
+  KIND_VERSION: 'v0.31.0'
+  KIND_NODE_IMAGE: 'kindest/node:v1.31.0'
+  KUBECTL_VERSION: 'v1.31.0'
+  # Placeholder version for PR builds (never published). Valid SemVer so `helm package`
+  # accepts it as the chart version, and a valid image tag.
+  CI_VERSION: '0.0.0-ci'
+
+jobs:
+  build-images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    # Suppress the *.dockerbuild build-record artifact (UI-only blob) — same
+    # rationale as in release.yml.
+    env:
+      DOCKER_BUILD_RECORD_UPLOAD: false
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - app: backend
+            dockerfile: apps/backend/Dockerfile
+          - app: console
+            dockerfile: apps/console/Dockerfile
+          - app: build-tools
+            dockerfile: apps/build-tools/Dockerfile
+          - app: cli
+            dockerfile: apps/cli/Dockerfile
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build image (no push)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: false
+          platforms: linux/amd64
+          target: prod
+          build-args: |
+            KUBWAVE_VERSION=${{ env.CI_VERSION }}
+            TURBO_TEAM=${{ vars.TURBO_TEAM }}
+            TURBO_API=${{ vars.TURBO_API }}
+          secrets: |
+            turbo_token=${{ secrets.TURBO_TOKEN }}
+          tags: ${{ env.IMAGE_PREFIX }}/${{ matrix.app }}:${{ env.CI_VERSION }}
+          outputs: type=docker,dest=/tmp/image-${{ matrix.app }}.tar
+          cache-from: type=gha,scope=verify-install-${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=verify-install-${{ matrix.app }}
+
+      - name: Upload image tarball
+        uses: actions/upload-artifact@v7
+        with:
+          name: image-${{ matrix.app }}
+          path: /tmp/image-${{ matrix.app }}.tar
+          retention-days: 1
+
+  build-chart:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Helm
+        uses: azure/setup-helm@v5
+        with:
+          version: v${{ env.HELM_VERSION }}
+
+      - name: Patch + package chart
+        run: |
+          sed -i "s/^version:.*/version: ${CI_VERSION}/" infra/helm/kubwave/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: '${CI_VERSION}'/" infra/helm/kubwave/Chart.yaml
+          helm package infra/helm/kubwave --destination .
+          ls -lh "kubwave-${CI_VERSION}.tgz"
+
+      - name: Upload chart tarball
+        uses: actions/upload-artifact@v7
+        with:
+          name: chart-tarball
+          path: kubwave-${{ env.CI_VERSION }}.tgz
+          retention-days: 1
+
+  verify:
+    needs: [build-images, build-chart]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: /tmp/artifacts
+          merge-multiple: false
+
+      - name: Stage images + chart
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/images
+          cp /tmp/artifacts/image-*/*.tar /tmp/images/
+          cp /tmp/artifacts/chart-tarball/*.tgz .
+
+      - name: Verify install + self-update
+        uses: ./.github/actions/verify-install
+        with:
+          version: ${{ env.CI_VERSION }}
+          image-prefix: ${{ env.IMAGE_PREFIX }}
+          helm-version: ${{ env.HELM_VERSION }}
+          kind-version: ${{ env.KIND_VERSION }}
+          kind-node-image: ${{ env.KIND_NODE_IMAGE }}
+          kubectl-version: ${{ env.KUBECTL_VERSION }}
+
+      - name: Delete temporary build artifacts
+        uses: actions/github-script@v9
+        with:
+          script: |
+            try {
+              const temporaryArtifactNames = new Set([
+                'image-backend',
+                'image-console',
+                'image-cli',
+                'chart-tarball',
+              ]);
+
+              const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: context.runId,
+              });
+
+              for (const artifact of artifacts) {
+                if (!temporaryArtifactNames.has(artifact.name)) {
+                  continue;
+                }
+
+                await github.rest.actions.deleteArtifact({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  artifact_id: artifact.id,
+                });
+                core.info(`Deleted ${artifact.name} artifact ${artifact.id}.`);
+              }
+            } catch (error) {
+              core.warning(`Could not delete temporary build artifacts: ${error.message}`);
+            }

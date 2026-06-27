@@ -1,0 +1,141 @@
+{{- if .Values.update.serviceAccount.create }}
+{{- $dependenciesAuto := eq (default "disabled" .Values.update.dependencies.mode) "auto" -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Values.update.serviceAccount.name }}
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "updater") | nindent 4 }}
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: [""]
+    resources: ["services", "configmaps", "secrets", "serviceaccounts", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: ["traefik.io"]
+    resources: ["middlewares"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete", "bind", "escalate"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list"]
+  # The chart ships HA PodDisruptionBudgets (when ha.enabled) and the CloudNativePG
+  # `Cluster` CR — the self-update `helm upgrade` must be able to apply/roll back both.
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: ["postgresql.cnpg.io"]
+    resources: ["clusters"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Values.update.serviceAccount.name }}
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "updater") | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ .Values.update.serviceAccount.name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.update.serviceAccount.name }}
+    namespace: {{ .Release.Namespace }}
+---
+# Cluster-scoped app resources rendered by this chart. Helm needs these even
+# when dependency auto-repair is disabled; otherwise self-update cannot read or
+# update the api/worker workloads ClusterRoles during upgrade/atomic rollback.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Values.update.serviceAccount.name }}-app
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "updater") | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch", "create", "patch", "update"]
+  - apiGroups: ["cert-manager.io"]
+    resources: ["clusterissuers"]
+    verbs: ["get", "list", "watch", "create", "patch", "update"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles", "clusterrolebindings"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete", "bind", "escalate"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Values.update.serviceAccount.name }}-app
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "updater") | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Values.update.serviceAccount.name }}-app
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.update.serviceAccount.name }}
+    namespace: {{ .Release.Namespace }}
+{{- if $dependenciesAuto }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Values.update.serviceAccount.name }}-dependencies
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "updater") | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "services", "configmaps", "secrets", "serviceaccounts", "pods"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "daemonsets", "replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "ingressclasses"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["mutatingwebhookconfigurations", "validatingwebhookconfigurations"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete", "bind", "escalate"]
+  - apiGroups: ["cert-manager.io"]
+    resources: ["clusterissuers"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: ["traefik.io"]
+    resources: ["middlewares"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Values.update.serviceAccount.name }}-dependencies
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "updater") | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Values.update.serviceAccount.name }}-dependencies
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.update.serviceAccount.name }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- end }}

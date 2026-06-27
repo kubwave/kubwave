@@ -1,0 +1,142 @@
+---
+title: Quickstart
+description: Install kubwave on a Kubernetes cluster and open the console — in three steps.
+---
+
+import { Steps, Tabs, TabItem, Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+Stand up the platform in three steps: **install the CLI**, **run the installer** against your
+kubeconfig, and **open the console**. On a ready cluster this takes a few minutes.
+
+## Prerequisites
+
+- A **Kubernetes cluster (v1.27+)** you can reach with `kubectl`.
+- A **kubeconfig** whose current context points at that cluster with **cluster-admin** rights.
+- A **domain** you can point at the cluster's load balancer (e.g. `app.example.com`).
+- **Outbound HTTPS** from the cluster (for Let's Encrypt and pulling platform images).
+
+## Cluster size
+
+kubwave can install on a small single-node cluster, but the cluster must also have room for your
+apps, builds, and persistent volumes.
+
+| Profile         | Nodes         | Per-node capacity    | Platform storage    | Best for                                      |
+| --------------- | ------------- | -------------------- | ------------------- | --------------------------------------------- |
+| **Minimum**     | 1 Ready node  | 2 vCPU, 4 GiB memory | 60 GiB PVC capacity | Evaluation, light staging, one small service. |
+| **Recommended** | 3 Ready nodes | 2 vCPU, 8 GiB memory | 80 GiB PVC capacity | Production with `--ha` and regular builds.    |
+
+The storage numbers cover the platform defaults: the in-cluster registry (`50Gi`) and Postgres
+(`10Gi` per instance — ×3 under `--ha`). Tenant service volumes are extra. A Dockerfile or Git build
+reserves `1Gi` memory and can use up to `2Gi`, so increase node memory for concurrent or heavy builds.
+
+<Aside type="tip" title="No cluster yet?">
+	The first-class platform today is [Cloudfleet on Hetzner](https://cloudfleet.ai). See the [supported providers](/start/supported-providers/) list
+	for current, upcoming, and planned platform targets. Provider selection is cluster-wide: one kubwave cluster uses exactly one provider profile.
+</Aside>
+
+## 1. Install the CLI
+
+<Tabs>
+  <TabItem label="curl">
+
+```sh
+curl -fsSL https://get.kubwave.com | sh
+```
+
+Installs the latest binary for your OS/arch into `~/.local/bin`, then launches `kubwave install` for you — so you go straight into the prompts in step 2. Make sure `~/.local/bin` is on your `PATH`.
+
+  </TabItem>
+  <TabItem label="Manual">
+
+Download the binary for your platform from the [releases page](https://github.com/kubwave/kubwave/releases), then:
+
+```sh
+chmod +x kubwave-*
+sudo mv kubwave-* /usr/local/bin/kubwave
+```
+
+  </TabItem>
+</Tabs>
+
+Confirm it runs:
+
+```sh
+kubwave --version
+```
+
+## 2. Run the installer
+
+If you installed manually, start the installer now (the curl script already launched it for you):
+
+```sh
+kubwave install
+```
+
+The CLI checks that your cluster is reachable, then walks you through:
+
+<Steps>
+
+1. **Pick a platform.** Choose your target from the [supported providers](/start/supported-providers/) list. Today the CLI ships
+   **Cloudfleet (Hetzner)** defaults, which set the right load-balancer and storage settings.
+
+2. **Install dependencies.** If **Traefik** (ingress) or **cert-manager** (TLS) aren't present, the
+   installer offers to install them. If your cluster has no default `StorageClass`, it offers to
+   install the platform's CSI driver.
+
+3. **Set the console domain.** The host the console and API will live on, e.g. `app.example.com`
+   (the API is served same-origin under `/api`).
+
+4. **Set the ACME email.** Used by cert-manager to request Let's Encrypt certificates.
+
+5. **Confirm the cluster** and let it run. The CLI renders the Helm chart and applies it with
+   `helm upgrade --install … --wait`.
+
+</Steps>
+
+Prefer a non-interactive run? Pass the answers as flags:
+
+```sh
+kubwave install \
+  --platform cloudfleet-hetzner \
+  --hetzner-lb-location nbg1 \
+  --domain app.example.com \
+  --email ops@example.com
+```
+
+When it finishes you'll see:
+
+```ansi frame="terminal"
+◇  kubwave v0.1.0 (stable channel) installed successfully on Cloudfleet (Hetzner)!
+│  Open https://app.example.com to create the first admin account.
+└  Installation complete
+```
+
+<Aside type="caution" title="Point your DNS">
+	Create an `A` record for your domain pointing at the cluster's load-balancer IP. cert-manager issues the TLS certificate within a minute or so once
+	DNS resolves.
+</Aside>
+
+## 3. Open the console
+
+Open your console URL in a browser:
+
+```
+https://app.example.com
+```
+
+The first visit prompts you to **create the admin account** — no credentials are printed by the
+installer. From there you can:
+
+<Steps>
+
+1. Create a **Project** and an **Environment** (e.g. `production`).
+2. Add a **Service** — point it at a container image or paste a Dockerfile to build in-cluster.
+3. Set env vars, secrets, resources, and a domain, then deploy. The worker rolls it out and streams
+   the build and runtime logs.
+
+</Steps>
+
+<Aside type="note" title="Isolation depends on your CNI">
+	Each environment gets a default-deny NetworkPolicy. On a CNI that doesn't enforce NetworkPolicy (such as Flannel in k3d), the policy is created but
+	not enforced — use a policy-aware CNI in production.
+</Aside>

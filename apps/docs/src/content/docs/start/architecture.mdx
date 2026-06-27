@@ -1,0 +1,129 @@
+---
+title: Architecture
+description: How kubwave is built — the three runtime workloads, tenant isolation, and how the pieces fit together.
+---
+
+import { Aside, LinkCard } from '@astrojs/starlight/components';
+
+kubwave is a **Bun-managed Turborepo monorepo** that deploys as three decoupled workloads
+onto Kubernetes, managed through a single Helm chart. This page covers the
+platform's internal architecture — what runs where, how the pieces communicate,
+and how tenant workloads are isolated.
+
+## The three runtime workloads
+
+<Aside type="tip">
+	Every workload is a standalone container with its own Deployment, ServiceAccount, and RBAC scope. No shared volumes, no shared credentials beyond
+	what the Helm chart explicitly wires.
+</Aside>
+
+### API — NestJS backend on Node 24
+
+The API is the **auth authority** and the single source of truth for platform state.
+It runs from the `apps/backend` API entrypoint with NestJS and the Fastify adapter,
+validating DTOs and publishing OpenAPI for generated clients.
+
+- **Port:** 3001 (internally; exposed same-origin under `/api` by the ingress)
+- **Database:** Direct Postgres access via Drizzle ORM. Runs DB migrations on boot.
+- **Auth:** Mints short-lived JWT access tokens (default 15 min) + opaque refresh
+  tokens (HttpOnly cookie). The API is the only service that holds `JWT_SECRET`.
+- **RBAC:** Read-only — never creates Kubernetes workloads or Jobs. Tenant workload
+  orchestration is the Worker's job.
+- **Secrets:** Encrypts per-service secrets via `@kubwave/crypto` (AES-256-GCM) before
+  persisting them to the database.
+
+### Console — Nuxt 4 + Nitro
+
+The Console is the browser-facing UI, served as a Nuxt 4 application running on
+[Nitro](https://nitro.build) in SSR mode.
+
+- **Port:** 3000 (internally; exposed at `/` by the ingress)
+- **Client:** Uses TanStack Vue Query v5 with `@kubwave/api-client`, generated from
+  the backend OpenAPI document. Access tokens stay in memory — never in cookies or
+  `localStorage`.
+- **SSR:** The Nitro server authenticates via the refresh-token cookie, fetches data
+  server-side, and dehydrates the Vue Query cache into the rendered page.
+- **No database access, no JWT secret.** The Console is a pure API consumer.
+
+### Worker — NestJS application context
+
+The Worker is the platform's **control loop**. It runs continuously, claiming pending
+operations and converging tenant workloads toward their desired state.
+
+- **Reconcile:** `FOR UPDATE SKIP LOCKED` on the database, leases operations by
+  Worker ID, and dispatches them to type-specific deployers. HA-safe: multiple
+  replicas share the work without conflict.
+- **Self-update:** Polls for new platform releases and creates in-cluster Kubernetes
+  Jobs that run `helm upgrade` — the platform upgrades itself.
+- **Tenant isolation:** Provisions one namespace per environment
+  (`kubwave-env-<id>`) with NetworkPolicy rules that block cross-environment traffic.
+- **RBAC:** Read-write — creates and manages all tenant Kubernetes resources
+  (Deployments, Services, Ingresses, PVCs, Secrets, HPAs).
+- **Builds:** Creates BuildKit Jobs for Dockerfile/source service types and tracks build
+  completion.
+
+## How a deployment works
+
+<Aside type="note">
+	This is the "happy path" for deploying a service from a Git repo. The full picture is in the [Deploy a service](/guides/deploy-a-service/) guide.
+</Aside>
+
+1. You create a service in the Console → the API validates and persists the spec to Postgres.
+2. The API enqueues a pending reconcile operation.
+3. The Worker's reconcile loop picks it up, clones the repo, detects the build method
+   (Dockerfile or buildpack), creates a BuildKit build Job, and waits for the image.
+4. Once built, the Worker pushes the image to the in-cluster registry, then converges
+   the runtime: creates the namespace, Secret (with decrypted env vars), Deployment,
+   Service, and Ingress.
+5. The Worker reports the deployment status back to the database.
+6. The Console polls the API and shows the live deployment.
+
+## The Helm chart
+
+`infra/helm/kubwave` is the **single source of truth** for what lands in your cluster.
+It renders every Kubernetes manifest the platform needs — the three workloads, Postgres
+(via CloudNativePG or a dev StatefulSet), the container registry, cert-manager, and
+Prometheus (optional).
+
+- **Dev profile** (`values.yaml`) uses `pullPolicy: Never` and tag `dev`. Never
+  deploy to production.
+- **Production profiles** (`values-cloudfleet-hetzner.yaml`) layer provider-specific
+  overrides — storage class, node selectors, hardened security contexts.
+- The CLI injects the production image references and generates random secrets at
+  install time.
+
+See the [Helm chart reference](/reference/helm-chart/) for all values.
+
+## Tenant isolation
+
+Every environment is a separate Kubernetes namespace with a `NetworkPolicy` that
+denies all ingress from other namespaces. This means:
+
+- **No cross-environment traffic** — services in `staging` cannot reach services in
+  `production` by default.
+- **Scoped RBAC** — the Worker's ServiceAccount has namespace-scoped permissions;
+  no wildcard cluster access.
+- **Per-environment resource limits** — you can cap CPU and memory per environment
+  from the admin settings.
+
+## The CLI
+
+The `kubwave` CLI is a **single, self-contained binary** (Bun-compiled) with the
+Helm binary and the platform chart embedded. It installs the platform onto a
+Kubernetes cluster, manages upgrades, and reports platform status.
+
+```sh
+kubwave install               # interactive
+kubwave install --domain ...  # non-interactive
+kubwave update                # upgrade the platform in-place
+kubwave status                # health and version info
+```
+
+See the [CLI reference](/reference/cli/) for every command and flag.
+
+## What kubwave is not
+
+- **Not a Kubernetes distribution.** It does not provision nodes or install a CNI.
+- **Not a managed cloud.** You bring the cluster; kubwave runs on it.
+- **Not a generic CI/CD system.** It builds services from Git repos, but only the
+  build step — it is not a pipeline orchestrator.

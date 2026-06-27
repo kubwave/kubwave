@@ -1,0 +1,19 @@
+{{- if eq .Values.postgres.mode "statefulset" }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.postgres.storage.pvcName }}
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "postgres") | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- with .Values.postgres.storage.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.postgres.storage.size }}
+{{- end }}

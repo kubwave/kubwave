@@ -1,0 +1,4772 @@
+{
+	"openapi": "3.0.0",
+	"paths": {
+		"/api/health": {
+			"get": {
+				"operationId": "healthGet",
+				"parameters": [
+					{
+						"name": "verbose",
+						"required": false,
+						"in": "query",
+						"schema": {
+							"enum": ["true", "false"],
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Service health and uptime.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HealthResponseDto"
+								}
+							}
+						}
+					}
+				},
+				"summary": "Health check",
+				"tags": ["health"]
+			}
+		},
+		"/api/auth/login": {
+			"post": {
+				"operationId": "authLogin",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/LoginRequestDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/LoginResponseDto"
+								}
+							}
+						}
+					}
+				},
+				"summary": "Log in with email and password",
+				"tags": ["auth"]
+			}
+		},
+		"/api/auth/logout": {
+			"post": {
+				"operationId": "authLogout",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Log out and revoke the current refresh token",
+				"tags": ["auth"]
+			}
+		},
+		"/api/auth/refresh": {
+			"post": {
+				"operationId": "authRefresh",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/RefreshResponseDto"
+								}
+							}
+						}
+					}
+				},
+				"summary": "Rotate refresh token and issue a new access token",
+				"tags": ["auth"]
+			}
+		},
+		"/api/auth/session": {
+			"get": {
+				"operationId": "authSession",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SessionResponseDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get the current session user",
+				"tags": ["auth"]
+			}
+		},
+		"/api/teams": {
+			"get": {
+				"operationId": "teamsList",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/TeamStateDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "List teams and resolve active team",
+				"tags": ["teams"]
+			},
+			"post": {
+				"operationId": "teamsCreate",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateTeamDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/TeamDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Create a team",
+				"tags": ["teams"]
+			}
+		},
+		"/api/teams/active": {
+			"put": {
+				"operationId": "teamsSetActive",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/SetActiveTeamDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ActiveTeamResponseDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Set active team",
+				"tags": ["teams"]
+			}
+		},
+		"/api/teams/{teamId}": {
+			"patch": {
+				"operationId": "teamsRename",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/RenameTeamDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/TeamDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Rename a team",
+				"tags": ["teams"]
+			},
+			"delete": {
+				"operationId": "teamsDelete",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/OkDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Delete a team",
+				"tags": ["teams"]
+			}
+		},
+		"/api/teams/{teamId}/members": {
+			"get": {
+				"operationId": "teamMembersList",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/TeamMemberDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "List team members",
+				"tags": ["teams"]
+			},
+			"post": {
+				"operationId": "teamMembersAdd",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/AddMemberDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/TeamMemberDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Add a team member",
+				"tags": ["teams"]
+			}
+		},
+		"/api/teams/{teamId}/members/{userId}": {
+			"patch": {
+				"operationId": "teamMembersUpdateRole",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "userId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateMemberRoleDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/TeamMemberDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Update team member role",
+				"tags": ["teams"]
+			},
+			"delete": {
+				"operationId": "teamMembersRemove",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "userId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/OkDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Remove a team member",
+				"tags": ["teams"]
+			}
+		},
+		"/api/teams/{teamId}/ssh-keys": {
+			"get": {
+				"operationId": "teamSshKeysList",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/SshKeyDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "List team SSH keys",
+				"tags": ["teams"]
+			},
+			"post": {
+				"operationId": "teamSshKeysCreate",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateSshKeyDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SshKeyDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Create a team SSH key",
+				"tags": ["teams"]
+			}
+		},
+		"/api/teams/{teamId}/ssh-keys/{keyId}": {
+			"delete": {
+				"operationId": "teamSshKeysDelete",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "keyId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SshKeyOkDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Delete a team SSH key",
+				"tags": ["teams"]
+			}
+		},
+		"/api/setup/status": {
+			"get": {
+				"operationId": "setupStatus",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SetupStatusResponseDto"
+								}
+							}
+						}
+					}
+				},
+				"summary": "Get setup status",
+				"tags": ["setup"]
+			}
+		},
+		"/api/setup/initialize": {
+			"post": {
+				"operationId": "setupInitialize",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/SetupInitializeRequestDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SetupInitializeResponseDto"
+								}
+							}
+						}
+					}
+				},
+				"summary": "Create the first admin account",
+				"tags": ["setup"]
+			}
+		},
+		"/api/teams/{teamId}/projects": {
+			"get": {
+				"operationId": "teamProjectsList",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/ProjectListItemDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "List projects for a team",
+				"tags": ["projects"]
+			},
+			"post": {
+				"operationId": "teamProjectsCreate",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateProjectDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectDetailDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Create a project in a team",
+				"tags": ["projects"]
+			}
+		},
+		"/api/projects/{projectId}": {
+			"get": {
+				"operationId": "projectsGet",
+				"parameters": [
+					{
+						"name": "projectId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectDetailDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get project details",
+				"tags": ["projects"]
+			},
+			"patch": {
+				"operationId": "projectsUpdate",
+				"parameters": [
+					{
+						"name": "projectId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateProjectDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectDetailDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Update a project",
+				"tags": ["projects"]
+			},
+			"delete": {
+				"operationId": "projectsDelete",
+				"parameters": [
+					{
+						"name": "projectId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectOkDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Delete a project",
+				"tags": ["projects"]
+			}
+		},
+		"/api/projects/{projectId}/pr-previews": {
+			"patch": {
+				"operationId": "projectsSetPrPreviews",
+				"parameters": [
+					{
+						"name": "projectId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateProjectPrPreviewsDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectDetailDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Update PR preview base environment",
+				"tags": ["projects"]
+			}
+		},
+		"/api/projects/{projectId}/environments": {
+			"post": {
+				"operationId": "projectEnvironmentsCreate",
+				"parameters": [
+					{
+						"name": "projectId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateEnvironmentDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/EnvironmentDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Create an environment in a project",
+				"tags": ["environments"]
+			}
+		},
+		"/api/environments/{environmentId}": {
+			"patch": {
+				"operationId": "environmentsUpdate",
+				"parameters": [
+					{
+						"name": "environmentId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateEnvironmentDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/EnvironmentDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Update an environment",
+				"tags": ["environments"]
+			},
+			"delete": {
+				"operationId": "environmentsDelete",
+				"parameters": [
+					{
+						"name": "environmentId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/EnvironmentOkDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Delete an environment",
+				"tags": ["environments"]
+			}
+		},
+		"/api/environments/{environmentId}/flow-layout": {
+			"get": {
+				"operationId": "environmentFlowLayoutGet",
+				"parameters": [
+					{
+						"name": "environmentId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/FlowLayoutDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get persisted service node positions",
+				"tags": ["environments"]
+			}
+		},
+		"/api/environments/{environmentId}/flow-layout/nodes/{serviceId}": {
+			"patch": {
+				"operationId": "environmentFlowLayoutNodeUpdate",
+				"parameters": [
+					{
+						"name": "environmentId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "serviceId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateFlowLayoutNodeDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/FlowLayoutNodeDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Update a service node position",
+				"tags": ["environments"]
+			}
+		},
+		"/api/environments/{environmentId}/services": {
+			"get": {
+				"operationId": "environmentServicesList",
+				"parameters": [
+					{
+						"name": "environmentId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/ServiceViewDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "List services in an environment",
+				"tags": ["services"]
+			},
+			"post": {
+				"operationId": "environmentServicesCreate",
+				"parameters": [
+					{
+						"name": "environmentId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateServiceDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ServiceViewDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Create a service in an environment",
+				"tags": ["services"]
+			}
+		},
+		"/api/services/{serviceId}": {
+			"get": {
+				"operationId": "servicesGet",
+				"parameters": [
+					{
+						"name": "serviceId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ServiceViewDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get service details",
+				"tags": ["services"]
+			},
+			"patch": {
+				"operationId": "servicesUpdate",
+				"parameters": [
+					{
+						"name": "serviceId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateServiceDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ServiceViewDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Update a service",
+				"tags": ["services"]
+			},
+			"delete": {
+				"operationId": "servicesDelete",
+				"parameters": [
+					{
+						"name": "serviceId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ServiceOkDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Delete a service",
+				"tags": ["services"]
+			}
+		},
+		"/api/services/{serviceId}/connection": {
+			"get": {
+				"operationId": "servicesConnectionGet",
+				"parameters": [
+					{
+						"name": "serviceId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ServiceConnectionDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get managed database connection details",
+				"tags": ["services"]
+			}
+		},
+		"/api/services/{serviceId}/status": {
+			"get": {
+				"operationId": "serviceStatusGet",
+				"parameters": [
+					{
+						"name": "serviceId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ServiceRuntimeDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get live service runtime status",
+				"tags": ["services"]
+			}
+		},
+		"/api/environments/{environmentId}/services/status": {
+			"get": {
+				"operationId": "environmentServiceStatusList",
+				"parameters": [
+					{
+						"name": "environmentId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/ServiceRuntimeEntryDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "List live runtime status for services in an environment",
+				"tags": ["services"]
+			}
+		},
+		"/api/services/{serviceId}/logs": {
+			"get": {
+				"operationId": "serviceLogsGet",
+				"parameters": [
+					{
+						"name": "tailLines",
+						"required": false,
+						"in": "query",
+						"schema": {
+							"type": "number"
+						}
+					},
+					{
+						"name": "pod",
+						"required": false,
+						"in": "query",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "serviceId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ServiceLogsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get recent container logs for a service",
+				"tags": ["services"]
+			}
+		},
+		"/api/environments/{environmentId}/services/compose": {
+			"post": {
+				"operationId": "environmentServicesComposeCreate",
+				"parameters": [
+					{
+						"name": "environmentId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateComposeServicesDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/ServiceViewDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Import services from Docker Compose",
+				"tags": ["environments"]
+			}
+		},
+		"/api/services/{serviceId}/metrics": {
+			"get": {
+				"operationId": "serviceMetricsGet",
+				"parameters": [
+					{
+						"name": "range",
+						"required": false,
+						"in": "query",
+						"schema": {
+							"enum": ["1h", "24h", "7d"],
+							"type": "string"
+						}
+					},
+					{
+						"name": "serviceId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ServiceMetricsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get service CPU, memory, network, and PVC metrics",
+				"tags": ["services"]
+			}
+		},
+		"/api/services/{serviceId}/deployments": {
+			"get": {
+				"operationId": "serviceDeploymentsList",
+				"parameters": [
+					{
+						"name": "serviceId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/DeploymentViewDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "List deployment history for a service",
+				"tags": ["deployments"]
+			},
+			"post": {
+				"operationId": "serviceDeploymentsEnqueue",
+				"parameters": [
+					{
+						"name": "serviceId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"201": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DeploymentViewDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Queue a deployment for a service",
+				"tags": ["deployments"]
+			}
+		},
+		"/api/deployments/{deploymentId}": {
+			"get": {
+				"operationId": "deploymentsGet",
+				"parameters": [
+					{
+						"name": "deploymentId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DeploymentViewDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get deployment details",
+				"tags": ["deployments"]
+			}
+		},
+		"/api/deployments/{deploymentId}/logs": {
+			"get": {
+				"operationId": "deploymentLogsList",
+				"parameters": [
+					{
+						"name": "deploymentId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DeploymentEventLogsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "List deployment event logs",
+				"tags": ["deployments"]
+			}
+		},
+		"/api/deployments/{deploymentId}/build-logs": {
+			"get": {
+				"operationId": "deploymentBuildLogsGet",
+				"parameters": [
+					{
+						"name": "deploymentId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DeploymentBuildLogsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get deployment build logs",
+				"tags": ["deployments"]
+			}
+		},
+		"/api/deployments/{deploymentId}/cancel": {
+			"post": {
+				"operationId": "deploymentsCancel",
+				"parameters": [
+					{
+						"name": "deploymentId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DeploymentViewDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Cancel a deployment",
+				"tags": ["deployments"]
+			}
+		},
+		"/api/invitations": {
+			"get": {
+				"operationId": "invitationsList",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/InvitationDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "List invitations",
+				"tags": ["invitations"]
+			},
+			"post": {
+				"operationId": "invitationsCreate",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateInviteDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CreateInviteResultDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Create an invitation",
+				"tags": ["invitations"]
+			}
+		},
+		"/api/invitations/{id}": {
+			"delete": {
+				"operationId": "invitationsDelete",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InviteOkDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Revoke an invitation",
+				"tags": ["invitations"]
+			}
+		},
+		"/api/invitations/{id}/resend": {
+			"post": {
+				"operationId": "invitationsResend",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CreateInviteResultDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Resend an invitation",
+				"tags": ["invitations"]
+			}
+		},
+		"/api/invitations/{id}/validity": {
+			"get": {
+				"operationId": "invitationsValidity",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InviteValidityDto"
+								}
+							}
+						}
+					}
+				},
+				"summary": "Check invitation token validity",
+				"tags": ["invitations"]
+			}
+		},
+		"/api/invitations/{id}/accept": {
+			"post": {
+				"operationId": "invitationsAccept",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/AcceptInviteDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AcceptInviteResponseDto"
+								}
+							}
+						}
+					}
+				},
+				"summary": "Accept an invitation and log in",
+				"tags": ["invitations"]
+			}
+		},
+		"/api/platform/version": {
+			"get": {
+				"operationId": "platformVersionGet",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/PlatformVersionInfoDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get platform version metadata",
+				"tags": ["platform"]
+			}
+		},
+		"/api/platform/version/check": {
+			"post": {
+				"operationId": "platformVersionCheck",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/PlatformVersionCheckResultDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Check for platform updates",
+				"tags": ["platform"]
+			}
+		},
+		"/api/platform/users": {
+			"get": {
+				"operationId": "platformUsersList",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/PlatformUserDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "List platform users",
+				"tags": ["platform-users"]
+			}
+		},
+		"/api/platform/users/{id}": {
+			"patch": {
+				"operationId": "platformUsersUpdate",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdatePlatformUserDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/PlatformUserDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Update a platform user",
+				"tags": ["platform-users"]
+			},
+			"delete": {
+				"operationId": "platformUsersDelete",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/PlatformOkDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Delete a platform user",
+				"tags": ["platform-users"]
+			}
+		},
+		"/api/platform/settings/domain": {
+			"get": {
+				"operationId": "platformSettingsDomainGet",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DefaultDomainSettingsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get default-domain settings",
+				"tags": ["platform-settings"]
+			},
+			"put": {
+				"operationId": "platformSettingsDomainUpdate",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateDefaultDomainSettingsDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DefaultDomainSettingsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Update default-domain settings",
+				"tags": ["platform-settings"]
+			}
+		},
+		"/api/platform/settings/smtp": {
+			"get": {
+				"operationId": "platformSettingsSmtpGet",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SmtpSettingsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get SMTP settings",
+				"tags": ["platform-settings"]
+			},
+			"put": {
+				"operationId": "platformSettingsSmtpUpdate",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateSmtpSettingsDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SmtpSettingsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Update SMTP settings",
+				"tags": ["platform-settings"]
+			}
+		},
+		"/api/platform/settings/smtp/test": {
+			"post": {
+				"operationId": "platformSettingsSmtpTest",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/SmtpTestEmailDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SmtpTestResultDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Send a SMTP test email",
+				"tags": ["platform-settings"]
+			}
+		},
+		"/api/platform/settings/registry": {
+			"get": {
+				"operationId": "platformSettingsRegistryGet",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/RegistrySettingsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get build registry settings",
+				"tags": ["platform-settings"]
+			},
+			"put": {
+				"operationId": "platformSettingsRegistryUpdate",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"oneOf": [
+									{
+										"$ref": "#/components/schemas/PlatformRegistryModeDto"
+									},
+									{
+										"$ref": "#/components/schemas/ExternalRegistrySettingsDto"
+									}
+								],
+								"discriminator": {
+									"propertyName": "mode",
+									"mapping": {
+										"platform": "#/components/schemas/PlatformRegistryModeDto",
+										"external": "#/components/schemas/ExternalRegistrySettingsDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/RegistrySettingsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Update build registry settings",
+				"tags": ["platform-settings"]
+			}
+		},
+		"/api/platform/settings/metrics": {
+			"get": {
+				"operationId": "platformSettingsMetricsGet",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/MetricsSettingsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get metrics provider settings",
+				"tags": ["platform-settings"]
+			},
+			"put": {
+				"operationId": "platformSettingsMetricsUpdate",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateMetricsSettingsDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/MetricsSettingsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Update metrics provider settings",
+				"tags": ["platform-settings"]
+			}
+		},
+		"/api/platform/settings/pr-previews": {
+			"get": {
+				"operationId": "platformSettingsPrPreviewsGet",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/PrPreviewSettingsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get PR preview settings",
+				"tags": ["platform-settings"]
+			},
+			"put": {
+				"operationId": "platformSettingsPrPreviewsUpdate",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdatePrPreviewSettingsDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/PrPreviewSettingsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Update PR preview settings",
+				"tags": ["platform-settings"]
+			}
+		},
+		"/api/platform/settings/ha": {
+			"get": {
+				"operationId": "platformSettingsHaGet",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HaSettingsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get HA settings",
+				"tags": ["platform-settings"]
+			},
+			"put": {
+				"operationId": "platformSettingsHaUpdate",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateHaSettingsDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HaSettingsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Update HA settings",
+				"tags": ["platform-settings"]
+			}
+		},
+		"/api/platform/settings/deployment-concurrency": {
+			"get": {
+				"operationId": "platformSettingsDeploymentConcurrencyGet",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DeploymentConcurrencySettingsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get deployment concurrency settings",
+				"tags": ["platform-settings"]
+			},
+			"put": {
+				"operationId": "platformSettingsDeploymentConcurrencyUpdate",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateDeploymentConcurrencySettingsDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DeploymentConcurrencySettingsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Update deployment concurrency settings",
+				"tags": ["platform-settings"]
+			}
+		},
+		"/api/platform/settings/volume-autoscaling": {
+			"get": {
+				"operationId": "platformSettingsVolumeAutoscalingGet",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/VolumeAutoscalingSettingsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get platform volume autoscaling settings",
+				"tags": ["platform-settings"]
+			},
+			"put": {
+				"operationId": "platformSettingsVolumeAutoscalingUpdate",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/VolumeAutoscalingSettingsDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/VolumeAutoscalingSettingsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Update platform volume autoscaling settings",
+				"tags": ["platform-settings"]
+			}
+		},
+		"/api/platform/settings/platform-volumes": {
+			"get": {
+				"operationId": "platformSettingsPlatformVolumesGet",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/PlatformVolumesDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get platform volume usage",
+				"tags": ["platform-settings"]
+			}
+		},
+		"/api/platform/updates": {
+			"get": {
+				"operationId": "platformUpdatesList",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/UpdateRunDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "List platform update runs",
+				"tags": ["platform-updates"]
+			},
+			"post": {
+				"operationId": "platformUpdatesTrigger",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/TriggerUpdateDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/UpdateRunDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Trigger a platform update",
+				"tags": ["platform-updates"]
+			}
+		},
+		"/api/platform/updates/{id}": {
+			"get": {
+				"operationId": "platformUpdatesGet",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/UpdateRunDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get a platform update run",
+				"tags": ["platform-updates"]
+			}
+		},
+		"/api/platform/updates/{id}/logs": {
+			"get": {
+				"operationId": "platformUpdateLogsGet",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/UpdateLogsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get platform update job logs",
+				"tags": ["platform-updates"]
+			}
+		},
+		"/api/templates": {
+			"get": {
+				"operationId": "templatesList",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/TemplateDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"summary": "List available service templates",
+				"tags": ["templates"]
+			}
+		},
+		"/api/templates/{templateId}": {
+			"get": {
+				"operationId": "templatesGet",
+				"parameters": [
+					{
+						"name": "templateId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/TemplateDto"
+								}
+							}
+						}
+					}
+				},
+				"summary": "Get a single service template",
+				"tags": ["templates"]
+			}
+		},
+		"/api/templates/{templateId}/logo": {
+			"get": {
+				"operationId": "templatesLogo",
+				"parameters": [
+					{
+						"name": "templateId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": ""
+					}
+				},
+				"summary": "Get a template logo (SVG)",
+				"tags": ["templates"]
+			}
+		},
+		"/api/environments/{environmentId}/services/from-template": {
+			"post": {
+				"operationId": "environmentServicesCreateFromTemplate",
+				"parameters": [
+					{
+						"name": "environmentId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateFromTemplateDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/ServiceViewDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Create services from a template",
+				"tags": ["templates"]
+			}
+		}
+	},
+	"info": {
+		"title": "kubwave API",
+		"description": "",
+		"version": "dev",
+		"contact": {}
+	},
+	"tags": [],
+	"servers": [],
+	"components": {
+		"securitySchemes": {
+			"bearerAuth": {
+				"scheme": "bearer",
+				"bearerFormat": "JWT",
+				"type": "http"
+			}
+		},
+		"schemas": {
+			"HealthResponseDto": {
+				"type": "object",
+				"properties": {
+					"status": {
+						"type": "string",
+						"enum": ["ok"]
+					},
+					"uptime": {
+						"type": "number"
+					},
+					"timestamp": {
+						"type": "string"
+					},
+					"node": {
+						"type": "string"
+					}
+				},
+				"required": ["status", "uptime", "timestamp"]
+			},
+			"LoginRequestDto": {
+				"type": "object",
+				"properties": {
+					"email": {
+						"type": "string",
+						"format": "email"
+					},
+					"password": {
+						"type": "string",
+						"minLength": 1
+					}
+				},
+				"required": ["email", "password"]
+			},
+			"SessionUserDto": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"name": {
+						"type": "string"
+					},
+					"email": {
+						"type": "string",
+						"format": "email"
+					},
+					"isAdmin": {
+						"type": "boolean"
+					}
+				},
+				"required": ["id", "name", "email", "isAdmin"]
+			},
+			"LoginResponseDto": {
+				"type": "object",
+				"properties": {
+					"accessToken": {
+						"type": "string"
+					},
+					"user": {
+						"$ref": "#/components/schemas/SessionUserDto"
+					}
+				},
+				"required": ["accessToken", "user"]
+			},
+			"RefreshResponseDto": {
+				"type": "object",
+				"properties": {
+					"accessToken": {
+						"type": "string"
+					}
+				},
+				"required": ["accessToken"]
+			},
+			"SessionResponseDto": {
+				"type": "object",
+				"properties": {
+					"user": {
+						"$ref": "#/components/schemas/SessionUserDto"
+					}
+				},
+				"required": ["user"]
+			},
+			"TeamDto": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"name": {
+						"type": "string"
+					},
+					"role": {
+						"type": "string",
+						"enum": ["owner", "member"]
+					},
+					"isDefault": {
+						"type": "boolean"
+					},
+					"joinedAt": {
+						"type": "string"
+					}
+				},
+				"required": ["id", "name", "role", "isDefault", "joinedAt"]
+			},
+			"TeamStateDto": {
+				"type": "object",
+				"properties": {
+					"teams": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/TeamDto"
+						}
+					},
+					"activeTeamId": {
+						"type": "string",
+						"format": "uuid",
+						"nullable": true
+					}
+				},
+				"required": ["teams", "activeTeamId"]
+			},
+			"CreateTeamDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 100
+					}
+				},
+				"required": ["name"]
+			},
+			"SetActiveTeamDto": {
+				"type": "object",
+				"properties": {
+					"teamId": {
+						"type": "string",
+						"format": "uuid"
+					}
+				},
+				"required": ["teamId"]
+			},
+			"ActiveTeamResponseDto": {
+				"type": "object",
+				"properties": {
+					"activeTeamId": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"team": {
+						"$ref": "#/components/schemas/TeamDto"
+					}
+				},
+				"required": ["activeTeamId", "team"]
+			},
+			"RenameTeamDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 100
+					}
+				},
+				"required": ["name"]
+			},
+			"OkDto": {
+				"type": "object",
+				"properties": {
+					"ok": {
+						"type": "boolean"
+					}
+				},
+				"required": ["ok"]
+			},
+			"TeamMemberDto": {
+				"type": "object",
+				"properties": {
+					"userId": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"name": {
+						"type": "string"
+					},
+					"email": {
+						"type": "string",
+						"format": "email"
+					},
+					"role": {
+						"type": "string",
+						"enum": ["owner", "member"]
+					},
+					"joinedAt": {
+						"type": "string"
+					}
+				},
+				"required": ["userId", "name", "email", "role", "joinedAt"]
+			},
+			"AddMemberDto": {
+				"type": "object",
+				"properties": {
+					"email": {
+						"type": "string",
+						"format": "email"
+					}
+				},
+				"required": ["email"]
+			},
+			"UpdateMemberRoleDto": {
+				"type": "object",
+				"properties": {
+					"role": {
+						"type": "string",
+						"enum": ["owner", "member"]
+					}
+				},
+				"required": ["role"]
+			},
+			"SshKeyDto": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"scope": {
+						"type": "string",
+						"enum": ["team", "admin"]
+					},
+					"teamId": {
+						"type": "string",
+						"format": "uuid",
+						"nullable": true
+					},
+					"name": {
+						"type": "string"
+					},
+					"keyType": {
+						"type": "string",
+						"enum": ["ed25519", "rsa", "ecdsa"]
+					},
+					"source": {
+						"type": "string",
+						"enum": ["generated", "uploaded"]
+					},
+					"publicKey": {
+						"type": "string"
+					},
+					"fingerprint": {
+						"type": "string"
+					},
+					"createdByUserId": {
+						"type": "string",
+						"format": "uuid",
+						"nullable": true
+					},
+					"createdAt": {
+						"type": "string"
+					},
+					"updatedAt": {
+						"type": "string"
+					}
+				},
+				"required": ["id", "scope", "teamId", "name", "keyType", "source", "publicKey", "fingerprint", "createdByUserId", "createdAt", "updatedAt"]
+			},
+			"CreateSshKeyDto": {
+				"type": "object",
+				"properties": {
+					"mode": {
+						"type": "string",
+						"enum": ["generate", "upload"]
+					},
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 100
+					},
+					"privateKey": {
+						"type": "string",
+						"maxLength": 20000
+					}
+				},
+				"required": ["mode", "name"]
+			},
+			"SshKeyOkDto": {
+				"type": "object",
+				"properties": {
+					"ok": {
+						"type": "boolean"
+					}
+				},
+				"required": ["ok"]
+			},
+			"SetupStatusResponseDto": {
+				"type": "object",
+				"properties": {
+					"initialized": {
+						"type": "boolean"
+					},
+					"registryConfigured": {
+						"type": "boolean"
+					}
+				},
+				"required": ["initialized", "registryConfigured"]
+			},
+			"SetupInitializeRequestDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 80
+					},
+					"email": {
+						"type": "string",
+						"format": "email"
+					},
+					"password": {
+						"type": "string",
+						"minLength": 12,
+						"maxLength": 200
+					}
+				},
+				"required": ["name", "email", "password"]
+			},
+			"SetupInitializeResponseDto": {
+				"type": "object",
+				"properties": {
+					"accessToken": {
+						"type": "string"
+					},
+					"user": {
+						"$ref": "#/components/schemas/SessionUserDto"
+					}
+				},
+				"required": ["accessToken", "user"]
+			},
+			"ProjectListItemDto": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"teamId": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"name": {
+						"type": "string"
+					},
+					"description": {
+						"type": "string"
+					},
+					"environmentCount": {
+						"type": "number"
+					},
+					"serviceCount": {
+						"type": "number"
+					},
+					"createdAt": {
+						"type": "string"
+					},
+					"updatedAt": {
+						"type": "string"
+					}
+				},
+				"required": ["id", "teamId", "name", "description", "environmentCount", "serviceCount", "createdAt", "updatedAt"]
+			},
+			"CreateProjectDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 100
+					},
+					"description": {
+						"type": "string",
+						"maxLength": 1000
+					}
+				},
+				"required": ["name"]
+			},
+			"EnvironmentDto": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"projectId": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"name": {
+						"type": "string"
+					},
+					"kind": {
+						"type": "string",
+						"enum": ["persistent", "preview"]
+					},
+					"prPreviewsEnabled": {
+						"type": "boolean"
+					},
+					"prNumber": {
+						"type": "number",
+						"nullable": true
+					},
+					"prRepoUrl": {
+						"type": "string",
+						"nullable": true
+					},
+					"baseEnvironmentId": {
+						"type": "string",
+						"format": "uuid",
+						"nullable": true
+					},
+					"serviceCount": {
+						"type": "number"
+					},
+					"createdAt": {
+						"type": "string"
+					},
+					"updatedAt": {
+						"type": "string"
+					}
+				},
+				"required": [
+					"id",
+					"projectId",
+					"name",
+					"kind",
+					"prPreviewsEnabled",
+					"prNumber",
+					"prRepoUrl",
+					"baseEnvironmentId",
+					"serviceCount",
+					"createdAt",
+					"updatedAt"
+				]
+			},
+			"ProjectDetailDto": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"teamId": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"name": {
+						"type": "string"
+					},
+					"description": {
+						"type": "string"
+					},
+					"environmentCount": {
+						"type": "number"
+					},
+					"serviceCount": {
+						"type": "number"
+					},
+					"createdAt": {
+						"type": "string"
+					},
+					"updatedAt": {
+						"type": "string"
+					},
+					"environments": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/EnvironmentDto"
+						}
+					}
+				},
+				"required": ["id", "teamId", "name", "description", "environmentCount", "serviceCount", "createdAt", "updatedAt", "environments"]
+			},
+			"UpdateProjectDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 100
+					},
+					"description": {
+						"type": "string",
+						"maxLength": 1000
+					}
+				}
+			},
+			"UpdateProjectPrPreviewsDto": {
+				"type": "object",
+				"properties": {
+					"baseEnvironmentId": {
+						"type": "string",
+						"format": "uuid",
+						"nullable": true
+					}
+				},
+				"required": ["baseEnvironmentId"]
+			},
+			"ProjectOkDto": {
+				"type": "object",
+				"properties": {
+					"ok": {
+						"type": "boolean"
+					}
+				},
+				"required": ["ok"]
+			},
+			"CreateEnvironmentDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 100
+					}
+				},
+				"required": ["name"]
+			},
+			"UpdateEnvironmentDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 100
+					},
+					"prPreviewsEnabled": {
+						"type": "boolean"
+					}
+				}
+			},
+			"EnvironmentOkDto": {
+				"type": "object",
+				"properties": {
+					"ok": {
+						"type": "boolean"
+					}
+				},
+				"required": ["ok"]
+			},
+			"FlowNodePositionDto": {
+				"type": "object",
+				"properties": {
+					"x": {
+						"type": "number",
+						"minimum": -100000,
+						"maximum": 100000
+					},
+					"y": {
+						"type": "number",
+						"minimum": -100000,
+						"maximum": 100000
+					}
+				},
+				"required": ["x", "y"]
+			},
+			"FlowLayoutNodeDto": {
+				"type": "object",
+				"properties": {
+					"serviceId": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"position": {
+						"$ref": "#/components/schemas/FlowNodePositionDto"
+					},
+					"revision": {
+						"type": "number"
+					},
+					"updatedAt": {
+						"type": "string"
+					}
+				},
+				"required": ["serviceId", "position", "revision", "updatedAt"]
+			},
+			"FlowLayoutDto": {
+				"type": "object",
+				"properties": {
+					"nodes": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/FlowLayoutNodeDto"
+						}
+					}
+				},
+				"required": ["nodes"]
+			},
+			"UpdateFlowLayoutNodeDto": {
+				"type": "object",
+				"properties": {
+					"position": {
+						"$ref": "#/components/schemas/FlowNodePositionDto"
+					},
+					"baseRevision": {
+						"type": "number",
+						"nullable": true
+					},
+					"clientMutationId": {
+						"type": "string",
+						"format": "uuid"
+					}
+				},
+				"required": ["position", "baseRevision"]
+			},
+			"AutoDeployViewDto": {
+				"type": "object",
+				"properties": {
+					"enabled": {
+						"type": "boolean"
+					},
+					"lastPolledCommit": {
+						"type": "string",
+						"nullable": true
+					},
+					"lastPolledAt": {
+						"type": "string",
+						"nullable": true
+					},
+					"nextPollAt": {
+						"type": "string",
+						"nullable": true
+					},
+					"lastPollError": {
+						"type": "string",
+						"nullable": true
+					}
+				},
+				"required": ["enabled", "lastPolledCommit", "lastPolledAt", "nextPollAt", "lastPollError"]
+			},
+			"ServiceViewDto": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"environmentId": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"name": {
+						"type": "string"
+					},
+					"description": {
+						"type": "string"
+					},
+					"type": {
+						"type": "string",
+						"enum": ["docker-image", "dockerfile", "public-repo", "private-repo", "postgres", "mysql", "mariadb", "mongodb"]
+					},
+					"config": {
+						"type": "object",
+						"additionalProperties": true
+					},
+					"autoDeploy": {
+						"$ref": "#/components/schemas/AutoDeployViewDto"
+					},
+					"internalDomain": {
+						"type": "string",
+						"nullable": true
+					},
+					"defaultUrl": {
+						"type": "string",
+						"nullable": true
+					},
+					"createdAt": {
+						"type": "string"
+					},
+					"updatedAt": {
+						"type": "string"
+					}
+				},
+				"required": [
+					"id",
+					"environmentId",
+					"name",
+					"description",
+					"type",
+					"config",
+					"autoDeploy",
+					"internalDomain",
+					"defaultUrl",
+					"createdAt",
+					"updatedAt"
+				]
+			},
+			"AutoDeployInputDto": {
+				"type": "object",
+				"properties": {
+					"enabled": {
+						"type": "boolean",
+						"default": false
+					}
+				},
+				"required": ["enabled"]
+			},
+			"CreateServiceDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 100
+					},
+					"description": {
+						"type": "string",
+						"maxLength": 1000
+					},
+					"type": {
+						"type": "string",
+						"enum": ["docker-image", "dockerfile", "public-repo", "private-repo", "postgres", "mysql", "mariadb", "mongodb"]
+					},
+					"config": {
+						"type": "object",
+						"additionalProperties": true
+					},
+					"autoDeploy": {
+						"$ref": "#/components/schemas/AutoDeployInputDto"
+					}
+				},
+				"required": ["name", "type", "config"]
+			},
+			"UpdateServiceDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 100
+					},
+					"description": {
+						"type": "string",
+						"maxLength": 1000
+					},
+					"config": {
+						"type": "object",
+						"additionalProperties": true
+					},
+					"autoDeploy": {
+						"$ref": "#/components/schemas/AutoDeployInputDto"
+					}
+				}
+			},
+			"ServiceOkDto": {
+				"type": "object",
+				"properties": {
+					"ok": {
+						"type": "boolean"
+					}
+				},
+				"required": ["ok"]
+			},
+			"ServiceConnectionDto": {
+				"type": "object",
+				"properties": {
+					"engine": {
+						"type": "string",
+						"enum": ["postgres", "mysql", "mariadb", "mongodb"]
+					},
+					"host": {
+						"type": "string"
+					},
+					"port": {
+						"type": "number"
+					},
+					"username": {
+						"type": "string"
+					},
+					"database": {
+						"type": "string"
+					},
+					"password": {
+						"type": "string"
+					},
+					"uri": {
+						"type": "string"
+					}
+				},
+				"required": ["engine", "host", "port", "username", "database", "password", "uri"]
+			},
+			"ServiceRuntimeDto": {
+				"type": "object",
+				"properties": {
+					"status": {
+						"type": "string",
+						"enum": ["running", "degraded", "progressing", "stopped", "failed", "not_deployed", "unknown"]
+					},
+					"readyReplicas": {
+						"type": "number"
+					},
+					"desiredReplicas": {
+						"type": "number"
+					},
+					"updatedReplicas": {
+						"type": "number"
+					},
+					"availableReplicas": {
+						"type": "number"
+					}
+				},
+				"required": ["status", "readyReplicas", "desiredReplicas", "updatedReplicas", "availableReplicas"]
+			},
+			"ServiceRuntimeEntryDto": {
+				"type": "object",
+				"properties": {
+					"serviceId": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"runtime": {
+						"$ref": "#/components/schemas/ServiceRuntimeDto"
+					}
+				},
+				"required": ["serviceId", "runtime"]
+			},
+			"ServiceLogEntryDto": {
+				"type": "object",
+				"properties": {
+					"pod": {
+						"type": "string"
+					},
+					"timestamp": {
+						"type": "string",
+						"nullable": true
+					},
+					"message": {
+						"type": "string"
+					}
+				},
+				"required": ["pod", "timestamp", "message"]
+			},
+			"ServiceLogsDto": {
+				"type": "object",
+				"properties": {
+					"available": {
+						"type": "boolean"
+					},
+					"pods": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"entries": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/ServiceLogEntryDto"
+						}
+					}
+				},
+				"required": ["available", "pods", "entries"]
+			},
+			"CreateComposeServicesDto": {
+				"type": "object",
+				"properties": {
+					"compose": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 200000
+					}
+				},
+				"required": ["compose"]
+			},
+			"ServiceMetricVolumeDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"usedBytes": {
+						"type": "number"
+					},
+					"capacityBytes": {
+						"type": "number"
+					}
+				},
+				"required": ["name", "usedBytes", "capacityBytes"]
+			},
+			"ServiceMetricsCurrentDto": {
+				"type": "object",
+				"properties": {
+					"cpuMillicores": {
+						"type": "number"
+					},
+					"memoryBytes": {
+						"type": "number"
+					},
+					"networkRxBytes": {
+						"type": "number"
+					},
+					"networkTxBytes": {
+						"type": "number"
+					},
+					"volumes": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/ServiceMetricVolumeDto"
+						}
+					}
+				},
+				"required": ["cpuMillicores", "memoryBytes", "networkRxBytes", "networkTxBytes", "volumes"]
+			},
+			"ServiceMetricsLimitsDto": {
+				"type": "object",
+				"properties": {
+					"cpuMillicores": {
+						"type": "number",
+						"nullable": true
+					},
+					"memoryBytes": {
+						"type": "number",
+						"nullable": true
+					}
+				},
+				"required": ["cpuMillicores", "memoryBytes"]
+			},
+			"MetricPointDto": {
+				"type": "object",
+				"properties": {
+					"t": {
+						"type": "number"
+					},
+					"v": {
+						"type": "number"
+					}
+				},
+				"required": ["t", "v"]
+			},
+			"ServiceMetricVolumeSeriesDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"points": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/MetricPointDto"
+						}
+					}
+				},
+				"required": ["name", "points"]
+			},
+			"ServiceMetricsSeriesDto": {
+				"type": "object",
+				"properties": {
+					"cpuMillicores": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/MetricPointDto"
+						}
+					},
+					"memoryBytes": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/MetricPointDto"
+						}
+					},
+					"networkRxBytes": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/MetricPointDto"
+						}
+					},
+					"networkTxBytes": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/MetricPointDto"
+						}
+					},
+					"volumes": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/ServiceMetricVolumeSeriesDto"
+						}
+					}
+				},
+				"required": ["cpuMillicores", "memoryBytes", "networkRxBytes", "networkTxBytes", "volumes"]
+			},
+			"ServiceMetricsDto": {
+				"type": "object",
+				"properties": {
+					"mode": {
+						"type": "string",
+						"enum": ["live", "historical"]
+					},
+					"available": {
+						"type": "boolean"
+					},
+					"sampledAt": {
+						"type": "string"
+					},
+					"replicas": {
+						"type": "number"
+					},
+					"current": {
+						"$ref": "#/components/schemas/ServiceMetricsCurrentDto"
+					},
+					"limits": {
+						"$ref": "#/components/schemas/ServiceMetricsLimitsDto"
+					},
+					"series": {
+						"$ref": "#/components/schemas/ServiceMetricsSeriesDto"
+					}
+				},
+				"required": ["mode", "available", "sampledAt", "replicas", "current", "limits", "series"]
+			},
+			"DeploymentViewDto": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"serviceId": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"type": {
+						"type": "string",
+						"enum": ["docker-image", "dockerfile", "public-repo", "private-repo", "postgres", "mysql", "mariadb", "mongodb"]
+					},
+					"status": {
+						"type": "string",
+						"enum": ["pending", "deploying", "canceling", "succeeded", "failed", "superseded", "canceled"]
+					},
+					"phase": {
+						"type": "string",
+						"nullable": true
+					},
+					"lastError": {
+						"type": "string",
+						"nullable": true
+					},
+					"attempts": {
+						"type": "number"
+					},
+					"config": {
+						"type": "object",
+						"additionalProperties": true
+					},
+					"trigger": {
+						"type": "string",
+						"enum": ["manual", "auto", "preview"]
+					},
+					"triggeredByUserId": {
+						"type": "string",
+						"format": "uuid",
+						"nullable": true
+					},
+					"createdAt": {
+						"type": "string"
+					},
+					"startedAt": {
+						"type": "string",
+						"nullable": true
+					},
+					"finishedAt": {
+						"type": "string",
+						"nullable": true
+					}
+				},
+				"required": [
+					"id",
+					"serviceId",
+					"type",
+					"status",
+					"phase",
+					"lastError",
+					"attempts",
+					"config",
+					"trigger",
+					"triggeredByUserId",
+					"createdAt",
+					"startedAt",
+					"finishedAt"
+				]
+			},
+			"DeploymentLogEntryDto": {
+				"type": "object",
+				"properties": {
+					"ts": {
+						"type": "string"
+					},
+					"level": {
+						"type": "string",
+						"enum": ["info", "warn", "error"]
+					},
+					"step": {
+						"type": "string"
+					},
+					"message": {
+						"type": "string"
+					}
+				},
+				"required": ["ts", "level", "step", "message"]
+			},
+			"DeploymentEventLogsDto": {
+				"type": "object",
+				"properties": {
+					"logs": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/DeploymentLogEntryDto"
+						}
+					}
+				},
+				"required": ["logs"]
+			},
+			"DeploymentBuildLogContainerDto": {
+				"type": "object",
+				"properties": {
+					"containerName": {
+						"type": "string"
+					},
+					"content": {
+						"type": "string"
+					},
+					"updatedAt": {
+						"type": "string",
+						"nullable": true
+					}
+				},
+				"required": ["containerName", "content", "updatedAt"]
+			},
+			"DeploymentBuildLogsDto": {
+				"type": "object",
+				"properties": {
+					"containers": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/DeploymentBuildLogContainerDto"
+						}
+					}
+				},
+				"required": ["containers"]
+			},
+			"InvitationDto": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"email": {
+						"type": "string",
+						"format": "email"
+					},
+					"isAdmin": {
+						"type": "boolean"
+					},
+					"invitedBy": {
+						"type": "string",
+						"format": "uuid",
+						"nullable": true
+					},
+					"expiresAt": {
+						"type": "string"
+					},
+					"acceptedAt": {
+						"type": "string",
+						"nullable": true
+					},
+					"createdAt": {
+						"type": "string"
+					},
+					"status": {
+						"type": "string",
+						"enum": ["pending", "accepted", "expired"]
+					}
+				},
+				"required": ["id", "email", "isAdmin", "invitedBy", "expiresAt", "acceptedAt", "createdAt", "status"]
+			},
+			"CreateInviteDto": {
+				"type": "object",
+				"properties": {
+					"email": {
+						"type": "string",
+						"format": "email"
+					},
+					"isAdmin": {
+						"type": "boolean",
+						"default": false
+					}
+				},
+				"required": ["email", "isAdmin"]
+			},
+			"CreateInviteResultDto": {
+				"type": "object",
+				"properties": {
+					"invitation": {
+						"$ref": "#/components/schemas/InvitationDto"
+					},
+					"emailSent": {
+						"type": "boolean"
+					},
+					"emailError": {
+						"type": "string"
+					}
+				},
+				"required": ["invitation", "emailSent"]
+			},
+			"InviteOkDto": {
+				"type": "object",
+				"properties": {
+					"ok": {
+						"type": "boolean"
+					}
+				},
+				"required": ["ok"]
+			},
+			"InviteValidityDto": {
+				"type": "object",
+				"properties": {
+					"valid": {
+						"type": "boolean"
+					},
+					"email": {
+						"type": "string",
+						"format": "email"
+					}
+				},
+				"required": ["valid"]
+			},
+			"AcceptInviteDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1
+					},
+					"password": {
+						"type": "string",
+						"minLength": 8
+					}
+				},
+				"required": ["name", "password"]
+			},
+			"AcceptInviteResponseDto": {
+				"type": "object",
+				"properties": {
+					"accessToken": {
+						"type": "string"
+					},
+					"user": {
+						"$ref": "#/components/schemas/SessionUserDto"
+					}
+				},
+				"required": ["accessToken", "user"]
+			},
+			"AvailableVersionDto": {
+				"type": "object",
+				"properties": {
+					"version": {
+						"type": "string"
+					},
+					"changelogUrl": {
+						"type": "string",
+						"nullable": true
+					},
+					"publishedAt": {
+						"type": "string",
+						"nullable": true
+					}
+				},
+				"required": ["version", "changelogUrl", "publishedAt"]
+			},
+			"PlatformVersionInfoDto": {
+				"type": "object",
+				"properties": {
+					"currentVersion": {
+						"type": "string"
+					},
+					"latestVersion": {
+						"type": "string",
+						"nullable": true
+					},
+					"availableVersions": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/AvailableVersionDto"
+						}
+					},
+					"lastCheckedAt": {
+						"type": "string",
+						"nullable": true
+					}
+				},
+				"required": ["currentVersion", "latestVersion", "availableVersions", "lastCheckedAt"]
+			},
+			"PlatformVersionCheckResultDto": {
+				"type": "object",
+				"properties": {
+					"success": {
+						"type": "boolean"
+					},
+					"message": {
+						"type": "string"
+					}
+				},
+				"required": ["success", "message"]
+			},
+			"PlatformUserDto": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"name": {
+						"type": "string"
+					},
+					"email": {
+						"type": "string",
+						"format": "email"
+					},
+					"isAdmin": {
+						"type": "boolean"
+					},
+					"createdAt": {
+						"type": "string"
+					},
+					"updatedAt": {
+						"type": "string"
+					}
+				},
+				"required": ["id", "name", "email", "isAdmin", "createdAt", "updatedAt"]
+			},
+			"UpdatePlatformUserDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1
+					},
+					"isAdmin": {
+						"type": "boolean"
+					}
+				}
+			},
+			"PlatformOkDto": {
+				"type": "object",
+				"properties": {
+					"ok": {
+						"type": "boolean"
+					}
+				},
+				"required": ["ok"]
+			},
+			"DefaultDomainSettingsDto": {
+				"type": "object",
+				"properties": {
+					"mode": {
+						"type": "string",
+						"enum": ["off", "wildcard", "sslip"]
+					},
+					"base": {
+						"type": "string",
+						"nullable": true
+					},
+					"subdomainTemplate": {
+						"type": "string",
+						"nullable": true
+					},
+					"effectiveBase": {
+						"type": "string",
+						"nullable": true
+					}
+				},
+				"required": ["mode", "base", "subdomainTemplate", "effectiveBase"]
+			},
+			"UpdateDefaultDomainSettingsDto": {
+				"type": "object",
+				"properties": {
+					"mode": {
+						"type": "string",
+						"enum": ["off", "wildcard", "sslip"]
+					},
+					"base": {
+						"type": "string",
+						"nullable": true
+					},
+					"subdomainTemplate": {
+						"type": "string",
+						"nullable": true
+					}
+				},
+				"required": ["mode"]
+			},
+			"SmtpSettingsDto": {
+				"type": "object",
+				"properties": {
+					"enabled": {
+						"type": "boolean"
+					},
+					"host": {
+						"type": "string"
+					},
+					"port": {
+						"type": "number"
+					},
+					"secure": {
+						"type": "boolean"
+					},
+					"user": {
+						"type": "string",
+						"nullable": true
+					},
+					"hasPassword": {
+						"type": "boolean"
+					},
+					"fromName": {
+						"type": "string"
+					},
+					"fromAddress": {
+						"type": "string"
+					},
+					"source": {
+						"type": "string",
+						"enum": ["db", "env-default"]
+					}
+				},
+				"required": ["enabled", "host", "port", "secure", "user", "hasPassword", "fromName", "fromAddress", "source"]
+			},
+			"UpdateSmtpSettingsDto": {
+				"type": "object",
+				"properties": {
+					"enabled": {
+						"type": "boolean"
+					},
+					"host": {
+						"type": "string",
+						"nullable": true
+					},
+					"port": {
+						"type": "number",
+						"minimum": 1,
+						"maximum": 65535
+					},
+					"secure": {
+						"type": "boolean"
+					},
+					"user": {
+						"type": "string",
+						"nullable": true
+					},
+					"password": {
+						"type": "string",
+						"nullable": true,
+						"writeOnly": true
+					},
+					"fromName": {
+						"type": "string",
+						"nullable": true
+					},
+					"fromAddress": {
+						"type": "string",
+						"nullable": true
+					}
+				},
+				"required": ["enabled", "port", "secure"]
+			},
+			"SmtpTestEmailDto": {
+				"type": "object",
+				"properties": {
+					"to": {
+						"type": "string",
+						"format": "email"
+					}
+				},
+				"required": ["to"]
+			},
+			"SmtpTestResultDto": {
+				"type": "object",
+				"properties": {
+					"ok": {
+						"type": "boolean"
+					},
+					"messageId": {
+						"type": "string"
+					},
+					"error": {
+						"type": "string"
+					}
+				},
+				"required": ["ok"]
+			},
+			"PlatformRegistryModeDto": {
+				"type": "object",
+				"properties": {
+					"mode": {
+						"type": "string",
+						"enum": ["platform"]
+					}
+				},
+				"required": ["mode"]
+			},
+			"ExternalRegistrySettingsDto": {
+				"type": "object",
+				"properties": {
+					"mode": {
+						"type": "string",
+						"enum": ["external"]
+					},
+					"endpoint": {
+						"type": "string",
+						"minLength": 1
+					},
+					"insecure": {
+						"type": "boolean",
+						"default": false
+					},
+					"username": {
+						"type": "string",
+						"minLength": 1
+					},
+					"password": {
+						"type": "string",
+						"minLength": 1,
+						"writeOnly": true
+					}
+				},
+				"required": ["mode", "endpoint", "insecure", "username"]
+			},
+			"RegistrySettingsDto": {
+				"type": "object",
+				"properties": {
+					"mode": {
+						"type": "string",
+						"enum": ["unconfigured", "platform", "external"]
+					},
+					"endpoint": {
+						"type": "string",
+						"nullable": true
+					},
+					"insecure": {
+						"type": "boolean"
+					},
+					"username": {
+						"type": "string",
+						"nullable": true
+					},
+					"hasPassword": {
+						"type": "boolean"
+					},
+					"applyStatus": {
+						"type": "string",
+						"enum": ["not_configured", "pending", "applying", "applied", "failed"]
+					},
+					"activeRunId": {
+						"type": "string",
+						"format": "uuid",
+						"nullable": true
+					},
+					"lastError": {
+						"type": "string",
+						"nullable": true
+					}
+				},
+				"required": ["mode", "endpoint", "insecure", "username", "hasPassword", "applyStatus", "activeRunId", "lastError"]
+			},
+			"MetricsSettingsDto": {
+				"type": "object",
+				"properties": {
+					"provider": {
+						"type": "string",
+						"enum": ["live", "prometheus-external", "prometheus-managed"]
+					},
+					"prometheusUrl": {
+						"type": "string",
+						"nullable": true
+					}
+				},
+				"required": ["provider", "prometheusUrl"]
+			},
+			"UpdateMetricsSettingsDto": {
+				"type": "object",
+				"properties": {
+					"provider": {
+						"type": "string",
+						"enum": ["live", "prometheus-external", "prometheus-managed"]
+					},
+					"prometheusUrl": {
+						"type": "string",
+						"nullable": true
+					}
+				},
+				"required": ["provider"]
+			},
+			"PrPreviewSettingsDto": {
+				"type": "object",
+				"properties": {
+					"maxPreviewsPerProject": {
+						"type": "number"
+					}
+				},
+				"required": ["maxPreviewsPerProject"]
+			},
+			"UpdatePrPreviewSettingsDto": {
+				"type": "object",
+				"properties": {
+					"maxPreviewsPerProject": {
+						"type": "number",
+						"minimum": 0,
+						"maximum": 100
+					}
+				},
+				"required": ["maxPreviewsPerProject"]
+			},
+			"HaSettingsDto": {
+				"type": "object",
+				"properties": {
+					"enabled": {
+						"type": "boolean"
+					}
+				},
+				"required": ["enabled"]
+			},
+			"UpdateHaSettingsDto": {
+				"type": "object",
+				"properties": {
+					"enabled": {
+						"type": "boolean"
+					}
+				},
+				"required": ["enabled"]
+			},
+			"DeploymentConcurrencySettingsDto": {
+				"type": "object",
+				"properties": {
+					"maxConcurrentDeployments": {
+						"type": "number",
+						"minimum": 1,
+						"maximum": 20
+					}
+				},
+				"required": ["maxConcurrentDeployments"]
+			},
+			"UpdateDeploymentConcurrencySettingsDto": {
+				"type": "object",
+				"properties": {
+					"maxConcurrentDeployments": {
+						"type": "number",
+						"minimum": 1,
+						"maximum": 20
+					}
+				},
+				"required": ["maxConcurrentDeployments"]
+			},
+			"VolumeAutoscalingCapsDto": {
+				"type": "object",
+				"properties": {
+					"postgres": {
+						"type": "string",
+						"pattern": "^\\d+Gi$"
+					},
+					"registry": {
+						"type": "string",
+						"pattern": "^\\d+Gi$"
+					},
+					"prometheus": {
+						"type": "string",
+						"pattern": "^\\d+Gi$"
+					}
+				},
+				"required": ["postgres", "registry", "prometheus"]
+			},
+			"VolumeAutoscalingSettingsDto": {
+				"type": "object",
+				"properties": {
+					"enabled": {
+						"type": "boolean"
+					},
+					"thresholdPercent": {
+						"type": "number",
+						"minimum": 50,
+						"maximum": 95
+					},
+					"growthPercent": {
+						"type": "number",
+						"minimum": 10,
+						"maximum": 100
+					},
+					"caps": {
+						"$ref": "#/components/schemas/VolumeAutoscalingCapsDto"
+					}
+				},
+				"required": ["enabled", "thresholdPercent", "growthPercent", "caps"]
+			},
+			"PlatformVolumeDto": {
+				"type": "object",
+				"properties": {
+					"volume": {
+						"type": "string",
+						"enum": ["registry", "postgres", "prometheus"]
+					},
+					"available": {
+						"type": "boolean"
+					},
+					"usedBytes": {
+						"type": "number"
+					},
+					"capacityBytes": {
+						"type": "number"
+					},
+					"sampledAt": {
+						"type": "string",
+						"nullable": true
+					},
+					"capBytes": {
+						"type": "number",
+						"nullable": true
+					}
+				},
+				"required": ["volume", "available", "usedBytes", "capacityBytes", "sampledAt", "capBytes"]
+			},
+			"PlatformVolumesDto": {
+				"type": "object",
+				"properties": {
+					"sampledAt": {
+						"type": "string"
+					},
+					"volumes": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlatformVolumeDto"
+						}
+					}
+				},
+				"required": ["sampledAt", "volumes"]
+			},
+			"UpdateRunDto": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"fromVersion": {
+						"type": "string"
+					},
+					"toVersion": {
+						"type": "string"
+					},
+					"status": {
+						"type": "string"
+					},
+					"startedAt": {
+						"type": "string",
+						"nullable": true
+					},
+					"finishedAt": {
+						"type": "string",
+						"nullable": true
+					},
+					"phase": {
+						"type": "string",
+						"nullable": true
+					},
+					"lastError": {
+						"type": "string",
+						"nullable": true
+					},
+					"jobName": {
+						"type": "string",
+						"nullable": true
+					},
+					"oldImageTags": {
+						"type": "object",
+						"additionalProperties": true,
+						"nullable": true
+					},
+					"triggeredByUserId": {
+						"type": "string",
+						"format": "uuid",
+						"nullable": true
+					},
+					"createdAt": {
+						"type": "string"
+					}
+				},
+				"required": [
+					"id",
+					"fromVersion",
+					"toVersion",
+					"status",
+					"startedAt",
+					"finishedAt",
+					"phase",
+					"lastError",
+					"jobName",
+					"oldImageTags",
+					"triggeredByUserId",
+					"createdAt"
+				]
+			},
+			"TriggerUpdateDto": {
+				"type": "object",
+				"properties": {
+					"targetVersion": {
+						"type": "string",
+						"minLength": 1
+					}
+				},
+				"required": ["targetVersion"]
+			},
+			"UpdateLogsDto": {
+				"type": "object",
+				"properties": {
+					"logs": {
+						"type": "string"
+					}
+				},
+				"required": ["logs"]
+			},
+			"TemplateInputDto": {
+				"type": "object",
+				"properties": {
+					"key": {
+						"type": "string"
+					},
+					"label": {
+						"type": "string"
+					},
+					"type": {
+						"type": "string"
+					},
+					"required": {
+						"type": "boolean"
+					},
+					"default": {
+						"type": "string"
+					},
+					"placeholder": {
+						"type": "string"
+					}
+				},
+				"required": ["key", "label", "type", "required"]
+			},
+			"TemplateDto": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					},
+					"description": {
+						"type": "string"
+					},
+					"category": {
+						"type": "string"
+					},
+					"tags": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"logoUrl": {
+						"type": "string"
+					},
+					"documentation": {
+						"type": "string"
+					},
+					"version": {
+						"type": "number"
+					},
+					"inputs": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/TemplateInputDto"
+						}
+					}
+				},
+				"required": ["id", "name", "description", "category", "tags", "logoUrl", "documentation", "version", "inputs"]
+			},
+			"CreateFromTemplateDto": {
+				"type": "object",
+				"properties": {
+					"templateId": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					},
+					"inputs": {
+						"type": "object",
+						"additionalProperties": {
+							"type": "string"
+						}
+					}
+				},
+				"required": ["templateId"]
+			}
+		}
+	}
+}

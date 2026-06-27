@@ -1,0 +1,37 @@
+{{- $adminer := .Values.adminer | default dict -}}
+{{- if $adminer.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adminer
+  labels:
+    {{- include "kubwave.labels" (dict "root" $ "component" "adminer") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kubwave.selectorLabels" (dict "component" "adminer") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kubwave.labels" (dict "root" $ "component" "adminer") | nindent 8 }}
+    spec:
+      {{- with $adminer.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: adminer
+          image: "{{ $adminer.image.repository }}:{{ $adminer.image.tag }}"
+          imagePullPolicy: {{ $adminer.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $adminer.port }}
+          env:
+            {{- range $k, $v := $adminer.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml $adminer.resources | nindent 12 }}
+{{- end }}
