@@ -51,7 +51,6 @@ export class PlatformVersionService {
 				'User-Agent': 'kubwave-api'
 			};
 
-			if (this.config.api.githubToken) headers['Authorization'] = `Bearer ${this.config.api.githubToken}`;
 			if (state.lastEtag) headers['If-None-Match'] = state.lastEtag;
 
 			let response: Response;
@@ -73,8 +72,8 @@ export class PlatformVersionService {
 				const hint =
 					response.status === 404
 						? 'repository not found or no releases published'
-						: response.status === 401 || response.status === 403
-							? 'GitHub authentication/authorization failed - check GITHUB_TOKEN scopes'
+						: response.status === 403
+							? 'GitHub API rate limit exceeded - retry later'
 							: '';
 				const message = `GitHub API returned ${response.status}${hint ? ` - ${hint}` : ''}`;
 				await this.patchVersionState({ lastCheckedAt: new Date().toISOString() });

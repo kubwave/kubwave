@@ -28,7 +28,7 @@ flowchart TB
     apiSvc["Service: api<br/>ClusterIP :3001"]
     apiDep["Deployment: api<br/>NestJS backend API + auth<br/>runs DB migrations on boot"]
     apiSA["ServiceAccount: kubwave-api"]
-    apiSecret["Secret: console-creds<br/>JWT_SECRET<br/>optional GITHUB_TOKEN"]
+    apiSecret["Secret: console-creds<br/>JWT_SECRET + SECRETS_KEY<br/>optional GITHUB_TOKEN (PR-preview private repos)"]
 
     workerDep["Deployment: worker<br/>backend reconcile/update/version loops<br/>health only, no inbound Service"]
     workerSA["ServiceAccount: kubwave-worker"]
@@ -59,7 +59,7 @@ flowchart TB
   apiDep -.->|"dev SMTP"| mailcrab
 
   apiDep --> apiSecret
-  workerDep -->|"reads optional GITHUB_TOKEN"| apiSecret
+  workerDep -->|"reads optional GITHUB_TOKEN<br/>(PR-preview private repos)"| apiSecret
   apiDep --> pgSecret
   workerDep --> pgSecret
   pgSts --> pgSecret

@@ -100,15 +100,15 @@ Hostnames:
 
 Important template folders:
 
-| dir         | renders                                                                             | notes                                              |
-| ----------- | ----------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `api/`      | Deployment + Service + read-only RBAC + ServiceAccount + dev `console-creds` Secret | mounts `JWT_SECRET`, `SECRETS_KEY`, `GITHUB_TOKEN` |
-| `worker/`   | Deployment + read-write RBAC + ServiceAccount                                       | owns tenant namespaces and self-update Jobs        |
-| `console/`  | Deployment + Service + Ingress                                                      | no ServiceAccount; talks only to API               |
-| `postgres/` | StatefulSet/headless Service/PVC or CNPG wiring                                     | platform state                                     |
-| `registry/` | Registry Deployment/Service/PVC/Ingress                                             | build image storage                                |
-| `builder/`  | BuildKit build RBAC/ServiceAccount                                                  | in-cluster source and Dockerfile builds            |
-| `update/`   | self-update Job template ConfigMap + RBAC                                           | worker creates the actual Jobs                     |
+| dir         | renders                                                                             | notes                                       |
+| ----------- | ----------------------------------------------------------------------------------- | ------------------------------------------- |
+| `api/`      | Deployment + Service + read-only RBAC + ServiceAccount + dev `console-creds` Secret | mounts `JWT_SECRET`, `SECRETS_KEY`          |
+| `worker/`   | Deployment + read-write RBAC + ServiceAccount                                       | owns tenant namespaces and self-update Jobs |
+| `console/`  | Deployment + Service + Ingress                                                      | no ServiceAccount; talks only to API        |
+| `postgres/` | StatefulSet/headless Service/PVC or CNPG wiring                                     | platform state                              |
+| `registry/` | Registry Deployment/Service/PVC/Ingress                                             | build image storage                         |
+| `builder/`  | BuildKit build RBAC/ServiceAccount                                                  | in-cluster source and Dockerfile builds     |
+| `update/`   | self-update Job template ConfigMap + RBAC                                           | worker creates the actual Jobs              |
 
 Helm values that the platform sets must stay mirrored in:
 

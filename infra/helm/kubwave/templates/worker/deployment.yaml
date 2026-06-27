@@ -76,7 +76,7 @@ spec:
             - name: DATABASE_URL
               value: {{ . | quote }}
             {{- end }}
-            # The worker reads GITHUB_TOKEN from the api Secret (single source).
+            # Optional GitHub PAT for PR-preview discovery of private user source repos (read from the api Secret). Unset = public repos only.
             - name: GITHUB_TOKEN
               valueFrom:
                 secretKeyRef:

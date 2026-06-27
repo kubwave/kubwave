@@ -9,7 +9,7 @@ mock.module('@clack/prompts', () => ({
 	}
 }));
 
-const { createSecrets, createImagePullSecret } = await import('../src/lib/secrets.js');
+const { createSecrets } = await import('../src/lib/secrets.js');
 
 describe('createSecrets', () => {
 	test('creates all secrets from scratch when none exist', async () => {
@@ -26,29 +26,10 @@ describe('createSecrets', () => {
 			})
 		} as never;
 
-		await createSecrets(kc, undefined, 'kubwave');
+		await createSecrets(kc, 'kubwave');
 		expect(created).toContain('console-creds');
 		expect(created).toContain('postgres-creds');
 		expect(created).toContain('postgres-app-creds');
-	});
-
-	test('includes GitHub token in console-creds when provided', async () => {
-		logs.length = 0;
-		const created: Array<{ name: string; data: Record<string, string> }> = [];
-		const kc = {
-			makeApiClient: () => ({
-				readNamespacedSecret: async (_args: { name: string }) => {
-					throw { code: 404 };
-				},
-				createNamespacedSecret: async ({ body }: { body: { metadata: { name: string }; stringData?: Record<string, string> } }) => {
-					created.push({ name: body.metadata.name, data: body.stringData ?? {} });
-				}
-			})
-		} as never;
-
-		await createSecrets(kc, 'test-github-token', 'kubwave');
-		const consoleCreds = created.find(c => c.name === 'console-creds');
-		expect(consoleCreds?.data['GITHUB_TOKEN']).toBe('test-github-token');
 	});
 
 	test('skips existing secrets', async () => {
@@ -64,7 +45,7 @@ describe('createSecrets', () => {
 			})
 		} as never;
 
-		await createSecrets(kc, undefined, 'kubwave');
+		await createSecrets(kc, 'kubwave');
 		expect(createCalled).toBe(false);
 	});
 
@@ -91,7 +72,7 @@ describe('createSecrets', () => {
 			})
 		} as never;
 
-		await createSecrets(kc, undefined, 'kubwave');
+		await createSecrets(kc, 'kubwave');
 		const pgCreds = created.find(c => c.name === 'postgres-creds');
 		expect(pgCreds?.data['POSTGRES_PASSWORD']).toBe(existingPassword);
 	});
@@ -105,54 +86,6 @@ describe('createSecrets', () => {
 			})
 		} as never;
 
-		await expect(createSecrets(kc, undefined, 'kubwave')).rejects.toThrow('permission denied');
-	});
-});
-
-describe('createImagePullSecret', () => {
-	test('creates image pull secret when it does not exist', async () => {
-		logs.length = 0;
-		const created: string[] = [];
-		const kc = {
-			makeApiClient: () => ({
-				readNamespacedSecret: async () => {
-					throw { code: 404 };
-				},
-				createNamespacedSecret: async ({ body }: { body: { metadata: { name: string } } }) => {
-					created.push(body.metadata.name);
-				}
-			})
-		} as never;
-
-		await createImagePullSecret(kc, 'registry.example.com', 'user', 'pass', 'kubwave');
-		expect(created).toContain('regcred');
-	});
-
-	test('replaces existing image pull secret', async () => {
-		logs.length = 0;
-		const replaced: string[] = [];
-		const kc = {
-			makeApiClient: () => ({
-				readNamespacedSecret: async () => ({ metadata: { name: 'regcred' } }),
-				replaceNamespacedSecret: async ({ name }: { name: string }) => {
-					replaced.push(name);
-				}
-			})
-		} as never;
-
-		await createImagePullSecret(kc, 'registry.example.com', 'user', 'pass', 'kubwave');
-		expect(replaced).toContain('regcred');
-	});
-
-	test('rethrows non-not-found errors', async () => {
-		const kc = {
-			makeApiClient: () => ({
-				readNamespacedSecret: async () => {
-					throw new Error('forbidden');
-				}
-			})
-		} as never;
-
-		await expect(createImagePullSecret(kc, 'reg', 'u', 'p', 'ns')).rejects.toThrow('forbidden');
+		await expect(createSecrets(kc, 'kubwave')).rejects.toThrow('permission denied');
 	});
 });

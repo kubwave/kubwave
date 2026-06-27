@@ -62,10 +62,6 @@ export async function checkForUpdates(): Promise<{ success: boolean; message: st
 		'User-Agent': 'kubwave-worker'
 	};
 
-	if (env.githubToken) {
-		headers['Authorization'] = `Bearer ${env.githubToken}`;
-	}
-
 	if (state.lastEtag) {
 		headers['If-None-Match'] = state.lastEtag;
 	}
@@ -89,8 +85,8 @@ export async function checkForUpdates(): Promise<{ success: boolean; message: st
 		const hint =
 			response.status === 404
 				? 'repository not found or no releases published'
-				: response.status === 401 || response.status === 403
-					? 'GitHub authentication/authorization failed - check GITHUB_TOKEN scopes'
+				: response.status === 403
+					? 'GitHub API rate limit exceeded - retry later'
 					: '';
 		const message = `GitHub API returned ${response.status}${hint ? ` - ${hint}` : ''}`;
 		await patchVersionState({ lastCheckedAt: new Date().toISOString() });

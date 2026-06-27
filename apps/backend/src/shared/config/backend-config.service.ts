@@ -22,7 +22,6 @@ export interface ApiRuntimeConfig {
 	podNamespace: string;
 	appVersion: string;
 	appBaseUrl: string;
-	githubToken?: string;
 }
 
 // Login throttling. Kept out of the `api` bundle so non-API runtimes (the worker)
@@ -54,8 +53,7 @@ export class BackendConfigService {
 			cookieDomain: process.env.COOKIE_DOMAIN || undefined,
 			podNamespace: process.env.POD_NAMESPACE ?? 'kubwave',
 			appVersion: process.env.APP_VERSION ?? 'dev',
-			appBaseUrl: process.env.APP_BASE_URL ?? 'http://console.localhost',
-			githubToken: process.env.GITHUB_TOKEN || undefined
+			appBaseUrl: process.env.APP_BASE_URL ?? 'http://console.localhost'
 		};
 	}
 

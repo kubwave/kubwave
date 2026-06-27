@@ -511,9 +511,9 @@ describe('helm chart rendering', () => {
 		expect(deploymentEnv(objects, 'worker', 'BUILD_IMAGE_PULL_SECRETS')).toBe('');
 	});
 
-	test('production worker exposes image pull secrets to generated build Jobs', () => {
+	test('production worker exposes no image pull secrets to build Jobs (public ghcr.io images)', () => {
 		const objects = renderObjects(productionOverrides);
-		expect(deploymentEnv(objects, 'worker', 'BUILD_IMAGE_PULL_SECRETS')).toBe('regcred');
+		expect(deploymentEnv(objects, 'worker', 'BUILD_IMAGE_PULL_SECRETS')).toBe('');
 	});
 
 	test('CLI-generated install values render the three workloads with prod images', () => {

@@ -29,7 +29,6 @@ It also needs `SECRETS_KEY` whenever it encrypts per-service secrets.
 | `AUTH_RATE_LIMIT_WINDOW_SEC` | No       | `300`                      | Login rate-limit window in seconds.                                                      |
 | `NODE_ENV`                   | No       | —                          | If set to `production`, cookies are `Secure`.                                            |
 | `COOKIE_DOMAIN`              | No       | —                          | Domain attribute for auth cookies. Not set by default (same-origin).                     |
-| `GITHUB_TOKEN`               | No       | —                          | Token for GitHub release checks and private GitHub repository access.                    |
 | `POD_NAMESPACE`              | No       | `kubwave`                  | The Kubernetes namespace the API pod runs in.                                            |
 | `APP_VERSION`                | No       | `dev`                      | Platform version string (set by the Helm chart from `Chart.yaml`).                       |
 | `APP_BASE_URL`               | No       | `http://console.localhost` | The Console origin, used to build invite-accept links in emails.                         |
@@ -130,16 +129,16 @@ The Backend Worker orchestrates tenant workloads through a Nest application cont
 
 ### Git auto-deploy poller
 
-| Variable                            | Required | Default | Description                                                |
-| ----------------------------------- | -------- | ------- | ---------------------------------------------------------- |
-| `GITEA_TOKEN`                       | No       | —       | Token for private Gitea repos.                             |
-| `GITHUB_TOKEN`                      | No       | —       | Token for private GitHub repos and platform update checks. |
-| `GITLAB_TOKEN`                      | No       | —       | Token for private GitLab repos.                            |
-| `GIT_POLL_INTERVAL_MS`              | No       | `15000` | Poll frequency for auto-deployable repos.                  |
-| `GIT_POLL_BATCH`                    | No       | `20`    | Max repos to poll per tick.                                |
-| `GIT_POLL_SERVICE_INTERVAL_SECONDS` | No       | `60`    | Minimum interval between polls of the same service.        |
-| `GIT_LS_REMOTE_TIMEOUT_MS`          | No       | `20000` | Timeout for `git ls-remote` calls.                         |
-| `GIT_POLL_ERROR_BACKOFF_SECONDS`    | No       | `300`   | Backoff after a poll error (5 min).                        |
+| Variable                            | Required | Default | Description                                             |
+| ----------------------------------- | -------- | ------- | ------------------------------------------------------- |
+| `GITEA_TOKEN`                       | No       | —       | Token for private Gitea repos.                          |
+| `GITHUB_TOKEN`                      | No       | —       | Token for PR-preview discovery of private GitHub repos. |
+| `GITLAB_TOKEN`                      | No       | —       | Token for private GitLab repos.                         |
+| `GIT_POLL_INTERVAL_MS`              | No       | `15000` | Poll frequency for auto-deployable repos.               |
+| `GIT_POLL_BATCH`                    | No       | `20`    | Max repos to poll per tick.                             |
+| `GIT_POLL_SERVICE_INTERVAL_SECONDS` | No       | `60`    | Minimum interval between polls of the same service.     |
+| `GIT_LS_REMOTE_TIMEOUT_MS`          | No       | `20000` | Timeout for `git ls-remote` calls.                      |
+| `GIT_POLL_ERROR_BACKOFF_SECONDS`    | No       | `300`   | Backoff after a poll error (5 min).                     |
 
 ### PR preview environments
 
@@ -197,8 +196,8 @@ The Worker can refresh the service-template catalog from a remote URL without a 
 The Helm chart creates (or references) a Secret named `console-creds` containing
 these keys. In production the CLI installer generates random values.
 
-| Secret key     | Workloads that read it | Purpose                                                             |
-| -------------- | ---------------------- | ------------------------------------------------------------------- |
-| `JWT_SECRET`   | API                    | Access-token signing key. **Only the API**.                         |
-| `SECRETS_KEY`  | API, Worker            | Key-derivation seed for per-service AES-256-GCM encryption.         |
-| `GITHUB_TOKEN` | API, Worker            | Optional token for GitHub release checks and private GitHub access. |
+| Secret key     | Workloads that read it | Purpose                                                          |
+| -------------- | ---------------------- | ---------------------------------------------------------------- |
+| `JWT_SECRET`   | API                    | Access-token signing key. **Only the API**.                      |
+| `SECRETS_KEY`  | API, Worker            | Key-derivation seed for per-service AES-256-GCM encryption.      |
+| `GITHUB_TOKEN` | Worker                 | Optional token for PR-preview discovery of private GitHub repos. |

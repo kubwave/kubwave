@@ -5,7 +5,6 @@ export const CERT_MANAGER_ACME_SERVER = 'https://acme-v02.api.letsencrypt.org/di
 
 export const PLATFORM_CONFIGMAP_NAME = 'kubwave-platform';
 export const DEFAULT_REGISTRY = 'ghcr.io/kubwave';
-export const IMAGE_PULL_SECRET_NAME = 'regcred';
 
 // In-cluster Dockerfile-build registry (ClusterIP, plain HTTP, anonymous): BuildKit pushes, containerd pulls via the registry trust DaemonSet.
 export const INTERNAL_REGISTRY_ENDPOINT = `kubwave-registry.${APP_NAMESPACE}.svc.cluster.local:5000`;

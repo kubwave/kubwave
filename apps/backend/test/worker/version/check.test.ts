@@ -124,8 +124,8 @@ describe('checkForUpdates — filtering and latestVersion', () => {
 });
 
 describe('checkForUpdates — request headers', () => {
-	test('sends the GITHUB_TOKEN auth header (Bearer scheme) and the If-None-Match etag', async () => {
-		fakeEnv.githubToken = 'secret-token';
+	test('sends the If-None-Match etag and never an auth header (public repo, unauthenticated)', async () => {
+		fakeEnv.githubToken = 'secret-token'; // present for pr-preview, but the update check must ignore it
 		storedState = { latestVersion: null, availableVersions: [], lastCheckedAt: null, lastEtag: 'W/"abc"' };
 		let capturedHeaders: Record<string, string> = {};
 		globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
@@ -135,13 +135,13 @@ describe('checkForUpdates — request headers', () => {
 
 		await checkForUpdates();
 
-		expect(capturedHeaders['Authorization']).toBe('Bearer secret-token');
+		expect(capturedHeaders['Authorization']).toBeUndefined();
 		expect(capturedHeaders['If-None-Match']).toBe('W/"abc"');
 		expect(capturedHeaders['Accept']).toBe('application/vnd.github+json');
 		expect(capturedHeaders['X-GitHub-Api-Version']).toBe('2022-11-28');
 	});
 
-	test('omits the auth header when no GITHUB_TOKEN is set', async () => {
+	test('sends no If-None-Match when there is no stored etag', async () => {
 		fakeEnv.githubToken = undefined;
 		let capturedHeaders: Record<string, string> = {};
 		globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
@@ -183,19 +183,18 @@ describe('checkForUpdates — non-2xx and error paths', () => {
 		expect(result.message).toContain('repository not found or no releases published');
 	});
 
-	test('401 returns the auth-failed hint', async () => {
+	test('401 returns the bare status with no hint', async () => {
 		globalThis.fetch = (async () => fakeResponse(401, null)) as unknown as typeof fetch;
 		const result = await checkForUpdates();
 		expect(result.success).toBe(false);
-		expect(result.message).toContain('GitHub API returned 401');
-		expect(result.message).toContain('check GITHUB_TOKEN scopes');
+		expect(result.message).toBe('GitHub API returned 401');
 	});
 
-	test('403 returns the auth-failed hint', async () => {
+	test('403 returns the rate-limit hint', async () => {
 		globalThis.fetch = (async () => fakeResponse(403, null)) as unknown as typeof fetch;
 		const result = await checkForUpdates();
 		expect(result.message).toContain('GitHub API returned 403');
-		expect(result.message).toContain('check GITHUB_TOKEN scopes');
+		expect(result.message).toContain('rate limit exceeded');
 	});
 
 	test('a non-special non-2xx (500) returns the bare status with no hint', async () => {

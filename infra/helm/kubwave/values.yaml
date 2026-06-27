@@ -60,11 +60,12 @@ api:
     readiness: { initialDelaySeconds: 2, periodSeconds: 10 }
     liveness: { initialDelaySeconds: 10, periodSeconds: 30 }
   nodeSelector: {}
-  # JWT_SECRET + SECRETS_KEY + (optional) GITHUB_TOKEN. The worker reads GITHUB_TOKEN
-  # and SECRETS_KEY from the same Secret; only the api reads JWT_SECRET. SECRETS_KEY
-  # encrypts user-service secrets at rest (api encrypts, worker decrypts). In prod the
-  # installer generates a random value (see apps/cli createSecrets); this dev default is
-  # any high-entropy string (the key is SHA-256-derived, so no length constraint).
+  # JWT_SECRET + SECRETS_KEY + (optional) GITHUB_TOKEN. SECRETS_KEY is read by both api and
+  # worker (api encrypts user-service secrets at rest, worker decrypts); only the api reads
+  # JWT_SECRET. GITHUB_TOKEN is optional and only used by the worker for PR-preview discovery
+  # of private user source repos (unset = public repos only). In prod the installer generates
+  # a random JWT_SECRET/SECRETS_KEY (see apps/cli createSecrets); this dev default is any
+  # high-entropy string (the key is SHA-256-derived, so no length constraint).
   secret:
     create: true
     name: console-creds

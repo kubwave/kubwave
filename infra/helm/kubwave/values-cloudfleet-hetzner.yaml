@@ -15,8 +15,8 @@
 # operator pre-creates them. Every workload pins cfke.io/provider: hetzner so pods
 # only schedule on the Hetzner-backed nodes (Hetzner CSI volumes attach only there).
 
-imagePullSecrets:
-  - name: regcred
+# Public ghcr.io images need no pull auth.
+imagePullSecrets: []
 
 podSecurityContext:
   runAsNonRoot: true
