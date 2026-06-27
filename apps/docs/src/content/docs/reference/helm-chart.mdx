@@ -77,7 +77,6 @@ Backend API entrypoint — auth authority, `JWT_SECRET` holder, read-only Kubern
 | `api.secret.existingSecret`    | `""`                                        | If set, the Secret is not rendered (prod).                           |
 | `api.secret.data.JWT_SECRET`   | `dev-jwt-secret...`                         | **Dev only.** Prod: CLI generates a random value.                    |
 | `api.secret.data.SECRETS_KEY`  | `dev-secrets-key...`                        | **Dev only.** AES-256-GCM key-derivation seed.                       |
-| `api.secret.data.GITHUB_TOKEN` | `""`                                        | Optional; worker-only PAT for PR-preview discovery of private repos. |
 
 ---
 

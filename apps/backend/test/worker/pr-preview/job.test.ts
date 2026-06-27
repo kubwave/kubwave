@@ -49,7 +49,7 @@ const { pollEnvironment } = await import('~/modules/worker/jobs/pr-preview/job')
 
 const now = new Date('2026-06-15T12:00:00.000Z');
 const baseEnv = { id: 'env-base', projectId: 'proj-1' } as never;
-const repoService = { type: 'private-repo', config: { repoUrl: 'git@x:o/r.git', sshKeyId: 'k' } };
+const repoService = { type: 'public-repo', config: { repoUrl: 'https://github.com/o/r.git' } };
 
 afterEach(() => {
 	selectResults = [];
@@ -95,6 +95,15 @@ describe('pollEnvironment', () => {
 		];
 		await pollEnvironment(baseEnv, now);
 		expect(cloneCalls).toEqual([7]);
+		expect(teardownCalls).toEqual([]);
+	});
+
+	test('private-repo services are excluded from PR discovery (no forge auth provisioned)', async () => {
+		listResult = { prs: [{ prNumber: 7, prRef: 'refs/pull/7/head', headSha: 'a'.repeat(40) }] };
+		// repoTargets sees only a private-repo service → no targets → nothing discovered.
+		selectResults = [[{ type: 'private-repo', config: { repoUrl: 'git@x:o/r.git', sshKeyId: 'k' } }]];
+		await pollEnvironment(baseEnv, now);
+		expect(cloneCalls).toEqual([]);
 		expect(teardownCalls).toEqual([]);
 	});
 });

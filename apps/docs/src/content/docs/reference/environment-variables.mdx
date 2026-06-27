@@ -131,9 +131,6 @@ The Backend Worker orchestrates tenant workloads through a Nest application cont
 
 | Variable                            | Required | Default | Description                                             |
 | ----------------------------------- | -------- | ------- | ------------------------------------------------------- |
-| `GITEA_TOKEN`                       | No       | —       | Token for private Gitea repos.                          |
-| `GITHUB_TOKEN`                      | No       | —       | Token for PR-preview discovery of private GitHub repos. |
-| `GITLAB_TOKEN`                      | No       | —       | Token for private GitLab repos.                         |
 | `GIT_POLL_INTERVAL_MS`              | No       | `15000` | Poll frequency for auto-deployable repos.               |
 | `GIT_POLL_BATCH`                    | No       | `20`    | Max repos to poll per tick.                             |
 | `GIT_POLL_SERVICE_INTERVAL_SECONDS` | No       | `60`    | Minimum interval between polls of the same service.     |
@@ -194,13 +191,9 @@ The Worker can refresh the service-template catalog from a remote URL without a 
 ## Helm chart secrets
 
 The Helm chart creates (or references) a Secret named `console-creds` containing
-these keys. In production the CLI installer generates random values for
-`JWT_SECRET` and `SECRETS_KEY`. `GITHUB_TOKEN` is optional and worker-only — the
-installer never sets it; supply it manually via Helm/Secret only if you need
-PR-preview discovery of private GitHub repos.
+these keys. In production the CLI installer generates random values.
 
-| Secret key     | Workloads that read it | Purpose                                                          |
-| -------------- | ---------------------- | ---------------------------------------------------------------- |
-| `JWT_SECRET`   | API                    | Access-token signing key. **Only the API**.                      |
-| `SECRETS_KEY`  | API, Worker            | Key-derivation seed for per-service AES-256-GCM encryption.      |
-| `GITHUB_TOKEN` | Worker                 | Optional token for PR-preview discovery of private GitHub repos. |
+| Secret key    | Workloads that read it | Purpose                                                     |
+| ------------- | ---------------------- | ----------------------------------------------------------- |
+| `JWT_SECRET`  | API                    | Access-token signing key. **Only the API**.                 |
+| `SECRETS_KEY` | API, Worker            | Key-derivation seed for per-service AES-256-GCM encryption. |

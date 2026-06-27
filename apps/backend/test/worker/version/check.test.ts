@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 // check.ts polls the GitHub releases API and read-merge-writes a cached VersionState; the installed version drives the channel.
 
 // Mutated in place: check.ts destructures `import { env }` once at load, so the shared ref must be mutated.
-const fakeEnv: { appVersion: string; githubToken: string | undefined } = { appVersion: '1.2.3', githubToken: undefined };
+const fakeEnv: { appVersion: string } = { appVersion: '1.2.3' };
 mock.module('~/shared/config/worker-env', () => ({ env: fakeEnv }));
 
 let storedState: unknown = null;
@@ -26,7 +26,6 @@ afterEach(() => {
 beforeEach(() => {
 	storedState = null;
 	setSettingCalls.length = 0;
-	fakeEnv.githubToken = undefined;
 	fakeEnv.appVersion = '1.2.3';
 });
 
@@ -125,7 +124,6 @@ describe('checkForUpdates — filtering and latestVersion', () => {
 
 describe('checkForUpdates — request headers', () => {
 	test('sends the If-None-Match etag and never an auth header (public repo, unauthenticated)', async () => {
-		fakeEnv.githubToken = 'secret-token'; // present for pr-preview, but the update check must ignore it
 		storedState = { latestVersion: null, availableVersions: [], lastCheckedAt: null, lastEtag: 'W/"abc"' };
 		let capturedHeaders: Record<string, string> = {};
 		globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
@@ -142,7 +140,6 @@ describe('checkForUpdates — request headers', () => {
 	});
 
 	test('sends no If-None-Match when there is no stored etag', async () => {
-		fakeEnv.githubToken = undefined;
 		let capturedHeaders: Record<string, string> = {};
 		globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
 			capturedHeaders = (init?.headers as Record<string, string>) ?? {};

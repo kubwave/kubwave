@@ -76,13 +76,6 @@ spec:
             - name: DATABASE_URL
               value: {{ . | quote }}
             {{- end }}
-            # Optional GitHub PAT for PR-preview discovery of private user source repos (read from the api Secret). Unset = public repos only.
-            - name: GITHUB_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $apiSecret }}
-                  key: GITHUB_TOKEN
-                  optional: true
             # Decrypts user-service secrets to build each service's env Secret (api uses the same key).
             - name: SECRETS_KEY
               valueFrom:
