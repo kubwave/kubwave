@@ -2,7 +2,7 @@
 # install.sh — Bootstrap installer for the kubwave CLI.
 #
 # Downloads the platform-matching CLI binary for the chosen release channel
-# (default: stable) and runs `kubwave install` with any extra arguments.
+# (default: stable), then prints the `kubwave install` command to run next.
 #
 # Usage:
 #   curl -fsSL .../install.sh | bash
@@ -268,6 +268,7 @@ install -m 0755 "${TMP}" "${INSTALL_DIR}/${BINARY_NAME}"
 rm -f "${TMP}"
 echo "Installed ${BINARY_NAME} to ${INSTALL_DIR}/${BINARY_NAME}"
 
+ORIG_PATH="${PATH}"
 export PATH="${INSTALL_DIR}:${PATH}"
 
 # ── Sanity check ────────────────────────────────────────────
@@ -276,30 +277,22 @@ if ! "${INSTALL_DIR}/${BINARY_NAME}" --version >/dev/null 2>&1; then
 	exit 1
 fi
 
-# ── Hand off to `kubwave install` ───────────────────────
-# When invoked via `curl ... | bash`, stdin is the (already-closed) curl pipe — that would
-# make interactive prompts (@clack/prompts) see EOF and immediately cancel. Reattach stdin
-# to the controlling terminal if one exists; in non-TTY contexts (CI), leave stdin alone.
-if [[ -t 0 ]]; then
-	STDIN_REDIRECT=""
-elif [[ -r /dev/tty ]]; then
-	STDIN_REDIRECT="/dev/tty"
-else
-	STDIN_REDIRECT=""
+# ── Print the next command ──────────────────────────────────
+# We deliberately do NOT run `kubwave install` here. Under `curl ... | bash` the CLI's interactive
+# prompts can't reliably read the terminal, so we hand the user a ready-to-run command instead.
+INSTALL_ARGS="install --channel ${CHANNEL}"
+if [[ ${#PASSTHROUGH[@]} -gt 0 ]]; then
+	INSTALL_ARGS="${INSTALL_ARGS} ${PASSTHROUGH[*]}"
 fi
 
-if [[ ${#PASSTHROUGH[@]} -gt 0 ]]; then
-	echo "Running: ${BINARY_NAME} install --channel ${CHANNEL} ${PASSTHROUGH[*]}"
-	if [[ -n "$STDIN_REDIRECT" ]]; then
-		exec <"$STDIN_REDIRECT" "${INSTALL_DIR}/${BINARY_NAME}" install --channel "${CHANNEL}" "${PASSTHROUGH[@]}"
-	else
-		exec "${INSTALL_DIR}/${BINARY_NAME}" install --channel "${CHANNEL}" "${PASSTHROUGH[@]}"
-	fi
-else
-	echo "Running: ${BINARY_NAME} install --channel ${CHANNEL}"
-	if [[ -n "$STDIN_REDIRECT" ]]; then
-		exec <"$STDIN_REDIRECT" "${INSTALL_DIR}/${BINARY_NAME}" install --channel "${CHANNEL}"
-	else
-		exec "${INSTALL_DIR}/${BINARY_NAME}" install --channel "${CHANNEL}"
-	fi
-fi
+# Use the bare command if INSTALL_DIR is already on PATH, otherwise the full path.
+case ":${ORIG_PATH}:" in
+	*":${INSTALL_DIR}:"*) RUN_CMD="${BINARY_NAME} ${INSTALL_ARGS}" ;;
+	*) RUN_CMD="${INSTALL_DIR}/${BINARY_NAME} ${INSTALL_ARGS}" ;;
+esac
+
+echo ""
+echo "Next step — install kubwave on your current cluster:"
+echo ""
+echo "    ${RUN_CMD}"
+echo ""
