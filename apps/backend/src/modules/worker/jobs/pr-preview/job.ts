@@ -18,12 +18,14 @@ export async function runPrDiscovery(): Promise<void> {
 	await Promise.all(due.map(e => pollEnvironment(e, now)));
 }
 
-// Distinct repo URLs = the repo-backed services in this env (a monorepo is one URL).
+// Distinct repo URLs to discover PRs for = the PUBLIC repo-backed services in this env (a monorepo is one URL).
+// Private repos are excluded: listing open PRs needs forge-API auth we no longer provision (the global PAT is gone).
+// They still get cloned INTO previews triggered by a public repo's PR (clone-plan uses their SSH key).
 async function repoTargets(environmentId: string): Promise<string[]> {
 	const rows = await db.select({ type: services.type, config: services.config }).from(services).where(eq(services.environmentId, environmentId));
 	const urls = new Set<string>();
 	for (const r of rows) {
-		if (r.type !== 'public-repo' && r.type !== 'private-repo') continue;
+		if (r.type !== 'public-repo') continue;
 		urls.add((r.config as { repoUrl: string }).repoUrl);
 	}
 	return [...urls];
@@ -50,13 +52,13 @@ async function previewCountForProject(projectId: string): Promise<number> {
 export async function pollEnvironment(baseEnv: Environment, now: Date): Promise<void> {
 	const targets = await repoTargets(baseEnv.id);
 	const cap = await getMaxPreviewsPerProject();
-	const tokens = { github: env.githubToken, gitlab: env.gitlabToken, gitea: env.giteaToken };
 	let pollError: string | null = null;
 
 	for (const repoUrl of targets) {
 		let open: OpenPr[];
 		try {
-			open = await listOpenPullRequests(repoUrl, tokens, { timeoutMs: env.gitLsRemoteTimeoutMs });
+			// Public repos only (see repoTargets) — no forge token needed.
+			open = await listOpenPullRequests(repoUrl, {}, { timeoutMs: env.gitLsRemoteTimeoutMs });
 		} catch (err) {
 			pollError = errorMessage(err);
 			console.warn(`[pr-discovery] env ${baseEnv.id} repo ${repoUrl} open-PR lookup failed:`, pollError);

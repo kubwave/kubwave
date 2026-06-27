@@ -82,12 +82,6 @@ spec:
                 secretKeyRef:
                   name: {{ $apiSecret }}
                   key: SECRETS_KEY
-            - name: GITHUB_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $apiSecret }}
-                  key: GITHUB_TOKEN
-                  optional: true
             - name: POD_NAMESPACE
               valueFrom:
                 fieldRef:

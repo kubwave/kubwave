@@ -3,7 +3,6 @@ import {
 	APP_NAMESPACE,
 	CERT_MANAGER_CLUSTER_ISSUER_NAME,
 	HELM_RELEASE_NAME,
-	IMAGE_PULL_SECRET_NAME,
 	INTERNAL_REGISTRY_ENDPOINT,
 	REGISTRY_HTPASSWD_SECRET_NAME,
 	REGISTRY_PULL_SECRET_NAME,
@@ -215,10 +214,11 @@ export function buildProductionValues(input: ProductionValuesInput): Record<stri
 		pullPolicy: 'IfNotPresent'
 	});
 	return {
-		imagePullSecrets: [{ name: IMAGE_PULL_SECRET_NAME }],
+		// Public ghcr.io images need no pull auth; keep the key empty so the chart's per-workload imagePullSecrets stays a no-op.
+		imagePullSecrets: [],
 		// HA master switch (explicit, not the chart default, so prod values stay self-contained). Off → 1 replica each; on → 3 + PDBs + 3 CNPG instances.
 		ha: { enabled: input.ha, replicas: 3 },
-		// api — backend entrypoint; reads JWT_SECRET (+ GITHUB_TOKEN) from the CLI-pre-created console-creds, so the chart adopts that Secret instead of its own.
+		// api — backend entrypoint; reads JWT_SECRET from the CLI-pre-created console-creds, so the chart adopts that Secret instead of its own.
 		api: {
 			serviceAccount: { create: true },
 			image: image('backend'),

@@ -30,13 +30,12 @@ afterEach(() => {
 });
 
 describe('release asset download', () => {
-	test('resolves the latest stable release through the GitHub API', async () => {
-		process.env['GITHUB_TOKEN'] = 'test-token';
+	test('resolves the latest stable release through the GitHub API (unauthenticated)', async () => {
 		let requestedUrl = '';
-		let authorization = '';
+		let authorization: string | undefined = 'unset';
 		globalThis.fetch = stubFetch(async (url, init) => {
 			requestedUrl = String(url);
-			authorization = String((init?.headers as Record<string, string> | undefined)?.Authorization);
+			authorization = (init?.headers as Record<string, string> | undefined)?.Authorization;
 			return Response.json({
 				tag_name: 'v1.2.3',
 				prerelease: false,
@@ -64,7 +63,7 @@ describe('release asset download', () => {
 			]
 		});
 		expect(requestedUrl).toContain('/releases/latest');
-		expect(authorization).toBe('Bearer test-token');
+		expect(authorization).toBeUndefined();
 	});
 
 	test('reports when no stable release exists', async () => {
@@ -74,22 +73,18 @@ describe('release asset download', () => {
 	});
 
 	test('reports 401 unauthorized from GitHub API', async () => {
-		process.env['GITHUB_TOKEN'] = 'bad-token';
 		globalThis.fetch = stubFetch(async () => new Response('', { status: 401, statusText: 'Unauthorized' }));
 
 		await expect(resolveLatestRelease('stable')).rejects.toThrow('GitHub API 401');
-		await expect(resolveLatestRelease('stable')).rejects.toThrow('Token rejected');
 	});
 
 	test('reports 403 forbidden from GitHub API', async () => {
-		process.env['GITHUB_TOKEN'] = 'bad-token';
 		globalThis.fetch = stubFetch(async () => new Response('', { status: 403, statusText: 'Forbidden' }));
 
 		await expect(resolveLatestRelease('stable')).rejects.toThrow('GitHub API 403');
 	});
 
 	test('rethrows non-404 errors from stable resolve', async () => {
-		process.env['GITHUB_TOKEN'] = 'test-token';
 		globalThis.fetch = stubFetch(async () => new Response('', { status: 500, statusText: 'Server Error' }));
 
 		await expect(resolveLatestRelease('stable')).rejects.toThrow('GitHub API 500');
@@ -142,7 +137,6 @@ describe('release asset download', () => {
 	});
 
 	test('writes the downloaded asset body', async () => {
-		process.env['GITHUB_TOKEN'] = 'test-token';
 		const dest = join(tmpdir(), `kubwave-download-${process.pid}-${Date.now()}`);
 		globalThis.fetch = stubFetch(async () => new Response('test', { status: 200 }));
 
@@ -155,7 +149,6 @@ describe('release asset download', () => {
 	});
 
 	test('fails instead of hanging when the asset request stalls', async () => {
-		process.env['GITHUB_TOKEN'] = 'test-token';
 		process.env['KUBWAVE_ASSET_DOWNLOAD_TIMEOUT_MS'] = '5';
 		const dest = join(tmpdir(), `kubwave-download-timeout-${process.pid}-${Date.now()}`);
 		globalThis.fetch = stubFetch((_, init) => {
@@ -172,7 +165,6 @@ describe('release asset download', () => {
 	});
 
 	test('reports failed asset status responses', async () => {
-		process.env['GITHUB_TOKEN'] = 'test-token';
 		const dest = join(tmpdir(), `kubwave-download-404-${process.pid}-${Date.now()}`);
 		globalThis.fetch = stubFetch(async () => new Response('', { status: 404, statusText: 'Not Found' }));
 

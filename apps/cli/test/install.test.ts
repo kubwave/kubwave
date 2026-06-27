@@ -34,7 +34,6 @@ interface Captures {
 	helmConfig?: InstallConfig;
 	helmValuesFile?: string;
 	marker?: { version: string; by: string; channel: string; state: unknown };
-	pullSecret?: { host: string; username: string; password: string };
 	storageOpts?: { storageMode: string; storageClass?: string };
 	clusterIssuerInput?: unknown;
 	registrySecrets?: { host: string };
@@ -165,16 +164,8 @@ mock.module('~/lib/cert-manager.js', () => ({
 
 mock.module('~/lib/secrets.js', () => ({
 	...realSecrets,
-	promptImagePullCredentials: async () => {
-		events.push('prompt-creds');
-		return { username: 'github-user', password: 's3cret' };
-	},
 	createSecrets: async () => {
 		events.push('create-secrets');
-	},
-	createImagePullSecret: async (_kc: unknown, host: string, username: string, password: string) => {
-		events.push('create-pull-secret');
-		cap.pullSecret = { host, username, password };
 	},
 	createRegistrySecrets: async (_kc: unknown, host: string) => {
 		events.push('create-registry-secrets');
@@ -228,9 +219,7 @@ const HAPPY_ORDER = [
 	'check-adoption',
 	'resolve-cluster-issuer',
 	'namespace',
-	'prompt-creds',
 	'create-secrets',
-	'create-pull-secret',
 	'gen-values',
 	'helm-install',
 	'write-marker'
@@ -344,15 +333,6 @@ describe('install command', () => {
 		expect(cap.marker?.state).toMatchObject({ platformId: 'test-platform', domain: 'console.example.com', ha: false });
 
 		expect(cap.storageOpts?.storageMode).toBe('auto');
-	});
-
-	test('derives the ImagePullSecret host from the registry path', async () => {
-		resetFixtures();
-		const action = registerAndCaptureAction();
-
-		await action(baseOpts({ registry: 'ghcr.io/kubwave/app-hosting' }));
-
-		expect(cap.pullSecret).toEqual({ host: 'ghcr.io', username: 'github-user', password: 's3cret' });
 	});
 
 	test('threads --tenant-pod-security through the resolved config and the persisted marker', async () => {

@@ -60,10 +60,9 @@ api:
     readiness: { initialDelaySeconds: 2, periodSeconds: 10 }
     liveness: { initialDelaySeconds: 10, periodSeconds: 30 }
   nodeSelector: {}
-  # JWT_SECRET + SECRETS_KEY + (optional) GITHUB_TOKEN. The worker reads GITHUB_TOKEN
-  # and SECRETS_KEY from the same Secret; only the api reads JWT_SECRET. SECRETS_KEY
-  # encrypts user-service secrets at rest (api encrypts, worker decrypts). In prod the
-  # installer generates a random value (see apps/cli createSecrets); this dev default is
+  # JWT_SECRET + SECRETS_KEY. SECRETS_KEY is read by both api and worker (api encrypts
+  # user-service secrets at rest, worker decrypts); only the api reads JWT_SECRET. In prod
+  # the installer generates random values (see apps/cli createSecrets); this dev default is
   # any high-entropy string (the key is SHA-256-derived, so no length constraint).
   secret:
     create: true
@@ -72,7 +71,6 @@ api:
     data:
       JWT_SECRET: dev-jwt-secret-not-for-production
       SECRETS_KEY: dev-secrets-key-not-for-production
-      GITHUB_TOKEN: ''
 
 # ── console (Nuxt / Nitro) — pure API consumer. No DB/JWT, no k8s RBAC. ──
 console:

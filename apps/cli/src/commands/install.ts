@@ -9,7 +9,7 @@ import { ensureDependencies } from '~/lib/dependencies.js';
 import { promptInstallInputs } from '~/lib/prompts.js';
 import { checkAdoption } from '~/lib/adoption.js';
 import { resolveCertManagerClusterIssuer } from '~/lib/cert-manager.js';
-import { createSecrets, createImagePullSecret, promptImagePullCredentials } from '~/lib/secrets.js';
+import { createSecrets } from '~/lib/secrets.js';
 import { generateValuesFile, helmUpgradeInstall } from '~/lib/helm.js';
 import { selectPlatform } from '~/lib/platforms.js';
 import { writeVersionMarker } from '~/lib/version-marker.js';
@@ -224,19 +224,10 @@ async function ensureNamespace(kc: KubeConfig): Promise<void> {
 }
 
 async function ensurePlatformSecrets(kc: KubeConfig, config: InstallConfig): Promise<void> {
-	p.log.step('GitHub credentials for private container images and update checks:');
-	const creds = await promptImagePullCredentials();
-
 	const spinner = p.spinner();
 	spinner.start('Generating secrets...');
-	await createSecrets(kc, creds.password);
+	await createSecrets(kc);
 	spinner.stop('Secrets ready');
-
-	// The ImagePullSecret keys on the registry HOST (not the org-qualified path), so a custom --registry still matches.
-	const imageRegistryHost = config.imageRegistry.split('/')[0] ?? config.imageRegistry;
-	spinner.start('Creating ImagePullSecret...');
-	await createImagePullSecret(kc, imageRegistryHost, creds.username, creds.password);
-	spinner.stop('ImagePullSecret ready');
 
 	p.log.info(`Build registry setup will continue in the Console at https://${config.domain}.`);
 }

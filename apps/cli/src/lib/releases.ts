@@ -1,4 +1,3 @@
-import { resolveGithubToken, authHint } from '~/lib/auth.js';
 import type { Channel } from '~/lib/channel.js';
 
 const GITHUB_REPO = 'kubwave/kubwave';
@@ -25,28 +24,18 @@ interface GithubRelease {
 	assets?: { name: string; size: number; url: string; browser_download_url?: string }[];
 }
 
-async function githubHeaders(accept: string = 'application/vnd.github+json'): Promise<Record<string, string>> {
-	const headers: Record<string, string> = {
+// The kubwave repo and its release assets are public, so requests go out unauthenticated.
+function githubHeaders(accept: string = 'application/vnd.github+json'): Record<string, string> {
+	return {
 		Accept: accept,
 		'X-GitHub-Api-Version': '2022-11-28',
 		'User-Agent': 'cli'
 	};
-	const token = await resolveGithubToken();
-	if (token) headers.Authorization = `Bearer ${token}`;
-	return headers;
 }
 
 async function githubFetch(url: string): Promise<Response> {
-	const headers = await githubHeaders();
-	const res = await fetch(url, { headers });
+	const res = await fetch(url, { headers: githubHeaders() });
 	if (!res.ok) {
-		const token = await resolveGithubToken();
-		if (res.status === 404 && !token) {
-			throw new Error(`GitHub API 404 for ${url}. ${authHint()}`);
-		}
-		if (res.status === 401 || res.status === 403) {
-			throw new Error(`GitHub API ${res.status} for ${url}. Token rejected or insufficient scopes. ${authHint()}`);
-		}
 		throw new Error(`GitHub API ${res.status} ${res.statusText} for ${url}`);
 	}
 	return res;
@@ -130,8 +119,7 @@ export async function downloadAsset(release: ReleaseInfo, assetName: string, des
 		);
 	}
 
-	const headers = await githubHeaders('application/octet-stream');
-	const token = await resolveGithubToken();
+	const headers = githubHeaders('application/octet-stream');
 
 	const url = asset.downloadUrl;
 	const timeoutMs = assetDownloadTimeoutMs();
@@ -140,9 +128,6 @@ export async function downloadAsset(release: ReleaseInfo, assetName: string, des
 	try {
 		const res = await fetch(url, { headers, redirect: 'follow', signal: controller.signal });
 		if (!res.ok) {
-			if (res.status === 404 && !token) {
-				throw new Error(`Asset download 404 for ${url}. ${authHint()}`);
-			}
 			throw new Error(`Asset download failed: ${res.status} ${res.statusText} (${url})`);
 		}
 

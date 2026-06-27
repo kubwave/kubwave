@@ -52,32 +52,31 @@ and the Worker reconciler.
 
 Backend API entrypoint — auth authority, `JWT_SECRET` holder, read-only Kubernetes RBAC.
 
-| Key                            | Default                                     | Description                                                    |
-| ------------------------------ | ------------------------------------------- | -------------------------------------------------------------- |
-| `api.replicas`                 | `1`                                         | Deployment replicas.                                           |
-| `api.serviceAccount.create`    | `true`                                      | Create the ServiceAccount.                                     |
-| `api.serviceAccount.name`      | `kubwave-api`                               | ServiceAccount name.                                           |
-| `api.image.repository`         | `backend`                                   | Backend image repository (Tilt-rewritten in dev).              |
-| `api.image.tag`                | `dev`                                       | Image tag (Tilt-rewritten in dev).                             |
-| `api.image.pullPolicy`         | `Never`                                     | Pull policy. `Never` in dev; `IfNotPresent` in prod.           |
-| `api.port`                     | `3001`                                      | Container port.                                                |
-| `api.env.POSTGRES_HOST`        | `postgres-rw`                               | CNPG read-write Service hostname.                              |
-| `api.env.POSTGRES_PORT`        | `5432`                                      | Postgres port.                                                 |
-| `api.env.SMTP_HOST`            | `mailcrab`                                  | SMTP host (dev). Admin-editable in prod.                       |
-| `api.env.SMTP_PORT`            | `1025`                                      | SMTP port.                                                     |
-| `api.env.SMTP_FROM_ADDRESS`    | `noreply@kubwave.local`                     | `From` address for system emails.                              |
-| `api.env.SMTP_FROM_NAME`       | `kubwave`                                   | `From` display name.                                           |
-| `api.env.APP_BASE_URL`         | `http://console.localhost`                  | Console origin for invite links.                               |
-| `api.databaseUrl`              | `""`                                        | Raw connection string (dev only; prod uses POSTGRES\_\* vars). |
-| `api.resources`                | `{requests: 100m/256Mi, limits: 1000m/1Gi}` | Resource requests/limits.                                      |
-| `api.probes`                   | —                                           | Startup, readiness, liveness probe config.                     |
-| `api.nodeSelector`             | `{}`                                        | Node selector.                                                 |
-| `api.secret.create`            | `true`                                      | Create the `console-creds` Secret (dev).                       |
-| `api.secret.name`              | `console-creds`                             | Secret name.                                                   |
-| `api.secret.existingSecret`    | `""`                                        | If set, the Secret is not rendered (prod).                     |
-| `api.secret.data.JWT_SECRET`   | `dev-jwt-secret...`                         | **Dev only.** Prod: CLI generates a random value.              |
-| `api.secret.data.SECRETS_KEY`  | `dev-secrets-key...`                        | **Dev only.** AES-256-GCM key-derivation seed.                 |
-| `api.secret.data.GITHUB_TOKEN` | `""`                                        | Optional GitHub token for release checks/private repos.        |
+| Key                           | Default                                     | Description                                                    |
+| ----------------------------- | ------------------------------------------- | -------------------------------------------------------------- |
+| `api.replicas`                | `1`                                         | Deployment replicas.                                           |
+| `api.serviceAccount.create`   | `true`                                      | Create the ServiceAccount.                                     |
+| `api.serviceAccount.name`     | `kubwave-api`                               | ServiceAccount name.                                           |
+| `api.image.repository`        | `backend`                                   | Backend image repository (Tilt-rewritten in dev).              |
+| `api.image.tag`               | `dev`                                       | Image tag (Tilt-rewritten in dev).                             |
+| `api.image.pullPolicy`        | `Never`                                     | Pull policy. `Never` in dev; `IfNotPresent` in prod.           |
+| `api.port`                    | `3001`                                      | Container port.                                                |
+| `api.env.POSTGRES_HOST`       | `postgres-rw`                               | CNPG read-write Service hostname.                              |
+| `api.env.POSTGRES_PORT`       | `5432`                                      | Postgres port.                                                 |
+| `api.env.SMTP_HOST`           | `mailcrab`                                  | SMTP host (dev). Admin-editable in prod.                       |
+| `api.env.SMTP_PORT`           | `1025`                                      | SMTP port.                                                     |
+| `api.env.SMTP_FROM_ADDRESS`   | `noreply@kubwave.local`                     | `From` address for system emails.                              |
+| `api.env.SMTP_FROM_NAME`      | `kubwave`                                   | `From` display name.                                           |
+| `api.env.APP_BASE_URL`        | `http://console.localhost`                  | Console origin for invite links.                               |
+| `api.databaseUrl`             | `""`                                        | Raw connection string (dev only; prod uses POSTGRES\_\* vars). |
+| `api.resources`               | `{requests: 100m/256Mi, limits: 1000m/1Gi}` | Resource requests/limits.                                      |
+| `api.probes`                  | —                                           | Startup, readiness, liveness probe config.                     |
+| `api.nodeSelector`            | `{}`                                        | Node selector.                                                 |
+| `api.secret.create`           | `true`                                      | Create the `console-creds` Secret (dev).                       |
+| `api.secret.name`             | `console-creds`                             | Secret name.                                                   |
+| `api.secret.existingSecret`   | `""`                                        | If set, the Secret is not rendered (prod).                     |
+| `api.secret.data.JWT_SECRET`  | `dev-jwt-secret...`                         | **Dev only.** Prod: CLI generates a random value.              |
+| `api.secret.data.SECRETS_KEY` | `dev-secrets-key...`                        | **Dev only.** AES-256-GCM key-derivation seed.                 |
 
 ---
 

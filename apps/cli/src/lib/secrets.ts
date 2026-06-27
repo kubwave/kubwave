@@ -1,8 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { CoreV1Api, type KubeConfig, type V1Secret } from '@kubernetes/client-node';
 import * as p from '@clack/prompts';
-import { APP_LABELS, APP_NAMESPACE, IMAGE_PULL_SECRET_NAME, REGISTRY_HTPASSWD_SECRET_NAME, REGISTRY_PUSH_SECRET_NAME } from '~/lib/constants.js';
-import { UserCancelledError } from '~/lib/errors.js';
+import { APP_LABELS, APP_NAMESPACE, REGISTRY_HTPASSWD_SECRET_NAME, REGISTRY_PUSH_SECRET_NAME } from '~/lib/constants.js';
 import { isNotFoundError } from '~/lib/k8s-errors.js';
 
 export function generateSecret(bytes: number = 32): string {
@@ -10,16 +9,15 @@ export function generateSecret(bytes: number = 32): string {
 	return randomBytes(bytes).toString('base64url');
 }
 
-export async function createSecrets(kc: KubeConfig, githubToken?: string, namespace: string = APP_NAMESPACE): Promise<void> {
+export async function createSecrets(kc: KubeConfig, namespace: string = APP_NAMESPACE): Promise<void> {
 	const api = kc.makeApiClient(CoreV1Api);
 
 	const jwtSecret = generateSecret();
 	const secretsKey = generateSecret();
 	const postgresPassword = generateSecret();
 
-	// console-creds (name kept for upgrade stability): JWT_SECRET, SECRETS_KEY, and optional GITHUB_TOKEN (ghcr.io PAT reused for the worker's update check).
+	// console-creds (name kept for upgrade stability): JWT_SECRET + SECRETS_KEY.
 	const consoleData: Record<string, string> = { JWT_SECRET: jwtSecret, SECRETS_KEY: secretsKey };
-	if (githubToken) consoleData.GITHUB_TOKEN = githubToken;
 
 	await createSecretIfNotExists(api, {
 		metadata: {
@@ -31,6 +29,10 @@ export async function createSecrets(kc: KubeConfig, githubToken?: string, namesp
 		type: 'Opaque',
 		stringData: consoleData
 	});
+
+	// Upgrade cleanup: older installs stored a ghcr.io/update-check PAT here. No workload reads it anymore
+	// (kubwave is public), so strip it from an existing Secret instead of leaving the credential at rest.
+	await removeStaleConsoleKey(api, 'GITHUB_TOKEN', namespace);
 
 	// postgres-creds (api+worker) and postgres-app-creds (CNPG initdb) MUST share one password; reuse an existing postgres-creds so the bootstrap never drifts.
 	const existingPg = await readSecretOrNull(api, 'postgres-creds', namespace);
@@ -67,6 +69,31 @@ export async function createSecrets(kc: KubeConfig, githubToken?: string, namesp
 	});
 }
 
+// Drop a single key from an existing console-creds via read-modify-replace (keeps JWT_SECRET/SECRETS_KEY
+// untouched — no rotation). No-op when the Secret or the key is absent (fresh install / already cleaned).
+async function removeStaleConsoleKey(api: CoreV1Api, key: string, namespace: string): Promise<void> {
+	const existing = await readSecretOrNull(api, 'console-creds', namespace);
+	if (!existing?.data || !(key in existing.data)) return;
+
+	const { [key]: _removed, ...keep } = existing.data;
+	await api.replaceNamespacedSecret({
+		name: 'console-creds',
+		namespace,
+		body: {
+			metadata: {
+				name: 'console-creds',
+				namespace,
+				labels: existing.metadata?.labels ?? APP_LABELS,
+				annotations: existing.metadata?.annotations ?? { 'helm.sh/resource-policy': 'keep' },
+				resourceVersion: existing.metadata?.resourceVersion
+			},
+			type: existing.type ?? 'Opaque',
+			data: keep
+		}
+	});
+	p.log.step(`Removed stale ${key} from "console-creds"`);
+}
+
 async function createSecretIfNotExists(api: CoreV1Api, secret: V1Secret): Promise<void> {
 	const name = secret.metadata!.name!;
 	const namespace = secret.metadata!.namespace ?? APP_NAMESPACE;
@@ -77,50 +104,6 @@ async function createSecretIfNotExists(api: CoreV1Api, secret: V1Secret): Promis
 		if (isNotFoundError(err)) {
 			await api.createNamespacedSecret({ namespace, body: secret });
 			p.log.success(`Secret "${name}" created`);
-		} else {
-			throw err;
-		}
-	}
-}
-
-export async function createImagePullSecret(
-	kc: KubeConfig,
-	registry: string,
-	username: string,
-	password: string,
-	namespace: string = APP_NAMESPACE
-): Promise<void> {
-	const api = kc.makeApiClient(CoreV1Api);
-
-	const dockerConfigJson = JSON.stringify({
-		auths: {
-			[registry]: {
-				username,
-				password,
-				auth: Buffer.from(`${username}:${password}`).toString('base64')
-			}
-		}
-	});
-
-	const secret: V1Secret = {
-		metadata: {
-			name: IMAGE_PULL_SECRET_NAME,
-			namespace,
-			labels: APP_LABELS,
-			annotations: { 'helm.sh/resource-policy': 'keep' }
-		},
-		type: 'kubernetes.io/dockerconfigjson',
-		stringData: { '.dockerconfigjson': dockerConfigJson }
-	};
-
-	try {
-		await api.readNamespacedSecret({ name: IMAGE_PULL_SECRET_NAME, namespace });
-		await api.replaceNamespacedSecret({ name: IMAGE_PULL_SECRET_NAME, namespace, body: secret });
-		p.log.step(`ImagePullSecret "${IMAGE_PULL_SECRET_NAME}" updated`);
-	} catch (err: unknown) {
-		if (isNotFoundError(err)) {
-			await api.createNamespacedSecret({ namespace, body: secret });
-			p.log.success(`ImagePullSecret "${IMAGE_PULL_SECRET_NAME}" created`);
 		} else {
 			throw err;
 		}
@@ -224,31 +207,4 @@ async function upsertSecret(api: CoreV1Api, secret: V1Secret): Promise<void> {
 	}
 	await api.createNamespacedSecret({ namespace, body: secret });
 	p.log.success(`Secret "${name}" created`);
-}
-
-export async function promptImagePullCredentials(): Promise<{ username: string; password: string }> {
-	const username = await p.text({
-		message: 'GitHub username (ghcr.io registry login for private image pulls)',
-		placeholder: 'your-github-username',
-		validate(value) {
-			if (!value?.trim()) return 'Username is required';
-		}
-	});
-
-	if (p.isCancel(username)) {
-		throw new UserCancelledError('Installation aborted.');
-	}
-
-	const password = await p.password({
-		message: 'GitHub token (PAT — needs read:packages for image pulls and repo read access for update checks if private)',
-		validate(value) {
-			if (!value?.trim()) return 'Token is required';
-		}
-	});
-
-	if (p.isCancel(password)) {
-		throw new UserCancelledError('Installation aborted.');
-	}
-
-	return { username: username as string, password: password as string };
 }

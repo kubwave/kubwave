@@ -44,9 +44,6 @@ export interface WorkerRuntimeConfig {
 	ingressControllerNamespace: string;
 	podNamespace: string;
 	appVersion: string;
-	giteaToken?: string;
-	githubToken?: string;
-	gitlabToken?: string;
 	healthPort: number;
 	ingressClassName?: string;
 	ingressClusterIssuer?: string;
@@ -103,9 +100,6 @@ export function resolveWorkerRuntimeConfig(): WorkerRuntimeConfig {
 		ingressControllerNamespace: process.env.INGRESS_CONTROLLER_NAMESPACE ?? 'kube-system',
 		podNamespace: process.env.POD_NAMESPACE ?? 'kubwave',
 		appVersion: process.env.APP_VERSION ?? 'dev',
-		giteaToken: process.env.GITEA_TOKEN || undefined,
-		githubToken: process.env.GITHUB_TOKEN || undefined,
-		gitlabToken: process.env.GITLAB_TOKEN || undefined,
 		healthPort: num('WORKER_HEALTH_PORT', 8080),
 		ingressClassName: process.env.INGRESS_CLASS_NAME || undefined,
 		ingressClusterIssuer: process.env.INGRESS_CLUSTER_ISSUER || undefined,
