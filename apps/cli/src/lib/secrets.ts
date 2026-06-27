@@ -30,6 +30,10 @@ export async function createSecrets(kc: KubeConfig, namespace: string = APP_NAME
 		stringData: consoleData
 	});
 
+	// Upgrade cleanup: older installs stored a ghcr.io/update-check PAT here. No workload reads it anymore
+	// (kubwave is public), so strip it from an existing Secret instead of leaving the credential at rest.
+	await removeStaleConsoleKey(api, 'GITHUB_TOKEN', namespace);
+
 	// postgres-creds (api+worker) and postgres-app-creds (CNPG initdb) MUST share one password; reuse an existing postgres-creds so the bootstrap never drifts.
 	const existingPg = await readSecretOrNull(api, 'postgres-creds', namespace);
 	const encodedPw = existingPg?.data?.['POSTGRES_PASSWORD'];
@@ -63,6 +67,31 @@ export async function createSecrets(kc: KubeConfig, namespace: string = APP_NAME
 			password: pgPassword
 		}
 	});
+}
+
+// Drop a single key from an existing console-creds via read-modify-replace (keeps JWT_SECRET/SECRETS_KEY
+// untouched — no rotation). No-op when the Secret or the key is absent (fresh install / already cleaned).
+async function removeStaleConsoleKey(api: CoreV1Api, key: string, namespace: string): Promise<void> {
+	const existing = await readSecretOrNull(api, 'console-creds', namespace);
+	if (!existing?.data || !(key in existing.data)) return;
+
+	const { [key]: _removed, ...keep } = existing.data;
+	await api.replaceNamespacedSecret({
+		name: 'console-creds',
+		namespace,
+		body: {
+			metadata: {
+				name: 'console-creds',
+				namespace,
+				labels: existing.metadata?.labels ?? APP_LABELS,
+				annotations: existing.metadata?.annotations ?? { 'helm.sh/resource-policy': 'keep' },
+				resourceVersion: existing.metadata?.resourceVersion
+			},
+			type: existing.type ?? 'Opaque',
+			data: keep
+		}
+	});
+	p.log.step(`Removed stale ${key} from "console-creds"`);
 }
 
 async function createSecretIfNotExists(api: CoreV1Api, secret: V1Secret): Promise<void> {

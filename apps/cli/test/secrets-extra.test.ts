@@ -49,6 +49,50 @@ describe('createSecrets', () => {
 		expect(createCalled).toBe(false);
 	});
 
+	test('strips a stale GITHUB_TOKEN from an existing console-creds without rotating the other keys', async () => {
+		logs.length = 0;
+		let replaced: { name: string; data: Record<string, string> } | null = null;
+		const kc = {
+			makeApiClient: () => ({
+				readNamespacedSecret: async ({ name }: { name: string }) => {
+					if (name === 'console-creds') {
+						return { metadata: { name, resourceVersion: '7' }, type: 'Opaque', data: { JWT_SECRET: 'ag==', SECRETS_KEY: 'Yg==', GITHUB_TOKEN: 'Z2g=' } };
+					}
+					throw { code: 404 };
+				},
+				createNamespacedSecret: async () => undefined,
+				replaceNamespacedSecret: async ({ name, body }: { name: string; body: { data: Record<string, string> } }) => {
+					replaced = { name, data: body.data };
+				}
+			})
+		} as never;
+
+		await createSecrets(kc, 'kubwave');
+		expect(replaced).not.toBeNull();
+		expect(replaced!.name).toBe('console-creds');
+		expect(replaced!.data).toEqual({ JWT_SECRET: 'ag==', SECRETS_KEY: 'Yg==' }); // GITHUB_TOKEN dropped, others preserved verbatim
+	});
+
+	test('leaves an existing console-creds untouched when it has no GITHUB_TOKEN', async () => {
+		logs.length = 0;
+		let replaceCalled = false;
+		const kc = {
+			makeApiClient: () => ({
+				readNamespacedSecret: async ({ name }: { name: string }) => {
+					if (name === 'console-creds') return { metadata: { name }, type: 'Opaque', data: { JWT_SECRET: 'ag==', SECRETS_KEY: 'Yg==' } };
+					throw { code: 404 };
+				},
+				createNamespacedSecret: async () => undefined,
+				replaceNamespacedSecret: async () => {
+					replaceCalled = true;
+				}
+			})
+		} as never;
+
+		await createSecrets(kc, 'kubwave');
+		expect(replaceCalled).toBe(false);
+	});
+
 	test('reuses existing postgres password when postgres-creds exists', async () => {
 		logs.length = 0;
 		const existingPassword = 'existing-pg-password';
