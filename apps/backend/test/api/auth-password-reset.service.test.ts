@@ -27,47 +27,49 @@ function selectChain() {
 	return chain;
 }
 
-mock.module('@kubwave/db', () => ({
-	users: usersTable,
-	passwordResetTokens: resetTable,
-	refreshTokens: refreshTable,
-	teams: {},
-	teamMembers: {},
-	settings: {},
-	db: {
-		select: () => selectChain(),
-		delete: (table: unknown) => ({
+mock.module('@kubwave/db', () => {
+	const deleteImpl = (table: unknown) => ({
+		async where() {
+			deleted.push({ table });
+		}
+	});
+	const insertImpl = (table: unknown) => ({
+		async values(values: any) {
+			if (failNextInsert) {
+				failNextInsert = false;
+				throw new Error('DB connection lost');
+			}
+			inserted.push({ table, values });
+		}
+	});
+	const updateImpl = (table: unknown) => {
+		let values: any;
+		const chain: any = {
+			set(v: any) {
+				values = v;
+				return chain;
+			},
 			async where() {
-				deleted.push({ table });
+				txUpdates.push({ table, values });
 			}
-		}),
-		insert: (table: unknown) => ({
-			async values(values: any) {
-				if (failNextInsert) {
-					failNextInsert = false;
-					throw new Error('DB connection lost');
-				}
-				inserted.push({ table, values });
-			}
-		}),
-		transaction: async (fn: (tx: any) => Promise<unknown>) =>
-			fn({
-				update: (table: unknown) => {
-					let values: any;
-					const chain: any = {
-						set(v: any) {
-							values = v;
-							return chain;
-						},
-						async where() {
-							txUpdates.push({ table, values });
-						}
-					};
-					return chain;
-				}
-			})
-	}
-}));
+		};
+		return chain;
+	};
+	return {
+		users: usersTable,
+		passwordResetTokens: resetTable,
+		refreshTokens: refreshTable,
+		teams: {},
+		teamMembers: {},
+		settings: {},
+		db: {
+			select: () => selectChain(),
+			delete: deleteImpl,
+			insert: insertImpl,
+			transaction: async (fn: (tx: any) => Promise<unknown>) => fn({ delete: deleteImpl, insert: insertImpl, update: updateImpl })
+		}
+	};
+});
 
 const { AuthService } = await import('~/modules/auth/auth.service');
 

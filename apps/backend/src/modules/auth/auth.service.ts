@@ -106,12 +106,14 @@ export class AuthService {
 			const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
 			if (!user) return;
 
-			await db.delete(passwordResetTokens).where(and(eq(passwordResetTokens.userId, user.id), isNull(passwordResetTokens.usedAt)));
-
 			const rawToken = this.tokens.generateRefreshToken();
 			const tokenHash = this.tokens.hashRefreshToken(rawToken);
 			const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
-			await db.insert(passwordResetTokens).values({ userId: user.id, tokenHash, expiresAt });
+			// Atomic: a failed insert rolls back the delete so the user is never left tokenless.
+			await db.transaction(async tx => {
+				await tx.delete(passwordResetTokens).where(and(eq(passwordResetTokens.userId, user.id), isNull(passwordResetTokens.usedAt)));
+				await tx.insert(passwordResetTokens).values({ userId: user.id, tokenHash, expiresAt });
+			});
 
 			const resetUrl = `${this.config.api.appBaseUrl}/auth/reset?token=${rawToken}`;
 			// Don't await the SMTP round-trip — keeps response time independent of email delivery.
