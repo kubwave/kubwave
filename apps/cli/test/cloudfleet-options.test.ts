@@ -1,9 +1,11 @@
 import { describe, expect, mock, test } from 'bun:test';
+import { clackStub } from './support/clack-stub.js';
 
 const cancelled = Symbol('cancelled');
 let selectValue: string | symbol = 'fsn1';
 
 mock.module('@clack/prompts', () => ({
+	...clackStub(),
 	isCancel: (value: unknown) => value === cancelled,
 	select: mock(async () => {
 		return typeof selectValue === 'symbol' ? cancelled : selectValue;

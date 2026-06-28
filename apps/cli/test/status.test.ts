@@ -1,4 +1,5 @@
 import { describe, expect, mock, test } from 'bun:test';
+import { clackStub } from './support/clack-stub.js';
 
 let statusMode: 'installed' | 'missing' | 'error' = 'installed';
 const logs: string[] = [];
@@ -40,12 +41,12 @@ mock.module('~/lib/errors.js', () => ({
 }));
 
 mock.module('@clack/prompts', () => ({
-	intro: () => {},
+	...clackStub(),
 	log: {
+		...clackStub().log,
 		info: (message: string) => logs.push(`info:${message}`),
 		warn: (message: string) => logs.push(`warn:${message}`)
-	},
-	outro: () => {}
+	}
 }));
 
 const { registerStatusCommand } = await import('../src/commands/status.js');

@@ -1,9 +1,11 @@
 import { describe, expect, mock, test } from 'bun:test';
+import { clackStub } from './support/clack-stub.js';
 
 const cancelled = Symbol('cancelled');
 let confirmResult: boolean | symbol = true;
 
 mock.module('@clack/prompts', () => ({
+	...clackStub(),
 	confirm: mock(async () => confirmResult),
 	isCancel: (value: unknown) => value === cancelled
 }));

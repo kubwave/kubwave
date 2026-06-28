@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse } from 'yaml';
+import { clackStub } from './support/clack-stub.js';
 import type { ProgressReporter } from '../src/lib/progress.js';
 import type { InstallState } from '../src/lib/install-state.js';
 import type { VersionMarker } from '../src/lib/version-marker.js';
@@ -77,17 +78,9 @@ mock.module('~/lib/db.js', () => ({
 }));
 
 mock.module('@clack/prompts', () => ({
+	...clackStub(),
 	confirm: mock(async () => promptConfirmResult),
 	isCancel: (value: unknown) => value === cancelledPrompt,
-	intro: () => {},
-	outro: () => {},
-	log: {
-		info: () => {},
-		warn: () => {},
-		error: () => {},
-		success: () => {},
-		step: () => {}
-	},
 	spinner: () => ({ start: () => {}, stop: () => {} })
 }));
 

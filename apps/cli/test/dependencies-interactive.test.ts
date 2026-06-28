@@ -1,6 +1,7 @@
 import { describe, expect, mock, test } from 'bun:test';
 import { ApiextensionsV1Api, AppsV1Api, CoreV1Api, NetworkingV1Api } from '@kubernetes/client-node';
 import * as realHelm from '../src/lib/helm.js';
+import { clackStub } from './support/clack-stub.js';
 
 const execHelmCalls: string[][] = [];
 let execHelmResults = [{ stdout: '', stderr: '', exitCode: 0 }];
@@ -17,6 +18,7 @@ const cancelled = Symbol('cancelled');
 let confirmResult: boolean | symbol = true;
 
 mock.module('@clack/prompts', () => ({
+	...clackStub(),
 	confirm: mock(async () => confirmResult),
 	isCancel: (value: unknown) => value === cancelled
 }));

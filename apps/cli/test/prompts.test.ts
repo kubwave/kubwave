@@ -1,4 +1,5 @@
 import { describe, expect, mock, test } from 'bun:test';
+import { clackStub } from './support/clack-stub.js';
 
 const cancelled = Symbol('cancelled');
 let textResponses: (string | symbol)[] = [];
@@ -15,7 +16,7 @@ const cprompts = {
 	})
 };
 
-mock.module('@clack/prompts', () => cprompts);
+mock.module('@clack/prompts', () => ({ ...clackStub(), ...cprompts }));
 
 const { promptInstallInputs } = await import('../src/lib/prompts.js');
 

@@ -1,11 +1,14 @@
 import { describe, expect, mock, test } from 'bun:test';
+import { clackStub } from './support/clack-stub.js';
 
 const logs: string[] = [];
 let confirmAnswer: boolean | symbol = true;
 const cancelled = Symbol('cancelled');
 
 mock.module('@clack/prompts', () => ({
+	...clackStub(),
 	log: {
+		...clackStub().log,
 		info: (msg: string) => logs.push(`info:${msg}`),
 		step: (msg: string) => logs.push(`step:${msg}`)
 	},

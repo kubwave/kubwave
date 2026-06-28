@@ -1,9 +1,12 @@
 import { describe, expect, mock, test } from 'bun:test';
+import { clackStub } from './support/clack-stub.js';
 
 const logs: string[] = [];
 
 mock.module('@clack/prompts', () => ({
+	...clackStub(),
 	log: {
+		...clackStub().log,
 		step: (msg: string) => logs.push(`step:${msg}`),
 		success: (msg: string) => logs.push(`success:${msg}`)
 	}
