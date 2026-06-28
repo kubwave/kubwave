@@ -8,11 +8,11 @@ describe('password reset schemas', () => {
 	test('forgot rejects an invalid email', () => {
 		expect(() => forgotPasswordSchema.parse({ email: 'nope' })).toThrow();
 	});
-	test('reset accepts a token and a 12+ char password', () => {
-		expect(resetPasswordSchema.parse({ token: 'abc', password: 'longenough12' })).toEqual({ token: 'abc', password: 'longenough12' });
+	test('reset accepts a token and an 8+ char password', () => {
+		expect(resetPasswordSchema.parse({ token: 'abc', password: 'pass1234' })).toEqual({ token: 'abc', password: 'pass1234' });
 	});
-	test('reset rejects a short password', () => {
-		expect(() => resetPasswordSchema.parse({ token: 'abc', password: 'short' })).toThrow();
+	test('reset rejects a password shorter than 8 chars', () => {
+		expect(() => resetPasswordSchema.parse({ token: 'abc', password: 'pass123' })).toThrow();
 	});
 	test('reset rejects an empty token', () => {
 		expect(() => resetPasswordSchema.parse({ token: '', password: 'longenough12' })).toThrow();

@@ -54,7 +54,7 @@ export const forgotPasswordSchema = z.object({
 
 export const resetPasswordSchema = z.object({
 	token: z.string().min(1),
-	password: z.string().min(12).max(200)
+	password: z.string().min(8).max(200)
 });
 
 export const resetTokenParamSchema = z.object({ token: z.string().min(1) });
@@ -72,7 +72,7 @@ export class ResetPasswordRequestDto implements ResetPasswordInput {
 	@ApiProperty({ type: String, minLength: 1 })
 	token!: string;
 
-	@ApiProperty({ type: String, minLength: 12, maxLength: 200 })
+	@ApiProperty({ type: String, minLength: 8, maxLength: 200 })
 	password!: string;
 }
 

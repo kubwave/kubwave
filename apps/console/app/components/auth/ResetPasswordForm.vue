@@ -15,7 +15,7 @@ onMounted(async () => {
 });
 
 const schema = z.object({
-	password: z.string().min(12, 'Use at least 12 characters.').max(200, 'Use at most 200 characters.')
+	password: z.string().min(8, 'Use at least 8 characters.').max(200, 'Use at most 200 characters.')
 });
 
 const checking = computed(() => tokenValid.value === null);
