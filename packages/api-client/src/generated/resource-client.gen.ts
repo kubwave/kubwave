@@ -3,10 +3,15 @@
 import { apiResult, type KubwaveApiResult, type NormalizeApiData } from '../runtime/result.js';
 import type * as sdk from './sdk.gen.js';
 import type {
+	AuthForgotPasswordData,
+	AuthForgotPasswordResponses,
 	AuthLoginData,
 	AuthLoginResponses,
 	AuthLogoutResponses,
 	AuthRefreshResponses,
+	AuthResetPasswordData,
+	AuthResetPasswordResponses,
+	AuthResetPasswordValidityResponses,
 	AuthSessionResponses,
 	DeploymentBuildLogsGetResponses,
 	DeploymentLogsListResponses,
@@ -163,10 +168,16 @@ export type KubwaveResourceClient = {
 };
 
 export type KubwaveAuthResource = {
+	forgotPassword: KubwaveAuthForgotPasswordResource;
 	login: KubwaveAuthLoginResource;
 	logout: KubwaveAuthLogoutResource;
 	refresh: KubwaveAuthRefreshResource;
+	resetPassword: KubwaveAuthResetPasswordResource;
 	session: KubwaveAuthSessionResource;
+};
+
+export type KubwaveAuthForgotPasswordResource = {
+	post(body: AuthForgotPasswordData['body']): OperationResult<AuthForgotPasswordResponses>;
 };
 
 export type KubwaveAuthLoginResource = {
@@ -179,6 +190,19 @@ export type KubwaveAuthLogoutResource = {
 
 export type KubwaveAuthRefreshResource = {
 	post(): OperationResult<AuthRefreshResponses>;
+};
+
+export type KubwaveAuthResetPasswordResource = {
+	(token: string): KubwaveAuthResetPasswordTokenResource;
+	post(body: AuthResetPasswordData['body']): OperationResult<AuthResetPasswordResponses>;
+};
+
+export type KubwaveAuthResetPasswordTokenResource = {
+	validity: KubwaveAuthResetPasswordTokenValidityResource;
+};
+
+export type KubwaveAuthResetPasswordTokenValidityResource = {
+	get(): OperationResult<AuthResetPasswordValidityResponses>;
 };
 
 export type KubwaveAuthSessionResource = {
@@ -515,6 +539,9 @@ export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClie
 	return {
 		raw: raw,
 		auth: {
+			forgotPassword: {
+				post: (body: AuthForgotPasswordData['body']) => apiResult(raw.authForgotPassword({ body }))
+			},
 			login: {
 				post: (body: AuthLoginData['body']) => apiResult(raw.authLogin({ body }))
 			},
@@ -524,6 +551,16 @@ export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClie
 			refresh: {
 				post: () => apiResult(raw.authRefresh({}))
 			},
+			resetPassword: Object.assign(
+				(token: string) => ({
+					validity: {
+						get: () => apiResult(raw.authResetPasswordValidity({ path: { token: token } }))
+					}
+				}),
+				{
+					post: (body: AuthResetPasswordData['body']) => apiResult(raw.authResetPassword({ body }))
+				}
+			),
 			session: {
 				get: () => apiResult(raw.authSession({}))
 			}

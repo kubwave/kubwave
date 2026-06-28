@@ -47,3 +47,41 @@ export class SessionResponseDto {
 	@ApiProperty({ type: SessionUserDto })
 	user!: SessionUserDto;
 }
+
+export const forgotPasswordSchema = z.object({
+	email: z.string().email()
+});
+
+export const resetPasswordSchema = z.object({
+	token: z.string().min(1),
+	password: z.string().min(12).max(200)
+});
+
+export const resetTokenParamSchema = z.object({ token: z.string().min(1) });
+
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+export type ResetTokenParam = z.infer<typeof resetTokenParamSchema>;
+
+export class ForgotPasswordRequestDto implements ForgotPasswordInput {
+	@ApiProperty({ type: String, format: 'email' })
+	email!: string;
+}
+
+export class ResetPasswordRequestDto implements ResetPasswordInput {
+	@ApiProperty({ type: String, minLength: 1 })
+	token!: string;
+
+	@ApiProperty({ type: String, minLength: 12, maxLength: 200 })
+	password!: string;
+}
+
+export class AuthOkDto {
+	@ApiProperty({ type: Boolean })
+	ok!: true;
+}
+
+export class ResetTokenValidityDto {
+	@ApiProperty({ type: Boolean })
+	valid!: boolean;
+}

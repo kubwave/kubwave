@@ -28,6 +28,23 @@ export type LoginResponseDto = {
 	user: SessionUserDto;
 };
 
+export type ForgotPasswordRequestDto = {
+	email: string;
+};
+
+export type AuthOkDto = {
+	ok: boolean;
+};
+
+export type ResetPasswordRequestDto = {
+	token: string;
+	password: string;
+};
+
+export type ResetTokenValidityDto = {
+	valid: boolean;
+};
+
 export type RefreshResponseDto = {
 	accessToken: string;
 };
@@ -700,6 +717,47 @@ export type AuthLoginResponses = {
 };
 
 export type AuthLoginResponse = AuthLoginResponses[keyof AuthLoginResponses];
+
+export type AuthForgotPasswordData = {
+	body: ForgotPasswordRequestDto;
+	path?: never;
+	query?: never;
+	url: '/api/auth/forgot-password';
+};
+
+export type AuthForgotPasswordResponses = {
+	200: AuthOkDto;
+};
+
+export type AuthForgotPasswordResponse = AuthForgotPasswordResponses[keyof AuthForgotPasswordResponses];
+
+export type AuthResetPasswordData = {
+	body: ResetPasswordRequestDto;
+	path?: never;
+	query?: never;
+	url: '/api/auth/reset-password';
+};
+
+export type AuthResetPasswordResponses = {
+	200: AuthOkDto;
+};
+
+export type AuthResetPasswordResponse = AuthResetPasswordResponses[keyof AuthResetPasswordResponses];
+
+export type AuthResetPasswordValidityData = {
+	body?: never;
+	path: {
+		token: string;
+	};
+	query?: never;
+	url: '/api/auth/reset-password/{token}/validity';
+};
+
+export type AuthResetPasswordValidityResponses = {
+	200: ResetTokenValidityDto;
+};
+
+export type AuthResetPasswordValidityResponse = AuthResetPasswordValidityResponses[keyof AuthResetPasswordValidityResponses];
 
 export type AuthLogoutData = {
 	body?: never;

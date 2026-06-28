@@ -61,6 +61,95 @@
 				"tags": ["auth"]
 			}
 		},
+		"/api/auth/forgot-password": {
+			"post": {
+				"operationId": "authForgotPassword",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ForgotPasswordRequestDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AuthOkDto"
+								}
+							}
+						}
+					}
+				},
+				"summary": "Request a password reset email",
+				"tags": ["auth"]
+			}
+		},
+		"/api/auth/reset-password": {
+			"post": {
+				"operationId": "authResetPassword",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ResetPasswordRequestDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AuthOkDto"
+								}
+							}
+						}
+					}
+				},
+				"summary": "Reset password with a reset token",
+				"tags": ["auth"]
+			}
+		},
+		"/api/auth/reset-password/{token}/validity": {
+			"get": {
+				"operationId": "authResetPasswordValidity",
+				"parameters": [
+					{
+						"name": "token",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ResetTokenValidityDto"
+								}
+							}
+						}
+					}
+				},
+				"summary": "Check whether a reset token is valid",
+				"tags": ["auth"]
+			}
+		},
 		"/api/auth/logout": {
 			"post": {
 				"operationId": "authLogout",
@@ -2925,6 +3014,49 @@
 					}
 				},
 				"required": ["accessToken", "user"]
+			},
+			"ForgotPasswordRequestDto": {
+				"type": "object",
+				"properties": {
+					"email": {
+						"type": "string",
+						"format": "email"
+					}
+				},
+				"required": ["email"]
+			},
+			"AuthOkDto": {
+				"type": "object",
+				"properties": {
+					"ok": {
+						"type": "boolean"
+					}
+				},
+				"required": ["ok"]
+			},
+			"ResetPasswordRequestDto": {
+				"type": "object",
+				"properties": {
+					"token": {
+						"type": "string",
+						"minLength": 1
+					},
+					"password": {
+						"type": "string",
+						"minLength": 12,
+						"maxLength": 200
+					}
+				},
+				"required": ["token", "password"]
+			},
+			"ResetTokenValidityDto": {
+				"type": "object",
+				"properties": {
+					"valid": {
+						"type": "boolean"
+					}
+				},
+				"required": ["valid"]
 			},
 			"RefreshResponseDto": {
 				"type": "object",
