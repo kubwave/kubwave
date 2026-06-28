@@ -66,7 +66,7 @@ mock.module('@kubwave/db', () => {
 			select: () => selectChain(),
 			delete: deleteImpl,
 			insert: insertImpl,
-			transaction: async (fn: (tx: any) => Promise<unknown>) => fn({ delete: deleteImpl, insert: insertImpl, update: updateImpl })
+			transaction: async (fn: (tx: any) => Promise<unknown>) => { return await fn({ delete: deleteImpl, insert: insertImpl, update: updateImpl }); }
 		}
 	};
 });

@@ -1,7 +1,13 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, mock, test } from 'bun:test';
 import type { BackendConfigService, SmtpEnvConfig } from '~/shared/config/backend-config.service';
-import { MailerService } from '~/shared/mailer/mailer.service';
+import type { MailerService as IMailerService } from '~/shared/mailer/mailer.service';
 import type { SettingsService } from '~/shared/settings/settings.service';
+
+// MailerService → SettingsService → @kubwave/db (top-level createClient call).
+// Stub the package so this file can load without DATABASE_URL env vars.
+mock.module('@kubwave/db', () => ({ db: {}, settings: {} }));
+
+const { MailerService } = await import('~/shared/mailer/mailer.service');
 
 // getEffectiveSmtpConfig is now a MailerService method reading settings.get() + config.smtp.
 // Stub both: config.smtp stands in for the SMTP env defaults, settings.get for the stored row.
@@ -15,7 +21,7 @@ const envSmtp: SmtpEnvConfig = {
 	fromName: 'kubwave'
 };
 
-function makeMailer(stored: unknown): MailerService {
+function makeMailer(stored: unknown): IMailerService {
 	const config = { smtp: envSmtp } as unknown as BackendConfigService;
 	const settings = { get: async () => stored } as unknown as SettingsService;
 	return new MailerService(config, settings);

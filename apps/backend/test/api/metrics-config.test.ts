@@ -1,11 +1,17 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, mock, test } from 'bun:test';
 import type { BackendConfigService } from '~/shared/config/backend-config.service';
-import { MetricsConfigService } from '~/shared/metrics/metrics-config.service';
+import type { MetricsConfigService as IMetricsConfigService } from '~/shared/metrics/metrics-config.service';
 import type { SettingsService } from '~/shared/settings/settings.service';
+
+// SettingsService (transitively loaded by MetricsConfigService) imports @kubwave/db at module
+// level; stub it so this file can load without DATABASE_URL env vars.
+mock.module('@kubwave/db', () => ({ db: {}, settings: {} }));
+
+const { MetricsConfigService } = await import('~/shared/metrics/metrics-config.service');
 
 // resolveProviderSettings / resolvePrometheusUrl are now MetricsConfigService methods. Build the
 // service with stub deps; only resolvePrometheusUrl('managed') touches config (podNamespace).
-function makeService(): MetricsConfigService {
+function makeService(): IMetricsConfigService {
 	const config = { api: { podNamespace: 'kubwave' } } as unknown as BackendConfigService;
 	const settings = {} as unknown as SettingsService;
 	return new MetricsConfigService(config, settings);

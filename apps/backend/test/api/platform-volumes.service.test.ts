@@ -18,6 +18,11 @@ function parseMemoryToBytes(value: string | undefined | null): number | null {
 	return Number(value.slice(0, -2)) * 1024 ** 3;
 }
 
+// PlatformVolumesService → MetricsConfigService / PlatformVolumeAutoscalingSettingsService →
+// SettingsService → @kubwave/db (top-level createClient call). Stub it so this file can load
+// without DATABASE_URL env vars.
+mock.module('@kubwave/db', () => ({ db: {}, settings: {} }));
+
 mock.module('@kubwave/kube', () => ({
 	DEFAULT_METRICS_PROVIDER: 'live',
 	METRICS_SETTINGS_KEY: 'metrics-provider',
