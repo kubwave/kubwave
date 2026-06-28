@@ -50,19 +50,11 @@ const { form, isSubmitting } = useAppForm({
 	</div>
 	<AppForm v-else :form="form" class="flex flex-col gap-4">
 		<Field v-slot="{ componentField }" name="password" label="New password">
-			<Input
-				v-bind="componentField"
-				type="password"
-				autocomplete="new-password"
-				placeholder="••••••••"
-				:disabled="isSubmitting || checking"
-			/>
+			<Input v-bind="componentField" type="password" autocomplete="new-password" placeholder="••••••••" :disabled="isSubmitting || checking" />
 		</Field>
 
 		<p v-if="rootError" role="alert" class="text-sm text-destructive">{{ rootError }}</p>
 
-		<Button type="submit" class="mt-1 w-full" :disabled="isSubmitting || checking">{{
-			isSubmitting ? 'Saving…' : 'Set new password'
-		}}</Button>
+		<Button type="submit" class="mt-1 w-full" :disabled="isSubmitting || checking">{{ isSubmitting ? 'Saving…' : 'Set new password' }}</Button>
 	</AppForm>
 </template>
