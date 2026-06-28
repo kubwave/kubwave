@@ -61,6 +61,16 @@ function forgot(email: string) {
 	return app.getHttpAdapter().getInstance().inject({ method: 'POST', url: '/auth/forgot-password', payload: { email } });
 }
 
+async function withStub<K extends keyof typeof authStub>(key: K, impl: (typeof authStub)[K], fn: () => Promise<void>): Promise<void> {
+	const original = authStub[key];
+	authStub[key] = impl;
+	try {
+		await fn();
+	} finally {
+		authStub[key] = original;
+	}
+}
+
 describe('forgot-password anti-enumeration', () => {
 	test('returns { ok: true } for an unknown email', async () => {
 		const res = await forgot('ghost@example.com');
@@ -96,11 +106,7 @@ describe('reset-password endpoint', () => {
 	});
 
 	test('POST /auth/reset-password when resetPassword rejects returns error response', async () => {
-		const original = authStub.resetPassword;
-		authStub.resetPassword = async () => {
-			throw new ApiError(400, 'invalid_reset_token');
-		};
-		try {
+		await withStub('resetPassword', async () => { throw new ApiError(400, 'invalid_reset_token'); }, async () => {
 			const res = await app
 				.getHttpAdapter()
 				.getInstance()
@@ -111,25 +117,19 @@ describe('reset-password endpoint', () => {
 				});
 			expect(res.statusCode).toBe(400);
 			expect(res.json<{ error: string }>()).toEqual({ error: 'invalid_reset_token' });
-		} finally {
-			authStub.resetPassword = original;
-		}
+		});
 	});
 });
 
 describe('reset-password validity endpoint', () => {
 	test('GET /auth/reset-password/:token/validity returns { valid: true } when token is valid', async () => {
-		const original = authStub.checkResetTokenValidity;
-		authStub.checkResetTokenValidity = async () => ({ valid: true });
-		try {
+		await withStub('checkResetTokenValidity', async () => ({ valid: true }), async () => {
 			const res = await app.getHttpAdapter().getInstance().inject({
 				method: 'GET',
 				url: '/auth/reset-password/some-token/validity'
 			});
 			expect(res.statusCode).toBe(200);
 			expect(res.json<{ valid: boolean }>()).toEqual({ valid: true });
-		} finally {
-			authStub.checkResetTokenValidity = original;
-		}
+		});
 	});
 });

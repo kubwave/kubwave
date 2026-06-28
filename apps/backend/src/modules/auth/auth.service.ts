@@ -141,10 +141,7 @@ export class AuthService {
 		await db.transaction(async tx => {
 			await tx.update(users).set({ password: passwordHash, updatedAt: new Date() }).where(eq(users.id, record.userId));
 			await tx.update(passwordResetTokens).set({ usedAt: new Date() }).where(eq(passwordResetTokens.id, record.id));
-			await tx
-				.update(refreshTokens)
-				.set({ revokedAt: new Date() })
-				.where(and(eq(refreshTokens.userId, record.userId), isNull(refreshTokens.revokedAt)));
+			await this.revokeAllForUser(record.userId, tx);
 		});
 	}
 
@@ -154,8 +151,8 @@ export class AuthService {
 		return { valid: this.isResetTokenValid(record) };
 	}
 
-	private async revokeAllForUser(userId: string): Promise<void> {
-		await db
+	private async revokeAllForUser(userId: string, executor: typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0] = db): Promise<void> {
+		await executor
 			.update(refreshTokens)
 			.set({ revokedAt: new Date() })
 			.where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
