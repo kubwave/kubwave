@@ -78,9 +78,7 @@ export class AuthController {
 	@UseGuards(AuthRateLimitGuard)
 	@ApiOperation({ operationId: 'authResetPasswordValidity', summary: 'Check whether a reset token is valid' })
 	@ApiOkResponse({ type: ResetTokenValidityDto })
-	async resetPasswordValidity(
-		@Param(new ZodValidationPipe(resetTokenParamSchema)) params: ResetTokenParam
-	): Promise<ResetTokenValidityDto> {
+	async resetPasswordValidity(@Param(new ZodValidationPipe(resetTokenParamSchema)) params: ResetTokenParam): Promise<ResetTokenValidityDto> {
 		return this.auth.checkResetTokenValidity(params.token);
 	}
 

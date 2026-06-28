@@ -57,6 +57,8 @@ const { form, isSubmitting } = useAppForm({
 
 		<p v-if="rootError" role="alert" class="text-sm text-destructive">{{ rootError }}</p>
 
-		<Button type="submit" class="mt-1 w-full" :disabled="isSubmitting || tokenValid === null">{{ isSubmitting ? 'Saving…' : 'Set new password' }}</Button>
+		<Button type="submit" class="mt-1 w-full" :disabled="isSubmitting || tokenValid === null">{{
+			isSubmitting ? 'Saving…' : 'Set new password'
+		}}</Button>
 	</AppForm>
 </template>

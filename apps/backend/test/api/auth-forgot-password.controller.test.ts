@@ -9,7 +9,14 @@ import { ApiError } from '~/shared/errors/api-error';
 
 // Mock @kubwave/db before dynamic imports — auth.service and auth.guard both import it at module level
 mock.module('@kubwave/db', () => ({
-	db: {}, sql: null, users: {}, passwordResetTokens: {}, refreshTokens: {}, teamMembers: {}, teams: {}, settings: {}
+	db: {},
+	sql: null,
+	users: {},
+	passwordResetTokens: {},
+	refreshTokens: {},
+	teamMembers: {},
+	teams: {},
+	settings: {}
 }));
 
 const { AuthController } = await import('~/modules/auth/auth.controller');
@@ -18,7 +25,9 @@ const { AuthGuard } = await import('~/shared/auth/auth.guard');
 
 const seen: string[] = [];
 const authStub = {
-	requestPasswordReset: async (email: string) => { seen.push(email); },
+	requestPasswordReset: async (email: string) => {
+		seen.push(email);
+	},
 	resetPassword: async () => {},
 	checkResetTokenValidity: async () => ({ valid: false })
 };
@@ -72,7 +81,9 @@ describe('forgot-password anti-enumeration', () => {
 
 	test('returns { ok: true } even when the service throws', async () => {
 		const original = authStub.requestPasswordReset;
-		authStub.requestPasswordReset = async () => { throw new Error('db error'); };
+		authStub.requestPasswordReset = async () => {
+			throw new Error('db error');
+		};
 		try {
 			const res = await forgot('error@example.com');
 			expect(res.statusCode).toBe(200);
@@ -85,24 +96,32 @@ describe('forgot-password anti-enumeration', () => {
 
 describe('reset-password endpoint', () => {
 	test('POST /auth/reset-password with valid body returns { ok: true }', async () => {
-		const res = await app.getHttpAdapter().getInstance().inject({
-			method: 'POST',
-			url: '/auth/reset-password',
-			payload: { token: 'tok', password: 'a-valid-password-12' }
-		});
+		const res = await app
+			.getHttpAdapter()
+			.getInstance()
+			.inject({
+				method: 'POST',
+				url: '/auth/reset-password',
+				payload: { token: 'tok', password: 'a-valid-password-12' }
+			});
 		expect(res.statusCode).toBe(200);
 		expect(res.json<{ ok: boolean }>()).toEqual({ ok: true });
 	});
 
 	test('POST /auth/reset-password when resetPassword rejects returns error response', async () => {
 		const original = authStub.resetPassword;
-		authStub.resetPassword = async () => { throw new ApiError(400, 'invalid_reset_token'); };
+		authStub.resetPassword = async () => {
+			throw new ApiError(400, 'invalid_reset_token');
+		};
 		try {
-			const res = await app.getHttpAdapter().getInstance().inject({
-				method: 'POST',
-				url: '/auth/reset-password',
-				payload: { token: 'tok', password: 'a-valid-password-12' }
-			});
+			const res = await app
+				.getHttpAdapter()
+				.getInstance()
+				.inject({
+					method: 'POST',
+					url: '/auth/reset-password',
+					payload: { token: 'tok', password: 'a-valid-password-12' }
+				});
 			expect(res.statusCode).toBe(400);
 			expect(res.json<{ error: string }>()).toEqual({ error: 'invalid_reset_token' });
 		} finally {

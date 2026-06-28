@@ -12,9 +12,16 @@ let txUpdates: Array<{ table: unknown; values: any }> = [];
 function selectChain() {
 	let table: unknown;
 	const chain: any = {
-		from(t: unknown) { table = t; return chain; },
-		where() { return chain; },
-		async limit() { return selectResults.get(table) ?? []; }
+		from(t: unknown) {
+			table = t;
+			return chain;
+		},
+		where() {
+			return chain;
+		},
+		async limit() {
+			return selectResults.get(table) ?? [];
+		}
 	};
 	return chain;
 }
@@ -28,13 +35,29 @@ mock.module('@kubwave/db', () => ({
 	settings: {},
 	db: {
 		select: () => selectChain(),
-		delete: (table: unknown) => ({ async where() { deleted.push({ table }); } }),
-		insert: (table: unknown) => ({ async values(values: any) { inserted.push({ table, values }); } }),
+		delete: (table: unknown) => ({
+			async where() {
+				deleted.push({ table });
+			}
+		}),
+		insert: (table: unknown) => ({
+			async values(values: any) {
+				inserted.push({ table, values });
+			}
+		}),
 		transaction: async (fn: (tx: any) => Promise<unknown>) =>
 			fn({
 				update: (table: unknown) => {
 					let values: any;
-					const chain: any = { set(v: any) { values = v; return chain; }, async where() { txUpdates.push({ table, values }); } };
+					const chain: any = {
+						set(v: any) {
+							values = v;
+							return chain;
+						},
+						async where() {
+							txUpdates.push({ table, values });
+						}
+					};
 					return chain;
 				}
 			})
@@ -86,7 +109,9 @@ describe('requestPasswordReset', () => {
 
 	test('mailer failure is swallowed (no throw)', async () => {
 		selectResults.set(usersTable, [{ id: 'u1', email: 'user@x.test' }]);
-		const { service } = makeService(async () => { throw new Error('SMTP disabled'); });
+		const { service } = makeService(async () => {
+			throw new Error('SMTP disabled');
+		});
 		await expect(service.requestPasswordReset('user@x.test')).resolves.toBeUndefined();
 	});
 });
