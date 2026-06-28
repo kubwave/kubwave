@@ -8,8 +8,10 @@ const rootError = ref<string | null>(null);
 const tokenValid = ref<boolean | null>(null);
 
 onMounted(async () => {
-	const result = await apiData(api.auth.resetPassword(props.token).validity.get()).catch(() => ({ valid: false }));
-	tokenValid.value = result.valid;
+	const result = await apiData(api.auth.resetPassword(props.token).validity.get()).catch(() => null);
+	// On a transient error (network / rate-limit), show the form and let the POST be the
+	// authoritative check — don't strand a valid token on the "expired" screen.
+	tokenValid.value = result ? result.valid : true;
 });
 
 const schema = z.object({
