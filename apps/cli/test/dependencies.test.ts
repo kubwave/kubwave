@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
 import { ApiextensionsV1Api, AppsV1Api, CoreV1Api, NetworkingV1Api } from '@kubernetes/client-node';
 import * as realHelm from '../src/lib/helm.js';
+import { clackStub } from './support/clack-stub.js';
 
 const execHelmCalls: string[][] = [];
 let execHelmResults = [{ stdout: '', stderr: '', exitCode: 0 }];
@@ -18,9 +19,11 @@ mock.module('~/lib/helm.js', () => ({
 }));
 
 mock.module('@clack/prompts', () => ({
+	...clackStub(),
 	confirm: mock(async () => confirmResult),
 	isCancel: () => false,
 	log: {
+		...clackStub().log,
 		success: (message: string) => promptEvents.push(`success:${message}`),
 		warn: (message: string) => promptEvents.push(`warn:${message}`),
 		error: (message: string) => promptEvents.push(`error:${message}`),

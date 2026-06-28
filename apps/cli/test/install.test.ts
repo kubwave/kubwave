@@ -8,6 +8,7 @@ import * as realCliVersion from '../src/lib/cli-version.js';
 import * as realErrors from '../src/lib/errors.js';
 import { APP_NAMESPACE } from '../src/lib/constants.js';
 import type { InstallConfig } from '../src/lib/helm.js';
+import { clackStub } from './support/clack-stub.js';
 
 const { FatalCliError } = realErrors;
 
@@ -92,10 +93,12 @@ let passwordValue = 's3cret';
 const textValues: string[] = [];
 
 mock.module('@clack/prompts', () => ({
+	...clackStub(),
 	intro: (m: string) => logs.push(`intro:${m}`),
 	outro: (m: string) => logs.push(`outro:${m}`),
 	isCancel: () => false,
 	log: {
+		...clackStub().log,
 		success: (m: string) => logs.push(`success:${m}`),
 		info: (m: string) => logs.push(`info:${m}`),
 		warn: (m: string) => logs.push(`warn:${m}`),

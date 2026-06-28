@@ -24,6 +24,7 @@ coverage
 .claude
 .codex
 .pi
+docs
 
 # Editor
 .vscode/*

@@ -1,4 +1,5 @@
 import { describe, expect, mock, test } from 'bun:test';
+import { clackStub } from './support/clack-stub.js';
 
 const logs: string[] = [];
 const cancelled = Symbol('cancelled');
@@ -11,7 +12,9 @@ interface ListCall {
 }
 
 mock.module('@clack/prompts', () => ({
+	...clackStub(),
 	log: {
+		...clackStub().log,
 		warn: (msg: string) => logs.push(`warn:${msg}`)
 	},
 	confirm: async () => confirmAnswer,

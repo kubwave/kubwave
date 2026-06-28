@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from 'bun:test';
 import type { KubeConfig } from '@kubernetes/client-node';
 import * as realK8s from '../src/lib/k8s.js';
 import * as realHelm from '../src/lib/helm.js';
+import { clackStub } from './support/clack-stub.js';
 
 const helmUninstallCalls: Array<{ release: string; namespace: string }> = [];
 const helmListCalls: string[] = [];
@@ -103,11 +104,13 @@ const api = {
 };
 
 mock.module('@clack/prompts', () => ({
+	...clackStub(),
 	confirm: mock(async () => confirmResult),
 	isCancel: (value: unknown) => value === cancelledPrompt,
 	intro: (message: string) => promptEvents.push(`intro:${message}`),
 	outro: (message: string) => promptEvents.push(`outro:${message}`),
 	log: {
+		...clackStub().log,
 		info: (message: string) => promptEvents.push(`info:${message}`),
 		warn: (message: string) => promptEvents.push(`warn:${message}`),
 		success: (message: string) => promptEvents.push(`success:${message}`),

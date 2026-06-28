@@ -148,6 +148,13 @@
 			"when": 1781996024716,
 			"tag": "0020_elite_gideon",
 			"breakpoints": true
+		},
+		{
+			"idx": 21,
+			"version": "7",
+			"when": 1782590229071,
+			"tag": "0021_soft_ma_gnuci",
+			"breakpoints": true
 		}
 	]
 }

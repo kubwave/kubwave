@@ -3,12 +3,18 @@
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
 import type {
+	AuthForgotPasswordData,
+	AuthForgotPasswordResponses,
 	AuthLoginData,
 	AuthLoginResponses,
 	AuthLogoutData,
 	AuthLogoutResponses,
 	AuthRefreshData,
 	AuthRefreshResponses,
+	AuthResetPasswordData,
+	AuthResetPasswordResponses,
+	AuthResetPasswordValidityData,
+	AuthResetPasswordValidityResponses,
 	AuthSessionData,
 	AuthSessionResponses,
 	DeploymentBuildLogsGetData,
@@ -212,6 +218,47 @@ export const authLogin = <ThrowOnError extends boolean = false>(
 			'Content-Type': 'application/json',
 			...options.headers
 		}
+	});
+
+/**
+ * Request a password reset email
+ */
+export const authForgotPassword = <ThrowOnError extends boolean = false>(
+	options: Options<AuthForgotPasswordData, ThrowOnError>
+): RequestResult<AuthForgotPasswordResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<AuthForgotPasswordResponses, unknown, ThrowOnError>({
+		url: '/api/auth/forgot-password',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
+
+/**
+ * Reset password with a reset token
+ */
+export const authResetPassword = <ThrowOnError extends boolean = false>(
+	options: Options<AuthResetPasswordData, ThrowOnError>
+): RequestResult<AuthResetPasswordResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<AuthResetPasswordResponses, unknown, ThrowOnError>({
+		url: '/api/auth/reset-password',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
+
+/**
+ * Check whether a reset token is valid
+ */
+export const authResetPasswordValidity = <ThrowOnError extends boolean = false>(
+	options: Options<AuthResetPasswordValidityData, ThrowOnError>
+): RequestResult<AuthResetPasswordValidityResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).get<AuthResetPasswordValidityResponses, unknown, ThrowOnError>({
+		url: '/api/auth/reset-password/{token}/validity',
+		...options
 	});
 
 /**

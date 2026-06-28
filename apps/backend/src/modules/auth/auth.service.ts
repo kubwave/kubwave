@@ -1,13 +1,15 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { and, eq, isNull } from 'drizzle-orm';
-import { db, refreshTokens, users } from '@kubwave/db';
+import { db, passwordResetTokens, refreshTokens, users } from '@kubwave/db';
 import { TeamsService } from '../teams/teams.service.js';
 import { PasswordService } from '../../shared/auth/password.service.js';
 import { TokenService } from '../../shared/auth/token.service.js';
 import { BackendConfigService } from '../../shared/config/backend-config.service.js';
 import { ApiError } from '../../shared/errors/api-error.js';
+import { MailerService } from '../../shared/mailer/mailer.service.js';
 
 const REFRESH_REUSE_LEEWAY_MS = 10_000;
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
 
 export interface SessionUser {
 	id: string;
@@ -25,11 +27,14 @@ export interface LoginResult {
 
 @Injectable()
 export class AuthService {
+	private readonly logger = new Logger(AuthService.name);
+
 	constructor(
 		private readonly config: BackendConfigService,
 		private readonly passwords: PasswordService,
 		private readonly teams: TeamsService,
-		private readonly tokens: TokenService
+		private readonly tokens: TokenService,
+		private readonly mailer: MailerService
 	) {}
 
 	async loginWithPassword(email: string, password: string): Promise<LoginResult> {
@@ -96,8 +101,60 @@ export class AuthService {
 		return token;
 	}
 
-	private async revokeAllForUser(userId: string): Promise<void> {
-		await db
+	async requestPasswordReset(email: string): Promise<void> {
+		try {
+			const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+			if (!user) return;
+
+			const rawToken = this.tokens.generateRefreshToken();
+			const tokenHash = this.tokens.hashRefreshToken(rawToken);
+			const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
+			// Atomic: a failed insert rolls back the delete so the user is never left tokenless.
+			await db.transaction(async tx => {
+				await tx.delete(passwordResetTokens).where(and(eq(passwordResetTokens.userId, user.id), isNull(passwordResetTokens.usedAt)));
+				await tx.insert(passwordResetTokens).values({ userId: user.id, tokenHash, expiresAt });
+			});
+
+			const resetUrl = `${this.config.api.appBaseUrl}/auth/reset?token=${rawToken}`;
+			// Don't await the SMTP round-trip — keeps response time independent of email delivery.
+			// Trade-off: at-most-once delivery (a send in flight is lost on shutdown).
+			void this.mailer
+				.sendPasswordResetEmail({ to: user.email, resetUrl, expiresInMinutes: PASSWORD_RESET_TTL_MS / 60_000 })
+				.catch(err => this.logger.debug(`Password reset email not sent: ${err instanceof Error ? err.message : String(err)}`));
+		} catch (err) {
+			// Swallow + log so the response is identical (and timing-independent) whether or not
+			// the account exists or infra fails — never leak via the response.
+			this.logger.error('Failed to process password reset request', err instanceof Error ? err.stack : String(err));
+		}
+	}
+
+	private isResetTokenValid(record: { usedAt: Date | null; expiresAt: Date } | undefined): boolean {
+		return Boolean(record && !record.usedAt && record.expiresAt.getTime() > Date.now());
+	}
+
+	async resetPassword(rawToken: string, password: string): Promise<void> {
+		const tokenHash = this.tokens.hashRefreshToken(rawToken);
+		const [record] = await db.select().from(passwordResetTokens).where(eq(passwordResetTokens.tokenHash, tokenHash)).limit(1);
+		if (!record || !this.isResetTokenValid(record)) {
+			throw new ApiError(400, 'invalid_reset_token');
+		}
+
+		const passwordHash = await this.passwords.hash(password);
+		await db.transaction(async tx => {
+			await tx.update(users).set({ password: passwordHash, updatedAt: new Date() }).where(eq(users.id, record.userId));
+			await tx.update(passwordResetTokens).set({ usedAt: new Date() }).where(eq(passwordResetTokens.id, record.id));
+			await this.revokeAllForUser(record.userId, tx);
+		});
+	}
+
+	async checkResetTokenValidity(rawToken: string): Promise<{ valid: boolean }> {
+		const tokenHash = this.tokens.hashRefreshToken(rawToken);
+		const [record] = await db.select().from(passwordResetTokens).where(eq(passwordResetTokens.tokenHash, tokenHash)).limit(1);
+		return { valid: this.isResetTokenValid(record) };
+	}
+
+	private async revokeAllForUser(userId: string, executor: typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0] = db): Promise<void> {
+		await executor
 			.update(refreshTokens)
 			.set({ revokedAt: new Date() })
 			.where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));

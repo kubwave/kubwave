@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AuthGuard } from '../../shared/auth/auth.guard.js';
@@ -8,7 +8,24 @@ import { CookieService } from '../../shared/cookies/cookie.service.js';
 import { ZodValidationPipe } from '../../shared/validation/zod-validation.pipe.js';
 import { ApiError } from '../../shared/errors/api-error.js';
 import { AuthService } from './auth.service.js';
-import { LoginRequestDto, LoginResponseDto, RefreshResponseDto, SessionResponseDto, loginSchema, type LoginInput } from './auth.dto.js';
+import {
+	AuthOkDto,
+	ForgotPasswordRequestDto,
+	LoginRequestDto,
+	LoginResponseDto,
+	RefreshResponseDto,
+	ResetPasswordRequestDto,
+	ResetTokenValidityDto,
+	SessionResponseDto,
+	forgotPasswordSchema,
+	loginSchema,
+	resetPasswordSchema,
+	resetTokenParamSchema,
+	type ForgotPasswordInput,
+	type LoginInput,
+	type ResetPasswordInput,
+	type ResetTokenParam
+} from './auth.dto.js';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -33,6 +50,36 @@ export class AuthController {
 		if (result.activeTeamId) this.cookies.setActiveTeam(reply, result.activeTeamId);
 		else this.cookies.clearActiveTeam(reply);
 		return { accessToken: result.accessToken, user: result.user };
+	}
+
+	@Post('forgot-password')
+	@UseGuards(AuthRateLimitGuard)
+	@HttpCode(200)
+	@ApiOperation({ operationId: 'authForgotPassword', summary: 'Request a password reset email' })
+	@ApiBody({ type: ForgotPasswordRequestDto })
+	@ApiOkResponse({ type: AuthOkDto })
+	async forgotPassword(@Body(new ZodValidationPipe(forgotPasswordSchema)) body: ForgotPasswordInput): Promise<AuthOkDto> {
+		await this.auth.requestPasswordReset(body.email);
+		return { ok: true };
+	}
+
+	@Post('reset-password')
+	@UseGuards(AuthRateLimitGuard)
+	@HttpCode(200)
+	@ApiOperation({ operationId: 'authResetPassword', summary: 'Reset password with a reset token' })
+	@ApiBody({ type: ResetPasswordRequestDto })
+	@ApiOkResponse({ type: AuthOkDto })
+	async resetPassword(@Body(new ZodValidationPipe(resetPasswordSchema)) body: ResetPasswordInput): Promise<AuthOkDto> {
+		await this.auth.resetPassword(body.token, body.password);
+		return { ok: true };
+	}
+
+	@Get('reset-password/:token/validity')
+	@UseGuards(AuthRateLimitGuard)
+	@ApiOperation({ operationId: 'authResetPasswordValidity', summary: 'Check whether a reset token is valid' })
+	@ApiOkResponse({ type: ResetTokenValidityDto })
+	async resetPasswordValidity(@Param(new ZodValidationPipe(resetTokenParamSchema)) params: ResetTokenParam): Promise<ResetTokenValidityDto> {
+		return this.auth.checkResetTokenValidity(params.token);
 	}
 
 	@Post('logout')

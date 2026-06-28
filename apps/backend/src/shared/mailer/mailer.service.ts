@@ -79,6 +79,21 @@ export class MailerService {
 		return this.sendMail({ to, subject, html, text });
 	}
 
+	async sendPasswordResetEmail(params: { to: string; resetUrl: string; expiresInMinutes: number }): Promise<string> {
+		const { to, resetUrl, expiresInMinutes } = params;
+		const subject = 'Reset your kubwave password';
+		const text = `We received a request to reset your kubwave password.\n\nReset it here:\n${resetUrl}\n\nThis link expires in ${expiresInMinutes} minutes. If you didn't request this, you can ignore this email.`;
+		const html = this.mailLayout(
+			'Reset your password',
+			`<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#3f3f46;">We received a request to reset your <strong>kubwave</strong> password. Click the button below to choose a new one.</p>
+		<p style="margin:0 0 24px;"><a href="${resetUrl}" style="display:inline-block;background:#16a34a;color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:8px;font-size:14px;font-weight:600;">Reset password</a></p>
+		<p style="margin:0;font-size:12px;line-height:1.6;color:#71717a;">Or paste this link into your browser:<br /><a href="${resetUrl}" style="color:#16a34a;word-break:break-all;">${resetUrl}</a></p>
+		<p style="margin:16px 0 0;font-size:12px;color:#a1a1aa;">This link expires in ${expiresInMinutes} minutes. If you didn't request this, you can safely ignore this email.</p>`
+		);
+
+		return this.sendMail({ to, subject, html, text });
+	}
+
 	async sendTestEmail(to: string): Promise<string> {
 		const subject = 'kubwave SMTP test';
 		const text = 'This is a test email from your kubwave control plane. If you received this, your SMTP settings are working.';
