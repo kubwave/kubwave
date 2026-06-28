@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { and, eq, isNull } from 'drizzle-orm';
 import { db, passwordResetTokens, refreshTokens, users } from '@kubwave/db';
 import { TeamsService } from '../teams/teams.service.js';
@@ -27,6 +27,8 @@ export interface LoginResult {
 
 @Injectable()
 export class AuthService {
+	private readonly logger = new Logger(AuthService.name);
+
 	constructor(
 		private readonly config: BackendConfigService,
 		private readonly passwords: PasswordService,
@@ -100,27 +102,38 @@ export class AuthService {
 	}
 
 	async requestPasswordReset(email: string): Promise<void> {
-		const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
-		if (!user) return;
+		try {
+			const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+			if (!user) return;
 
-		await db.delete(passwordResetTokens).where(and(eq(passwordResetTokens.userId, user.id), isNull(passwordResetTokens.usedAt)));
+			await db.delete(passwordResetTokens).where(and(eq(passwordResetTokens.userId, user.id), isNull(passwordResetTokens.usedAt)));
 
-		const rawToken = this.tokens.generateRefreshToken();
-		const tokenHash = this.tokens.hashRefreshToken(rawToken);
-		const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
-		await db.insert(passwordResetTokens).values({ userId: user.id, tokenHash, expiresAt });
+			const rawToken = this.tokens.generateRefreshToken();
+			const tokenHash = this.tokens.hashRefreshToken(rawToken);
+			const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
+			await db.insert(passwordResetTokens).values({ userId: user.id, tokenHash, expiresAt });
 
-		const resetUrl = `${this.config.api.appBaseUrl}/auth/reset?token=${rawToken}`;
-		// Fire-and-forget: don't await the SMTP round-trip, so a known email's response
-		// time matches an unknown one (no timing oracle). Errors (incl. SMTP disabled)
-		// are swallowed so nothing leaks via the response.
-		void this.mailer.sendPasswordResetEmail({ to: user.email, resetUrl, expiresInMinutes: PASSWORD_RESET_TTL_MS / 60_000 }).catch(() => {});
+			const resetUrl = `${this.config.api.appBaseUrl}/auth/reset?token=${rawToken}`;
+			// Don't await the SMTP round-trip — keeps response time independent of email delivery.
+			// Trade-off: at-most-once delivery (a send in flight is lost on shutdown).
+			void this.mailer
+				.sendPasswordResetEmail({ to: user.email, resetUrl, expiresInMinutes: PASSWORD_RESET_TTL_MS / 60_000 })
+				.catch(err => this.logger.debug(`Password reset email not sent: ${err instanceof Error ? err.message : String(err)}`));
+		} catch (err) {
+			// Swallow + log so the response is identical (and timing-independent) whether or not
+			// the account exists or infra fails — never leak via the response.
+			this.logger.error('Failed to process password reset request', err instanceof Error ? err.stack : String(err));
+		}
+	}
+
+	private isResetTokenValid(record: { usedAt: Date | null; expiresAt: Date } | undefined): boolean {
+		return Boolean(record && !record.usedAt && record.expiresAt.getTime() > Date.now());
 	}
 
 	async resetPassword(rawToken: string, password: string): Promise<void> {
 		const tokenHash = this.tokens.hashRefreshToken(rawToken);
 		const [record] = await db.select().from(passwordResetTokens).where(eq(passwordResetTokens.tokenHash, tokenHash)).limit(1);
-		if (!record || record.usedAt || record.expiresAt.getTime() <= Date.now()) {
+		if (!record || !this.isResetTokenValid(record)) {
 			throw new ApiError(400, 'invalid_reset_token');
 		}
 
@@ -138,7 +151,7 @@ export class AuthService {
 	async checkResetTokenValidity(rawToken: string): Promise<{ valid: boolean }> {
 		const tokenHash = this.tokens.hashRefreshToken(rawToken);
 		const [record] = await db.select().from(passwordResetTokens).where(eq(passwordResetTokens.tokenHash, tokenHash)).limit(1);
-		return { valid: Boolean(record && !record.usedAt && record.expiresAt.getTime() > Date.now()) };
+		return { valid: this.isResetTokenValid(record) };
 	}
 
 	private async revokeAllForUser(userId: string): Promise<void> {

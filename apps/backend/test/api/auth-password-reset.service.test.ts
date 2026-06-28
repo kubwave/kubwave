@@ -8,6 +8,7 @@ let selectResults = new Map<unknown, unknown[]>();
 let inserted: Array<{ table: unknown; values: any }> = [];
 let deleted: Array<{ table: unknown }> = [];
 let txUpdates: Array<{ table: unknown; values: any }> = [];
+let failNextInsert = false;
 
 function selectChain() {
 	let table: unknown;
@@ -42,6 +43,10 @@ mock.module('@kubwave/db', () => ({
 		}),
 		insert: (table: unknown) => ({
 			async values(values: any) {
+				if (failNextInsert) {
+					failNextInsert = false;
+					throw new Error('DB connection lost');
+				}
 				inserted.push({ table, values });
 			}
 		}),
@@ -82,6 +87,7 @@ afterEach(() => {
 	inserted = [];
 	deleted = [];
 	txUpdates = [];
+	failNextInsert = false;
 });
 
 describe('requestPasswordReset', () => {
@@ -112,6 +118,13 @@ describe('requestPasswordReset', () => {
 		const { service } = makeService(async () => {
 			throw new Error('SMTP disabled');
 		});
+		await expect(service.requestPasswordReset('user@x.test')).resolves.toBeUndefined();
+	});
+
+	test('infra error (DB insert failure) is swallowed and does not throw', async () => {
+		selectResults.set(usersTable, [{ id: 'u1', email: 'user@x.test' }]);
+		failNextInsert = true;
+		const { service } = makeService();
 		await expect(service.requestPasswordReset('user@x.test')).resolves.toBeUndefined();
 	});
 });

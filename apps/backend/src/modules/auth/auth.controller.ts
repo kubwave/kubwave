@@ -59,7 +59,7 @@ export class AuthController {
 	@ApiBody({ type: ForgotPasswordRequestDto })
 	@ApiOkResponse({ type: AuthOkDto })
 	async forgotPassword(@Body(new ZodValidationPipe(forgotPasswordSchema)) body: ForgotPasswordInput): Promise<AuthOkDto> {
-		await this.auth.requestPasswordReset(body.email).catch(() => {});
+		await this.auth.requestPasswordReset(body.email);
 		return { ok: true };
 	}
 

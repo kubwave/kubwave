@@ -79,19 +79,6 @@ describe('forgot-password anti-enumeration', () => {
 		expect(seen).toContain('someone@x.test');
 	});
 
-	test('returns { ok: true } even when the service throws', async () => {
-		const original = authStub.requestPasswordReset;
-		authStub.requestPasswordReset = async () => {
-			throw new Error('db error');
-		};
-		try {
-			const res = await forgot('error@example.com');
-			expect(res.statusCode).toBe(200);
-			expect(res.json<{ ok: boolean }>()).toEqual({ ok: true });
-		} finally {
-			authStub.requestPasswordReset = original;
-		}
-	});
 });
 
 describe('reset-password endpoint', () => {
