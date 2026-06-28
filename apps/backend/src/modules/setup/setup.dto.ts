@@ -17,7 +17,7 @@ export class SetupInitializeRequestDto implements SetupInitializeInput {
 	@ApiProperty({ type: String, format: 'email' })
 	email!: string;
 
-	@ApiProperty({ type: String, minLength: 12, maxLength: 200 })
+	@ApiProperty({ type: String, minLength: 8, maxLength: 200 })
 	password!: string;
 }
 
