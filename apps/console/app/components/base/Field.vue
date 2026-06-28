@@ -16,13 +16,10 @@ if (!form) throw new Error('<Field> must be used inside <AppForm>');
 	<component :is="(form as any).Field" :name="name">
 		<template #default="{ field }">
 			<FormItem :class="$props.class">
-				<template v-if="label">
-					<div v-if="$slots['label-action']" class="flex items-center justify-between gap-2">
-						<FormLabel :invalid="showFieldError(field as AnyFieldApi)">{{ label }}</FormLabel>
-						<slot name="label-action" />
-					</div>
-					<FormLabel v-else :invalid="showFieldError(field as AnyFieldApi)">{{ label }}</FormLabel>
-				</template>
+				<div v-if="label" class="flex items-center justify-between gap-2">
+					<FormLabel :invalid="showFieldError(field as AnyFieldApi)">{{ label }}</FormLabel>
+					<slot name="label-action" />
+				</div>
 				<FormControl :invalid="showFieldError(field as AnyFieldApi)">
 					<slot v-bind="{ componentField: toComponentField(field as AnyFieldApi), value: (field as AnyFieldApi).state.value }" />
 				</FormControl>

@@ -18,6 +18,8 @@ const schema = z.object({
 	password: z.string().min(12, 'Use at least 12 characters.').max(200, 'Use at most 200 characters.')
 });
 
+const checking = computed(() => tokenValid.value === null);
+
 const { form, isSubmitting } = useAppForm({
 	schema,
 	defaultValues: { password: '' },
@@ -53,13 +55,13 @@ const { form, isSubmitting } = useAppForm({
 				type="password"
 				autocomplete="new-password"
 				placeholder="••••••••"
-				:disabled="isSubmitting || tokenValid === null"
+				:disabled="isSubmitting || checking"
 			/>
 		</Field>
 
 		<p v-if="rootError" role="alert" class="text-sm text-destructive">{{ rootError }}</p>
 
-		<Button type="submit" class="mt-1 w-full" :disabled="isSubmitting || tokenValid === null">{{
+		<Button type="submit" class="mt-1 w-full" :disabled="isSubmitting || checking">{{
 			isSubmitting ? 'Saving…' : 'Set new password'
 		}}</Button>
 	</AppForm>
