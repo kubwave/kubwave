@@ -54,8 +54,9 @@ everything for you.
    `kube-system/fleet-secrets` (key `hetzner`) and writes it to the `hcloud` secret the driver
    expects — no manual key handling.
 
+   {/* prettier-ignore */}
    <Aside type="note" title="No fleet secret?">
-  If `kube-system/fleet-secrets` is absent, create the token secret yourself before installing:
+     If `kube-system/fleet-secrets` is absent, create the token secret yourself before installing:
 
    ```sh
    kubectl -n kube-system create secret generic hcloud \
