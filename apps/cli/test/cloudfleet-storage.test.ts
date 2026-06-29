@@ -35,7 +35,14 @@ describe('confirmStorageInstall', () => {
 		await expect(
 			confirmStorageInstall({
 				label: 'Hetzner CSI',
-				install: { kind: 'helm', repo: { name: 'hcloud', url: 'https://charts.example.com' }, chart: 'csi', release: 'csi-hetzner', namespace: 'csi', extraArgs: [] },
+				install: {
+					kind: 'helm',
+					repo: { name: 'hcloud', url: 'https://charts.example.com' },
+					chart: 'csi',
+					release: 'csi-hetzner',
+					namespace: 'csi',
+					extraArgs: []
+				},
 				storageClass: 'hcloud-volumes',
 				provisioner: 'csi.hetzner.cloud',
 				nodeSelector: { 'cfke.io/provider': 'hetzner' }

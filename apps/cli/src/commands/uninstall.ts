@@ -69,9 +69,18 @@ export interface UninstallOpts {
 	stagingNamespace: string;
 }
 
-// How long to wait for all PVs backed by a CSI driver to disappear before giving up and leaving the driver in place.
-export const CSI_PV_DRAIN_TIMEOUT_MS = 120_000;
+// How long to wait for all PVs backed by a CSI driver to disappear before giving up and leaving the
+// driver in place (skip-to-avoid-orphaning-disks). Generous by default because disk deletion can lag
+// on slow/overloaded clusters — too short and uninstall skips the teardown while the disk is still
+// being reclaimed, leaving the driver behind. Override (seconds) with KUBWAVE_PV_DRAIN_TIMEOUT.
+export const CSI_PV_DRAIN_TIMEOUT_MS = resolvePvDrainTimeoutMs();
 export const CSI_PV_POLL_INTERVAL_MS = 5_000;
+
+function resolvePvDrainTimeoutMs(): number {
+	const seconds = Number(process.env.KUBWAVE_PV_DRAIN_TIMEOUT?.trim());
+	if (Number.isFinite(seconds) && seconds > 0) return seconds * 1000;
+	return 300_000; // 5 minutes
+}
 
 export function registerUninstallCommand(parent: Command): void {
 	parent
@@ -561,7 +570,7 @@ export async function teardownCsiDrivers(kc: KubeConfig, plan: UninstallPlan, op
 			// Safety: leave the driver in place rather than risk orphaning cloud disks.
 			spinner.stop(`CSI driver "${target.label}" — SKIPPED (${pvCount} PV(s) still present)`);
 			p.log.warn(
-				`${pvCount} PersistentVolume(s) for driver "${target.provisioner}" still exist. The CSI driver is being LEFT IN PLACE to avoid orphaning cloud disks. Delete the PVs/PVCs and re-run uninstall.`
+				`${pvCount} PersistentVolume(s) for driver "${target.provisioner}" still exist. The CSI driver is being LEFT IN PLACE to avoid orphaning cloud disks. Once the PVs are gone, re-run uninstall (or raise the drain timeout with KUBWAVE_PV_DRAIN_TIMEOUT=<seconds> on a slow cluster).`
 			);
 			continue;
 		}

@@ -188,6 +188,17 @@ The Worker can refresh the service-template catalog from a remote URL without a 
   </TabItem>
 </Tabs>
 
+## CLI installer (`kubwave install` / `kubwave uninstall`)
+
+Environment variables that tune the CLI. None are required.
+
+| Variable                   | Default     | Description                                                                                                                                                                                                                  |
+| -------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `KUBWAVE_INSTALL_TIMEOUT`  | `10m`       | Timeout for `helm upgrade --install --wait`. Raise it (e.g. `20m`) when the cluster scales up nodes during install.                                                                                                          |
+| `KUBWAVE_PV_DRAIN_TIMEOUT` | `300` (sec) | How long `uninstall` waits for a CSI driver's PersistentVolumes (and their cloud disks) to be reclaimed before skipping that driver's teardown to avoid orphaning disks. Raise it on slow clusters where disk deletion lags. |
+| `KUBWAVE_VERSION`          | `dev`       | Dev only (`bun run dev`): the image tag the installer targets (`ghcr.io/kubwave/*:<tag>`). Ignored in a compiled binary, where the baked-in version always wins.                                                             |
+| `KUBWAVE_HELM_BIN`         | —           | Path to a `helm` binary to use instead of the embedded/`$PATH` one.                                                                                                                                                          |
+
 ## Helm chart secrets
 
 The Helm chart creates (or references) a Secret named `console-creds` containing

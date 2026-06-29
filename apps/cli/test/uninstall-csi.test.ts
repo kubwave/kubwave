@@ -123,7 +123,12 @@ function gcpCsiPlan(): Parameters<typeof teardownCsiDrivers>[1] {
 			{
 				label: 'GCP Persistent Disk CSI Driver',
 				provisioner: 'pd.csi.storage.gke.io',
-				install: { kind: 'manifest', namespace: 'gce-pd-csi-driver', driverVersion: 'v1.26.0', manifest: 'apiVersion: v1\nkind: Namespace\nmetadata:\n  name: gce-pd-csi-driver' },
+				install: {
+					kind: 'manifest',
+					namespace: 'gce-pd-csi-driver',
+					driverVersion: 'v1.26.0',
+					manifest: 'apiVersion: v1\nkind: Namespace\nmetadata:\n  name: gce-pd-csi-driver'
+				},
 				storageClass: 'pd-ssd'
 			}
 		]
@@ -148,7 +153,14 @@ function hetznerCsiPlan(): Parameters<typeof teardownCsiDrivers>[1] {
 			{
 				label: 'Hetzner Cloud CSI Driver',
 				provisioner: 'csi.hetzner.cloud',
-				install: { kind: 'helm', repo: { name: 'hcloud', url: 'https://charts.hetzner.cloud' }, chart: 'hcloud/hcloud-csi', release: 'hcloud-csi', namespace: 'kube-system', extraArgs: [] },
+				install: {
+					kind: 'helm',
+					repo: { name: 'hcloud', url: 'https://charts.hetzner.cloud' },
+					chart: 'hcloud/hcloud-csi',
+					release: 'hcloud-csi',
+					namespace: 'kube-system',
+					extraArgs: []
+				},
 				storageClass: undefined
 			}
 		]
@@ -279,7 +291,14 @@ describe('CSI teardown safety', () => {
 		plan.csiTeardowns.push({
 			label: 'AWS EBS CSI Driver',
 			provisioner: 'ebs.csi.aws.com',
-			install: { kind: 'helm', repo: { name: 'aws-ebs-csi-driver', url: '' }, chart: 'aws-ebs-csi-driver/aws-ebs-csi-driver', release: 'aws-ebs-csi-driver', namespace: 'kube-system', extraArgs: [] },
+			install: {
+				kind: 'helm',
+				repo: { name: 'aws-ebs-csi-driver', url: '' },
+				chart: 'aws-ebs-csi-driver/aws-ebs-csi-driver',
+				release: 'aws-ebs-csi-driver',
+				namespace: 'kube-system',
+				extraArgs: []
+			},
 			storageClass: 'ebs-sc'
 		});
 
@@ -297,14 +316,8 @@ describe('CSI teardown safety', () => {
 describe('countCsiPvs pagination', () => {
 	test('follows a continue token across two pages and counts matching PVs from both', async () => {
 		// Build a two-page mock: first call returns a continue token, second returns none.
-		const page1 = [
-			{ spec: { csi: { driver: 'pd.csi.storage.gke.io' } } },
-			{ spec: { csi: { driver: 'other.driver' } } }
-		];
-		const page2 = [
-			{ spec: { csi: { driver: 'pd.csi.storage.gke.io' } } },
-			{ spec: { csi: { driver: 'pd.csi.storage.gke.io' } } }
-		];
+		const page1 = [{ spec: { csi: { driver: 'pd.csi.storage.gke.io' } } }, { spec: { csi: { driver: 'other.driver' } } }];
+		const page2 = [{ spec: { csi: { driver: 'pd.csi.storage.gke.io' } } }, { spec: { csi: { driver: 'pd.csi.storage.gke.io' } } }];
 		let call = 0;
 		const paginatedApi = {
 			listPersistentVolume: async (param?: { limit?: number; _continue?: string }) => {

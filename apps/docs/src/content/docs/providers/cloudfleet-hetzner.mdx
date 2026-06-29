@@ -55,12 +55,13 @@ everything for you.
    expects — no manual key handling.
 
    <Aside type="note" title="No fleet secret?">
-     If `kube-system/fleet-secrets` is absent, create the token secret yourself before installing:
+  If `kube-system/fleet-secrets` is absent, create the token secret yourself before installing:
 
-     ```sh
-     kubectl -n kube-system create secret generic hcloud \
-       --from-literal=token=<your-hetzner-api-token>
-     ```
+   ```sh
+   kubectl -n kube-system create secret generic hcloud \
+     --from-literal=token=<your-hetzner-api-token>
+   ```
+
    </Aside>
 
 4. **Point your DNS.** Create an `A` record for your domain at the load balancer's IP:

@@ -65,7 +65,14 @@ export type CsiDefinition = {
 export const CSI_CATALOG: Record<CloudProvider, CsiDefinition> = {
 	hetzner: {
 		label: 'Hetzner Cloud CSI Driver',
-		install: { kind: 'helm', repo: { name: 'hcloud', url: 'https://charts.hetzner.cloud' }, chart: 'hcloud/hcloud-csi', release: 'hcloud-csi', namespace: 'kube-system', extraArgs: ['--set', 'controller.nodeSelector.cfke\\.io/provider=hetzner', '--set', 'node.nodeSelector.cfke\\.io/provider=hetzner'] },
+		install: {
+			kind: 'helm',
+			repo: { name: 'hcloud', url: 'https://charts.hetzner.cloud' },
+			chart: 'hcloud/hcloud-csi',
+			release: 'hcloud-csi',
+			namespace: 'kube-system',
+			extraArgs: ['--set', 'controller.nodeSelector.cfke\\.io/provider=hetzner', '--set', 'node.nodeSelector.cfke\\.io/provider=hetzner']
+		},
 		storageClass: 'hcloud-volumes',
 		provisioner: 'csi.hetzner.cloud',
 		nodeSelector: { 'cfke.io/provider': 'hetzner' },
@@ -87,7 +94,14 @@ export const CSI_CATALOG: Record<CloudProvider, CsiDefinition> = {
 	},
 	aws: {
 		label: 'AWS EBS CSI Driver',
-		install: { kind: 'helm', repo: { name: 'aws-ebs-csi-driver', url: 'https://kubernetes-sigs.github.io/aws-ebs-csi-driver' }, chart: 'aws-ebs-csi-driver/aws-ebs-csi-driver', release: 'aws-ebs-csi-driver', namespace: 'kube-system', extraArgs: ['--set', 'controller.nodeSelector.cfke\\.io/provider=aws', '--set', 'node.nodeSelector.cfke\\.io/provider=aws'] },
+		install: {
+			kind: 'helm',
+			repo: { name: 'aws-ebs-csi-driver', url: 'https://kubernetes-sigs.github.io/aws-ebs-csi-driver' },
+			chart: 'aws-ebs-csi-driver/aws-ebs-csi-driver',
+			release: 'aws-ebs-csi-driver',
+			namespace: 'kube-system',
+			extraArgs: ['--set', 'controller.nodeSelector.cfke\\.io/provider=aws', '--set', 'node.nodeSelector.cfke\\.io/provider=aws']
+		},
 		storageClass: 'ebs-sc',
 		provisioner: 'ebs.csi.aws.com',
 		nodeSelector: { 'cfke.io/provider': 'aws' },
@@ -124,7 +138,7 @@ export const CSI_CATALOG: Record<CloudProvider, CsiDefinition> = {
 			kind: 'secret',
 			namespace: 'gce-pd-csi-driver',
 			name: 'cloud-sa',
-			hint: 'The GCP PD CSI driver needs a GCP service account with compute.storageAdmin + iam.serviceAccountUser. Create a JSON key, then run:\n  kubectl create namespace gce-pd-csi-driver\n  kubectl -n gce-pd-csi-driver create secret generic cloud-sa --from-file=cloud-sa.json=<path/to/key.json>'
+			hint: 'The GCP PD CSI driver needs a GCP service account with compute.storageAdmin (disks) + compute.instanceAdmin.v1 (attach/detach) + iam.serviceAccountUser. Create a JSON key, then run:\n  kubectl create namespace gce-pd-csi-driver\n  kubectl -n gce-pd-csi-driver create secret generic cloud-sa --from-file=cloud-sa.json=<path/to/key.json>'
 		}
 	}
 };

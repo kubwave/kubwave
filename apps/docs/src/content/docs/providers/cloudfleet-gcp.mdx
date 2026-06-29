@@ -69,16 +69,18 @@ gcloud projects add-iam-policy-binding <PROJECT> \
 </Aside>
 
 <Aside type="tip" title="Simpler alternative">
-  If you'd rather not add roles one by one, grant `roles/compute.admin` once — it covers everything
-  the controller needs. The Cloudfleet identity already manages instances, so it is privileged
-  either way.
+	If you'd rather not add roles one by one, grant `roles/compute.admin` once — it covers everything the controller needs. The Cloudfleet identity
+	already manages instances, so it is privileged either way.
 </Aside>
 
 ## 3. Create the storage service account
 
 The GCP nodes have no attached service account, so the Persistent Disk CSI driver can't borrow a
-node identity — you provide an explicit service-account key. Create a service account with disk
-permissions, a JSON key, and store it as the `cloud-sa` secret the driver mounts:
+node identity — you provide an explicit service-account key. The driver both **provisions disks**
+(`compute.storageAdmin`) and **attaches/detaches them to instances**
+(`compute.instanceAdmin.v1` — `storageAdmin` alone is not enough; without it volume attach fails with
+`403: Required 'compute.instances.get'`). Create the service account, grant both, add a JSON key, and
+store it as the `cloud-sa` secret the driver mounts:
 
 ```sh
 PROJECT=<PROJECT>
@@ -89,6 +91,9 @@ gcloud iam service-accounts create $SA --project=$PROJECT --display-name="kubwav
 gcloud projects add-iam-policy-binding $PROJECT \
   --member="serviceAccount:${SA}@${PROJECT}.iam.gserviceaccount.com" \
   --role="roles/compute.storageAdmin"
+gcloud projects add-iam-policy-binding $PROJECT \
+  --member="serviceAccount:${SA}@${PROJECT}.iam.gserviceaccount.com" \
+  --role="roles/compute.instanceAdmin.v1"
 gcloud projects add-iam-policy-binding $PROJECT \
   --member="serviceAccount:${SA}@${PROJECT}.iam.gserviceaccount.com" \
   --role="roles/iam.serviceAccountUser"
@@ -122,9 +127,8 @@ KUBWAVE_INSTALL_TIMEOUT=20m kubwave install --platform cloudfleet-gcp --domain a
 ```
 
 <Aside type="note" title="Re-installing after an uninstall?">
-  `kubwave uninstall` deletes the `gce-pd-csi-driver` namespace, which removes the `cloud-sa` secret
-  with it. Re-create the secret (step 3) before installing again, or the installer stops at the
-  storage prerequisite.
+	`kubwave uninstall` deletes the `gce-pd-csi-driver` namespace, which removes the `cloud-sa` secret with it. Re-create the secret (step 3) before
+	installing again, or the installer stops at the storage prerequisite.
 </Aside>
 
 ## 5. Point your DNS
@@ -148,7 +152,15 @@ at that IP. cert-manager issues the certificate shortly after DNS resolves. Open
   manifest args are mismatched. kubwave ships a consistent pinned manifest; if you regenerated it,
   re-run `scripts/gen-gcp-csi-manifest.sh` from a commit where the image and args agree.
 - **Install stops at `Secret gce-pd-csi-driver/cloud-sa not found`** — do step 3.
+- **PVC stuck `Pending`, `AttachVolume.Attach failed … 403 compute.instances.get`** — the `cloud-sa`
+  service account can provision disks but not attach them. Grant it
+  `roles/compute.instanceAdmin.v1` (step 3).
 - **Install runs but `helm … --wait` times out; pods `Pending` with `Insufficient memory`, Postgres
   restarts with `StartError: failed to start containerd task: context deadline exceeded`, kubelet
   `TLS handshake timeout`** — the NodePool instances are too small (e.g. `g1-small`). Resize to
   `e2-medium`+ and re-run. Bump `KUBWAVE_INSTALL_TIMEOUT` if the cluster is still scaling up.
+- **`uninstall` finishes but leaves `gce-pd-csi-driver` + the `pd-ssd` StorageClass** with a
+  `CSI driver … — SKIPPED (N PV(s) still present)` warning — the driver's disks hadn't finished
+  reclaiming within the PV-drain window, so teardown was skipped to avoid orphaning them. Once
+  `kubectl get pv | grep pd.csi.storage.gke.io` is empty, re-run `uninstall`, or raise the window
+  with `KUBWAVE_PV_DRAIN_TIMEOUT=<seconds>` on a slow cluster.
