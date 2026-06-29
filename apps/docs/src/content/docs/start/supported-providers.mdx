@@ -12,29 +12,38 @@ profile. To run kubwave on another provider, use a separate Kubernetes cluster.
 
 ## Supported today
 
-| Provider             | Platform ID          | Status    | Notes                                             |
-| -------------------- | -------------------- | --------- | ------------------------------------------------- |
-| Cloudfleet (Hetzner) | `cloudfleet-hetzner` | Supported | First-class target for production installs today. |
+| Provider                  | Platform ID          | Status    | Notes                                                                                                                  |
+| ------------------------- | -------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Cloudfleet (Hetzner)      | `cloudfleet-hetzner` | Supported | First-class target for production installs today.                                                                      |
+| Cloudfleet (Google Cloud) | `cloudfleet-gcp`     | Supported | PD CSI driver installed from pinned vendored manifest (server-side apply); requires `cloud-sa` service-account secret. |
 
-Use this target with:
+Use these targets with:
 
 ```sh
 kubwave install --platform cloudfleet-hetzner
 ```
 
+```sh
+kubwave install --platform cloudfleet-gcp
+```
+
+Each has a step-by-step setup guide, including any GCP IAM and storage prerequisites:
+
+- [Cloudfleet (Hetzner) setup](/providers/cloudfleet-hetzner/)
+- [Cloudfleet (Google Cloud) setup](/providers/cloudfleet-gcp/)
+
 ## Coming soon
 
 These provider targets are on the roadmap but are not available as CLI platform IDs yet:
 
-| Provider                  | Status      |
-| ------------------------- | ----------- |
-| Cloudfleet (AWS)          | Coming soon |
-| Cloudfleet (Google Cloud) | Coming soon |
-| Amazon EKS                | Coming soon |
-| Google Kubernetes Engine  | Coming soon |
-| Azure Kubernetes Service  | Coming soon |
-| DigitalOcean Kubernetes   | Coming soon |
-| Vultr Kubernetes Engine   | Coming soon |
+| Provider                 | Status      |
+| ------------------------ | ----------- |
+| Cloudfleet (AWS)         | Coming soon |
+| Amazon EKS               | Coming soon |
+| Google Kubernetes Engine | Coming soon |
+| Azure Kubernetes Service | Coming soon |
+| DigitalOcean Kubernetes  | Coming soon |
+| Vultr Kubernetes Engine  | Coming soon |
 
 ## Planned
 

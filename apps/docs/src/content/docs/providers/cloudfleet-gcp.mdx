@@ -1,0 +1,166 @@
+---
+title: Cloudfleet (Google Cloud)
+description: Set up kubwave on a Cloudfleet-managed Kubernetes cluster running on Google Cloud, including the GCP IAM and storage prerequisites.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+**Cloudfleet (Google Cloud)** runs kubwave on GCE nodes provisioned by Cloudfleet. Unlike Hetzner,
+GCP needs a bit of **GCP-side setup first**: Cloudfleet runs the control plane outside your cluster
+and gives the nodes no GCP identity, so you grant the permissions for load balancers and create a
+service account for storage yourself. Do the two GCP steps below **before** running the installer.
+
+- **Platform ID:** `cloudfleet-gcp`
+- **Load balancer:** GCP network load balancer, provisioned by Cloudfleet's cloud-controller-manager
+  — needs firewall + LB IAM (step 2).
+- **Storage:** GCP Persistent Disk CSI driver, installed by kubwave from a pinned vendored manifest —
+  needs a `cloud-sa` service-account key (step 3).
+
+## Prerequisites
+
+- A **Cloudfleet cluster on Google Cloud**, connected to your GCP project.
+- The **`gcloud` CLI**, authenticated against the project (`gcloud config set project <PROJECT>`).
+- A **kubeconfig** with cluster-admin rights, and a **domain** for the console.
+
+## 1. Point `kubectl` at the cluster
+
+```sh
+kubectl get nodes -L cfke.io/provider
+```
+
+Nodes should be Ready and labelled `cfke.io/provider=gcp`. If there are zero nodes, fix the NodePool
+region (see the caution above) before continuing.
+
+## 2. Grant the load-balancer IAM
+
+Cloudfleet provisions the Traefik load balancer with its own GCP identity — a **Workload Identity
+Federation principal** (pool `cfke`). By default it can create nodes but **not firewalls**, so the LB
+creation fails with a `403: Required 'compute.firewalls.create' permission` and the service stays
+`<pending>`.
+
+Find the principal:
+
+```sh
+gcloud projects get-iam-policy <PROJECT> \
+  --flatten="bindings[].members" \
+  --format="table(bindings.role, bindings.members)" | grep -i "workloadIdentityPools/cfke"
+```
+
+Grant it the firewall and load-balancer roles (a GCP L4 LB needs both). In the principal,
+`207152264238` is **Cloudfleet's** workload-identity-pool project — fixed for every Cloudfleet
+cluster, not your project number — and the `subject` is your **Cloudfleet cluster ID**. The simplest
+approach is to copy the full `principal://…` string straight from the `grep` output above:
+
+```sh
+PRINCIPAL="principal://iam.googleapis.com/projects/207152264238/locations/global/workloadIdentityPools/cfke/subject/<CLUSTER_ID>"
+
+gcloud projects add-iam-policy-binding <PROJECT> \
+  --member="$PRINCIPAL" --role="roles/compute.securityAdmin"
+
+gcloud projects add-iam-policy-binding <PROJECT> \
+  --member="$PRINCIPAL" --role="roles/compute.loadBalancerAdmin"
+```
+
+<Aside type="caution" title="You need both — securityAdmin is the one with firewalls">
+  The health-check firewall permission (`compute.firewalls.create`) lives in
+  **`roles/compute.securityAdmin`**, *not* in `roles/compute.loadBalancerAdmin`. If you grant only
+  `loadBalancerAdmin`, the load balancer still fails with `403 compute.firewalls.create` and stays
+  `<pending>`. Grant both (or use `compute.admin` below).
+</Aside>
+
+<Aside type="tip" title="Simpler alternative">
+	If you'd rather not add roles one by one, grant `roles/compute.admin` once — it covers everything the controller needs. The Cloudfleet identity
+	already manages instances, so it is privileged either way.
+</Aside>
+
+## 3. Create the storage service account
+
+The GCP nodes have no attached service account, so the Persistent Disk CSI driver can't borrow a
+node identity — you provide an explicit service-account key. The driver both **provisions disks**
+(`compute.storageAdmin`) and **attaches/detaches them to instances**
+(`compute.instanceAdmin.v1` — `storageAdmin` alone is not enough; without it volume attach fails with
+`403: Required 'compute.instances.get'`). Create the service account, grant both, add a JSON key, and
+store it as the `cloud-sa` secret the driver mounts:
+
+```sh
+PROJECT=<PROJECT>
+SA=gcp-pd-csi
+
+gcloud iam service-accounts create $SA --project=$PROJECT --display-name="kubwave PD CSI"
+
+gcloud projects add-iam-policy-binding $PROJECT \
+  --member="serviceAccount:${SA}@${PROJECT}.iam.gserviceaccount.com" \
+  --role="roles/compute.storageAdmin"
+gcloud projects add-iam-policy-binding $PROJECT \
+  --member="serviceAccount:${SA}@${PROJECT}.iam.gserviceaccount.com" \
+  --role="roles/compute.instanceAdmin.v1"
+gcloud projects add-iam-policy-binding $PROJECT \
+  --member="serviceAccount:${SA}@${PROJECT}.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser"
+
+gcloud iam service-accounts keys create cloud-sa.json \
+  --iam-account="${SA}@${PROJECT}.iam.gserviceaccount.com" --project=$PROJECT
+
+kubectl create namespace gce-pd-csi-driver
+kubectl -n gce-pd-csi-driver create secret generic cloud-sa \
+  --from-file=cloud-sa.json=cloud-sa.json
+```
+
+## 4. Run the installer
+
+```sh
+kubwave install \
+  --platform cloudfleet-gcp \
+  --domain app.example.com \
+  --email ops@example.com
+```
+
+The installer adds Traefik + cert-manager if missing, then installs the **GCP PD CSI driver** from a
+pinned vendored manifest (it applies ~29 objects and creates the `pd-ssd` StorageClass). If the
+`cloud-sa` secret from step 3 is missing, it stops with the exact command to create it.
+
+The final step is `helm upgrade --install --wait` (10 min default). On a cluster that scales up
+during install (Karpenter adding nodes), give it more room:
+
+```sh
+KUBWAVE_INSTALL_TIMEOUT=20m kubwave install --platform cloudfleet-gcp --domain app.example.com --email ops@example.com
+```
+
+<Aside type="note" title="Re-installing after an uninstall?">
+	`kubwave uninstall` deletes the `gce-pd-csi-driver` namespace, which removes the `cloud-sa` secret with it. Re-create the secret (step 3) before
+	installing again, or the installer stops at the storage prerequisite.
+</Aside>
+
+## 5. Point your DNS
+
+```sh
+kubectl -n traefik get svc traefik -w
+```
+
+Once the load balancer gets an external IP (after step 2's IAM), create an `A` record for your domain
+at that IP. cert-manager issues the certificate shortly after DNS resolves. Open
+`https://app.example.com` and create the admin account.
+
+## Troubleshooting
+
+- **Load balancer `<pending>`, events show `403 compute.firewalls.create`** — the Cloudfleet `cfke`
+  principal is missing the firewall permission. Grant it `roles/compute.securityAdmin` (step 2) —
+  `loadBalancerAdmin` alone does **not** include firewall creation.
+- **Nodes never appear, NodePool reports `NoCompatibleInstanceTypes`** — the NodePool region is not a
+  valid GCP region. Set it to e.g. `europe-west3`.
+- **CSI controller `CrashLoopBackOff` with `flag provided but not defined`** — the driver image and
+  manifest args are mismatched. kubwave ships a consistent pinned manifest; if you regenerated it,
+  re-run `scripts/gen-gcp-csi-manifest.sh` from a commit where the image and args agree.
+- **Install stops at `Secret gce-pd-csi-driver/cloud-sa not found`** — do step 3.
+- **PVC stuck `Pending`, `AttachVolume.Attach failed … 403 compute.instances.get`** — the `cloud-sa`
+  service account can provision disks but not attach them. Grant it
+  `roles/compute.instanceAdmin.v1` (step 3).
+- **Install runs but `helm … --wait` times out; pods `Pending` with `Insufficient memory`, Postgres
+  restarts with `StartError: failed to start containerd task: context deadline exceeded`, kubelet
+  `TLS handshake timeout`** — the NodePool instances are too small (e.g. `g1-small`). Resize to
+  `e2-medium`+ and re-run. Bump `KUBWAVE_INSTALL_TIMEOUT` if the cluster is still scaling up.
+- **`uninstall` finishes but leaves `gce-pd-csi-driver` + the `pd-ssd` StorageClass** with a
+  `CSI driver … — SKIPPED (N PV(s) still present)` warning — the driver's disks hadn't finished
+  reclaiming within the PV-drain window, so teardown was skipped to avoid orphaning them. Once
+  `kubectl get pv | grep pd.csi.storage.gke.io` is empty, re-run `uninstall`, or raise the window
+  with `KUBWAVE_PV_DRAIN_TIMEOUT=<seconds>` on a slow cluster.

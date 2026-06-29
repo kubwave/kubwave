@@ -1,0 +1,86 @@
+---
+title: Cloudfleet (Hetzner)
+description: Set up kubwave on a Cloudfleet-managed Kubernetes cluster running on Hetzner Cloud.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+**Cloudfleet (Hetzner)** is kubwave's first-class target and the smoothest path to a running
+platform. Cloudfleet provisions the Hetzner nodes and pre-wires the Hetzner cloud-controller-manager
+(for load balancers) and the API token the storage driver needs — so the installer can do almost
+everything for you.
+
+- **Platform ID:** `cloudfleet-hetzner`
+- **Load balancer:** Hetzner Cloud LB, provisioned automatically for the Traefik service.
+- **Storage:** Hetzner Cloud CSI driver, installed by kubwave; the API token is bootstrapped from
+  Cloudfleet's fleet secret.
+
+## Prerequisites
+
+- A **Cloudfleet cluster on Hetzner** (see the [Cloudfleet docs](https://cloudfleet.ai)), with at
+  least one Ready node.
+- A **kubeconfig** whose current context points at that cluster with cluster-admin rights
+  (`kubectl get nodes` works).
+- A **domain** you can point at the load balancer (e.g. `app.example.com`).
+- **Outbound HTTPS** from the cluster (Let's Encrypt + pulling platform images).
+
+## Set it up
+
+<Steps>
+
+1. **Point `kubectl` at the cluster.** Download the kubeconfig from Cloudfleet and confirm:
+
+   ```sh
+   kubectl get nodes -L cfke.io/provider
+   ```
+
+   The nodes should carry `cfke.io/provider=hetzner`.
+
+2. **Run the installer.** Pick a Hetzner load-balancer location (`fsn1`, `nbg1`, `hel1`, `ash`, or
+   `hil`):
+
+   ```sh
+   kubwave install \
+     --platform cloudfleet-hetzner \
+     --hetzner-lb-location nbg1 \
+     --domain app.example.com \
+     --email ops@example.com
+   ```
+
+   The installer adds Traefik + cert-manager if missing, then handles storage (next step).
+
+3. **Storage is automatic.** If the cluster has no default `StorageClass`, the installer offers to
+   install the **Hetzner Cloud CSI driver**. It reads the Hetzner API token from Cloudfleet's
+   `kube-system/fleet-secrets` (key `hetzner`) and writes it to the `hcloud` secret the driver
+   expects — no manual key handling.
+
+   {/* prettier-ignore */}
+   <Aside type="note" title="No fleet secret?">
+     If `kube-system/fleet-secrets` is absent, create the token secret yourself before installing:
+
+   ```sh
+   kubectl -n kube-system create secret generic hcloud \
+     --from-literal=token=<your-hetzner-api-token>
+   ```
+
+   </Aside>
+
+4. **Point your DNS.** Create an `A` record for your domain at the load balancer's IP:
+
+   ```sh
+   kubectl -n traefik get svc traefik
+   ```
+
+   cert-manager issues the TLS certificate within a minute or so once DNS resolves.
+
+5. **Open the console** at `https://app.example.com` and create the first admin account.
+
+</Steps>
+
+## Troubleshooting
+
+- **Load balancer stuck `<pending>`** — the Hetzner cloud-controller-manager provisions it from the
+  Traefik service annotation. Check `kubectl -n traefik describe svc traefik` for events; ensure the
+  Cloudfleet cluster has the hcloud-ccm enabled and at least one Ready Hetzner node.
+- **CSI install stays Pending** — the driver schedules onto `cfke.io/provider=hetzner` nodes. If none
+  are Ready yet, it waits. Confirm with `kubectl get nodes -L cfke.io/provider`.

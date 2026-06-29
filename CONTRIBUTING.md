@@ -160,6 +160,16 @@ bun run --filter=backend test
 
 Most workspace test scripts already pass `--isolate` where Bun module mocks are involved. If you invoke `bun test` directly from a workspace, mirror that workspace's package script.
 
+## Storage drivers
+
+The GCP PD CSI driver ships as a vendored manifest, pinned to `GCP_PD_CSI_VERSION` in [`apps/cli/src/platforms/cloudfleet/csi-catalog.ts`](./apps/cli/src/platforms/cloudfleet/csi-catalog.ts). To update the driver version:
+
+```sh
+bash scripts/gen-gcp-csi-manifest.sh <version>   # renders upstream kustomize overlay, outputs to apps/cli/src/platforms/cloudfleet/gcp/pd-csi-driver.yaml
+```
+
+Then update `GCP_PD_CSI_VERSION` in `csi-catalog.ts` and open a PR — the manifest diff will be visible for review. Helm-based providers (Hetzner, AWS) are unaffected.
+
 ## Docs
 
 - **User docs** live in [`apps/docs/src/content/docs/`](./apps/docs/src/content/docs/) (Astro + Starlight, MDX).

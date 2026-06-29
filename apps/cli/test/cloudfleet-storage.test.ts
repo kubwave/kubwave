@@ -35,8 +35,16 @@ describe('confirmStorageInstall', () => {
 		await expect(
 			confirmStorageInstall({
 				label: 'Hetzner CSI',
-				helm: { repo: { name: 'hcloud', url: 'https://charts.example.com' }, chart: 'csi', release: 'csi-hetzner', namespace: 'csi', extraArgs: [] },
+				install: {
+					kind: 'helm',
+					repo: { name: 'hcloud', url: 'https://charts.example.com' },
+					chart: 'csi',
+					release: 'csi-hetzner',
+					namespace: 'csi',
+					extraArgs: []
+				},
 				storageClass: 'hcloud-volumes',
+				provisioner: 'csi.hetzner.cloud',
 				nodeSelector: { 'cfke.io/provider': 'hetzner' }
 			})
 		).resolves.toBeUndefined();
@@ -47,8 +55,9 @@ describe('confirmStorageInstall', () => {
 		await expect(
 			confirmStorageInstall({
 				label: 'Hetzner CSI',
-				helm: { repo: { name: '', url: '' }, chart: '', release: '', namespace: '', extraArgs: [] },
+				install: { kind: 'helm', repo: { name: '', url: '' }, chart: '', release: '', namespace: '', extraArgs: [] },
 				storageClass: 'hcloud-volumes',
+				provisioner: 'csi.hetzner.cloud',
 				nodeSelector: { 'cfke.io/provider': 'hetzner' }
 			})
 		).rejects.toThrow('CSI installation cancelled.');
@@ -59,8 +68,9 @@ describe('confirmStorageInstall', () => {
 		await expect(
 			confirmStorageInstall({
 				label: 'Hetzner CSI',
-				helm: { repo: { name: '', url: '' }, chart: '', release: '', namespace: '', extraArgs: [] },
+				install: { kind: 'helm', repo: { name: '', url: '' }, chart: '', release: '', namespace: '', extraArgs: [] },
 				storageClass: 'hcloud-volumes',
+				provisioner: 'csi.hetzner.cloud',
 				nodeSelector: { 'cfke.io/provider': 'hetzner' }
 			})
 		).rejects.toThrow('CSI installation declined');
@@ -113,6 +123,103 @@ describe('ensureStorageClass', () => {
 		});
 
 		expect(created.length).toBe(1);
+	});
+
+	test('marks created StorageClass as default when isDefault is set', async () => {
+		const created: Array<{ metadata?: { labels?: Record<string, string>; annotations?: Record<string, string> } }> = [];
+		const kc = {
+			makeApiClient: () => ({
+				readStorageClass: async () => {
+					throw { code: 404 };
+				},
+				createStorageClass: async ({ body }: { body: never }) => {
+					created.push(body);
+				}
+			})
+		} as never;
+
+		await ensureStorageClass(kc, { name: 'pd-ssd', provisioner: 'pd.csi.storage.gke.io', isDefault: true });
+
+		expect(created).toHaveLength(1);
+		expect(created[0]?.metadata?.annotations?.['storageclass.kubernetes.io/is-default-class']).toBe('true');
+		// Ownership label so uninstall only deletes SCs kubwave created.
+		expect(created[0]?.metadata?.labels?.['app.kubernetes.io/managed-by']).toBe('kubwave-cli');
+	});
+
+	test('does not add the default annotation when isDefault is unset', async () => {
+		const created: Array<{ metadata?: { annotations?: Record<string, string> } }> = [];
+		const kc = {
+			makeApiClient: () => ({
+				readStorageClass: async () => {
+					throw { code: 404 };
+				},
+				createStorageClass: async ({ body }: { body: never }) => {
+					created.push(body);
+				}
+			})
+		} as never;
+
+		await ensureStorageClass(kc, { name: 'plain-sc', provisioner: 'test.csi.io' });
+
+		expect(created).toHaveLength(1);
+		expect(created[0]?.metadata?.annotations).toBeUndefined();
+	});
+
+	test('retrofits the default annotation onto an existing SC when none is default', async () => {
+		const patched: unknown[] = [];
+		const kc = {
+			makeApiClient: (clientClass: unknown) => {
+				if (clientClass === StorageV1Api) {
+					return {
+						readStorageClass: async () => ({ metadata: { name: 'pd-ssd' } }),
+						listStorageClass: async () => ({ items: [{ metadata: { name: 'pd-ssd' } }] })
+					};
+				}
+				// KubernetesObjectApi path
+				return {
+					setDefaultNamespace: () => {},
+					patch: async (spec: unknown) => {
+						patched.push(spec);
+					}
+				};
+			}
+		} as never;
+
+		const result = await ensureStorageClass(kc, { name: 'pd-ssd', provisioner: 'pd.csi.storage.gke.io', isDefault: true });
+
+		expect(result).toBe(true);
+		expect(patched).toHaveLength(1);
+		expect(patched[0]).toMatchObject({
+			kind: 'StorageClass',
+			metadata: { name: 'pd-ssd', annotations: { 'storageclass.kubernetes.io/is-default-class': 'true' } }
+		});
+	});
+
+	test('does not retrofit when another StorageClass is already default', async () => {
+		let patchCalled = false;
+		const kc = {
+			makeApiClient: (clientClass: unknown) => {
+				if (clientClass === StorageV1Api) {
+					return {
+						readStorageClass: async () => ({ metadata: { name: 'pd-ssd' } }),
+						listStorageClass: async () => ({
+							items: [{ metadata: { name: 'other', annotations: { 'storageclass.kubernetes.io/is-default-class': 'true' } } }]
+						})
+					};
+				}
+				return {
+					setDefaultNamespace: () => {},
+					patch: async () => {
+						patchCalled = true;
+					}
+				};
+			}
+		} as never;
+
+		const result = await ensureStorageClass(kc, { name: 'pd-ssd', provisioner: 'pd.csi.storage.gke.io', isDefault: true });
+
+		expect(result).toBe(false);
+		expect(patchCalled).toBe(false);
 	});
 
 	test('returns false when StorageClass already exists', async () => {
@@ -325,7 +432,7 @@ describe('makeCloudfleetStorage', () => {
 		expect(helmInstallCalls[0]?.[1]).toBe('aws-ebs-csi-driver/aws-ebs-csi-driver');
 		expect(createdStorageClasses).toHaveLength(1);
 		expect(createdStorageClasses[0]).toMatchObject({
-			metadata: { name: 'ebs-sc' },
+			metadata: { name: 'ebs-sc', annotations: { 'storageclass.kubernetes.io/is-default-class': 'true' } },
 			provisioner: 'ebs.csi.aws.com',
 			allowVolumeExpansion: true
 		});

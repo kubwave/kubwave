@@ -26,8 +26,8 @@ For a step-by-step walkthrough and non-interactive installs, see the [Quickstart
 
 Provider status:
 
-- **Supported today:** Cloudfleet (Hetzner)
-- **Coming soon:** Cloudfleet (AWS), Cloudfleet (Google Cloud), EKS, GKE, AKS, DigitalOcean, Vultr
+- **Supported today:** Cloudfleet (Hetzner), Cloudfleet (Google Cloud)
+- **Coming soon:** Cloudfleet (AWS), EKS, GKE, AKS, DigitalOcean, Vultr
 - **Planned:** k3s with server management
 
 Provider selection is cluster-wide: one kubwave cluster uses exactly one provider profile.

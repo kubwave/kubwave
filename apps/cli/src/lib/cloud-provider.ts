@@ -3,6 +3,14 @@ import { CoreV1Api } from '@kubernetes/client-node';
 
 export type CloudProvider = 'aws' | 'gcp' | 'hetzner';
 
+// CFKE stamps every node with its provider under this label; kubwave reuses it to pin workloads/CSI drivers.
+export const CFKE_PROVIDER_LABEL = 'cfke.io/provider';
+
+// Single source for the cfke.io/provider node selector used by descriptors, Traefik values, and the CSI catalog.
+export function cfkeNodeSelector(provider: CloudProvider): Record<string, string> {
+	return { [CFKE_PROVIDER_LABEL]: provider };
+}
+
 const PROVIDER_ID_PREFIXES: Record<string, CloudProvider> = {
 	aws: 'aws',
 	gce: 'gcp',
@@ -35,7 +43,7 @@ export async function detectFleetProviders(kc: KubeConfig): Promise<Map<CloudPro
 	const counts = new Map<CloudProvider, number>();
 	for (const node of nodes.items) {
 		const fromId = parseProviderId(node.spec?.providerID);
-		const fromLabel = parseCfkeProviderLabel(node.metadata?.labels?.['cfke.io/provider']);
+		const fromLabel = parseCfkeProviderLabel(node.metadata?.labels?.[CFKE_PROVIDER_LABEL]);
 		const detected = fromId ?? fromLabel;
 		if (detected) {
 			counts.set(detected, (counts.get(detected) ?? 0) + 1);

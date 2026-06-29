@@ -24,6 +24,15 @@ export const APP_LABELS = {
 // Mirrors @kubwave/kube (MANAGED_BY_VALUE); worker stamps every per-env namespace/workload, uninstall sweeps by this selector.
 export const WORKER_MANAGED_BY_SELECTOR = 'app.kubernetes.io/managed-by=kubwave-worker';
 
+// Ownership stamp the CLI puts on every CSI driver resource it installs (manifest objects incl. the driver
+// Namespace, and self-created StorageClasses). Uninstall tears down ONLY resources carrying it, so a user's
+// pre-existing namespace, hand-created cloud-sa secret, or StorageClass is never deleted by mistake.
+export const KUBWAVE_MANAGED_BY_LABEL = 'app.kubernetes.io/managed-by';
+export const KUBWAVE_CLI_MANAGED_BY_VALUE = 'kubwave-cli';
+export const KUBWAVE_CSI_OWNERSHIP_LABELS: Readonly<Record<string, string>> = {
+	[KUBWAVE_MANAGED_BY_LABEL]: KUBWAVE_CLI_MANAGED_BY_VALUE
+};
+
 // Shared prefix on every cluster-scoped object; uninstall sweeps label-less ClusterRole(Binding) leftovers helm can't reclaim.
 export const APP_CLUSTER_RESOURCE_PREFIX = 'kubwave-';
 

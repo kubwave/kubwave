@@ -22,7 +22,13 @@ describe('getPlatformDescriptor', () => {
 	});
 
 	test('throws with available platforms for unknown ID', () => {
-		expect(() => getPlatformDescriptor('unknown')).toThrow('Unknown platform "unknown". Available: cloudfleet-hetzner');
+		expect(() => getPlatformDescriptor('unknown')).toThrow('Unknown platform "unknown". Available: cloudfleet-hetzner, cloudfleet-gcp');
+	});
+
+	test('returns descriptor for cloudfleet-gcp', () => {
+		const desc = getPlatformDescriptor('cloudfleet-gcp');
+		expect(desc.id).toBe('cloudfleet-gcp');
+		expect(desc.label).toBe('Cloudfleet (Google Cloud)');
 	});
 });
 
@@ -49,5 +55,10 @@ describe('PLATFORMS registry', () => {
 	test('contains cloudfleet-hetzner', () => {
 		const ids = PLATFORMS.map(d => d.id);
 		expect(ids).toContain('cloudfleet-hetzner');
+	});
+
+	test('contains cloudfleet-gcp', () => {
+		const ids = PLATFORMS.map(d => d.id);
+		expect(ids).toContain('cloudfleet-gcp');
 	});
 });

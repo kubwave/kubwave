@@ -4,6 +4,8 @@ import * as p from '@clack/prompts';
 import type { StorageDecision, StorageOpts } from '~/lib/platforms.js';
 import { detectFleetProviders, type CloudProvider } from '~/lib/cloud-provider.js';
 import { helmRepoAddAndInstall } from '~/lib/dependencies.js';
+import { applyManifest, mergePatch } from '~/lib/k8s-apply.js';
+import { KUBWAVE_CSI_OWNERSHIP_LABELS } from '~/lib/constants.js';
 import { FatalCliError, UserCancelledError } from '~/lib/errors.js';
 import { isNotFoundError } from '~/lib/k8s-errors.js';
 import { CSI_CATALOG, type CsiDefinition, type CsiPrerequisite, type StorageClassSpec } from './csi-catalog.js';
@@ -50,7 +52,7 @@ export function makeCloudfleetStorage(provider: CloudProvider): (kc: KubeConfig,
 		p.log.warn('Default StorageClass: not found');
 		p.log.info(`Platform provider: ${plan.provider} (${nodeCount} matching ${nodeCount === 1 ? 'node' : 'nodes'})`);
 		p.log.info(`Recommendation: ${csi.label}`);
-		p.log.info(`  -> Chart:         ${csi.helm.chart}`);
+		p.log.info(`  -> Install:       ${csi.install.kind === 'helm' ? csi.install.chart : `manifest (${csi.install.driverVersion})`}`);
 		p.log.info(`  -> StorageClass:  ${csi.storageClass}`);
 		p.log.info(`  -> NodeSelector:  ${formatNodeSelector(csi.nodeSelector)}`);
 
@@ -87,7 +89,24 @@ export function makeCloudfleetStorage(provider: CloudProvider): (kc: KubeConfig,
 		const spinner = p.spinner();
 		spinner.start(`Installing ${csi.label}...`);
 		try {
-			await helmRepoAddAndInstall(csi.helm.repo, csi.helm.chart, csi.helm.release, csi.helm.namespace, csi.helm.extraArgs);
+			const install = csi.install;
+			switch (install.kind) {
+				case 'helm':
+					await helmRepoAddAndInstall(install.repo, install.chart, install.release, install.namespace, install.extraArgs);
+					break;
+				case 'manifest': {
+					// Pin the vendored driver to this provider's nodes (it only ships kubernetes.io/os selectors) and
+					// stamp ownership so uninstall tears down only what we applied.
+					const applied = await applyManifest(kc, install.manifest, {
+						labels: KUBWAVE_CSI_OWNERSHIP_LABELS,
+						nodeSelector: csi.nodeSelector
+					});
+					p.log.info(`Applied ${applied} ${csi.label} objects (server-side apply).`);
+					break;
+				}
+				default:
+					install satisfies never;
+			}
 			spinner.stop(`${csi.label} installed.`);
 		} catch (err) {
 			spinner.stop('Installation failed.');
@@ -155,7 +174,7 @@ export async function planCloudfleetStorage(kc: KubeConfig, provider: CloudProvi
 
 export async function confirmStorageInstall(csi: CsiDefinition): Promise<void> {
 	const confirmed = await p.confirm({
-		message: `Install ${csi.label} in ${csi.helm.namespace}?`
+		message: `Install ${csi.label} in ${csi.install.namespace}?`
 	});
 	if (p.isCancel(confirmed)) {
 		throw new UserCancelledError('CSI installation cancelled.');
@@ -251,8 +270,17 @@ async function bootstrapCsiPrerequisite(kc: KubeConfig, bootstrap: CsiPrerequisi
 export async function ensureStorageClass(kc: KubeConfig, spec: StorageClassSpec): Promise<boolean> {
 	const api = kc.makeApiClient(StorageV1Api);
 	try {
-		await api.readStorageClass({ name: spec.name });
-		return false;
+		const existing = await api.readStorageClass({ name: spec.name });
+		// SC already exists (e.g. a re-run, or it predates isDefault). Retrofit the default annotation only when
+		// requested, missing, and no other StorageClass is already default — never create two cluster defaults.
+		if (!spec.isDefault || existing.metadata?.annotations?.[DEFAULT_SC_ANNOTATION] === 'true') return false;
+		if (await findDefaultStorageClass(kc)) return false;
+		await mergePatch(kc, {
+			apiVersion: 'storage.k8s.io/v1',
+			kind: 'StorageClass',
+			metadata: { name: spec.name, annotations: { [DEFAULT_SC_ANNOTATION]: 'true' } }
+		});
+		return true;
 	} catch (err) {
 		if (!isNotFoundError(err)) throw err;
 	}
@@ -260,7 +288,12 @@ export async function ensureStorageClass(kc: KubeConfig, spec: StorageClassSpec)
 	const body: V1StorageClass = {
 		apiVersion: 'storage.k8s.io/v1',
 		kind: 'StorageClass',
-		metadata: { name: spec.name },
+		// Ownership label only on SCs we create — never on the retrofit path above, which may touch a user's SC.
+		metadata: {
+			name: spec.name,
+			labels: { ...KUBWAVE_CSI_OWNERSHIP_LABELS },
+			...(spec.isDefault ? { annotations: { [DEFAULT_SC_ANNOTATION]: 'true' } } : {})
+		},
 		provisioner: spec.provisioner,
 		...(spec.parameters ? { parameters: spec.parameters } : {}),
 		...(spec.reclaimPolicy ? { reclaimPolicy: spec.reclaimPolicy } : {}),
