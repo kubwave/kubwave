@@ -17,6 +17,10 @@ coverage
 
 # Secrets
 *.pem
+# GCP service-account keys (e.g. cloud-sa.json for the PD CSI driver) — never commit
+cloud-sa.json
+*-sa.json
+*-credentials.json
 
 # AI
 .superpowers/

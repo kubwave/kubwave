@@ -12,7 +12,7 @@ mock.module('@clack/prompts', () => ({
 	})
 }));
 
-const { promptHetznerOptions, HETZNER_LB_LOCATIONS } = await import('../src/platforms/cloudfleet/options.js');
+const { promptHetznerOptions, HETZNER_LB_LOCATIONS } = await import('../src/platforms/cloudfleet/hetzner/options.js');
 
 describe('promptHetznerOptions', () => {
 	test('returns explicit lbLocation when valid', async () => {

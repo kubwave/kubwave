@@ -1,7 +1,7 @@
 import type { Platform, PlatformBuildOpts, PlatformDescriptor } from '~/lib/platforms.js';
 import { TRAEFIK_NAMESPACE } from '~/lib/constants.js';
 import { promptHetznerOptions } from './options.js';
-import { makeCloudfleetStorage } from './storage.js';
+import { makeCloudfleetStorage } from '../storage.js';
 import { buildHetznerTraefikValues } from './traefik-overrides.js';
 
 const ID = 'cloudfleet-hetzner';

@@ -2,8 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { parse } from 'yaml';
 import { buildValues, generateValuesYaml } from '../src/lib/helm.js';
 import type { InstallConfig } from '../src/lib/helm.js';
-import { cloudfleetHetznerDescriptor } from '../src/platforms/cloudfleet/hetzner.js';
-import { buildHetznerTraefikValues } from '../src/platforms/cloudfleet/traefik-overrides.js';
+import { cloudfleetHetznerDescriptor } from '../src/platforms/cloudfleet/hetzner/descriptor.js';
+import { buildHetznerTraefikValues } from '../src/platforms/cloudfleet/hetzner/traefik-overrides.js';
 
 const config: InstallConfig = {
 	domain: 'app.example.com',

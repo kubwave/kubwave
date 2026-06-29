@@ -1,11 +1,13 @@
 import type { Command } from 'commander';
 import * as p from '@clack/prompts';
-import { ApiextensionsV1Api, CoreV1Api, RbacAuthorizationV1Api, type KubeConfig } from '@kubernetes/client-node';
+import { ApiextensionsV1Api, CoreV1Api, RbacAuthorizationV1Api, StorageV1Api, type KubeConfig } from '@kubernetes/client-node';
 import { APP_NAMESPACE, APP_CLUSTER_RESOURCE_PREFIX, CNPG_CRD_GROUP_SUFFIX, HELM_RELEASE_NAME, WORKER_MANAGED_BY_SELECTOR } from '~/lib/constants.js';
 import { getClusterInfo, loadKubeConfig } from '~/lib/k8s.js';
 import { isNotFoundError } from '~/lib/k8s-errors.js';
 import { helmUninstall, listReleaseNames } from '~/lib/helm.js';
 import { UserCancelledError, printAndExit } from '~/lib/errors.js';
+import { CSI_CATALOG, type CsiInstall } from '~/platforms/cloudfleet/csi-catalog.js';
+import { deleteManifest } from '~/lib/k8s-apply.js';
 
 const CERT_MANAGER_NAMESPACE = 'cert-manager';
 const ACME_ACCOUNT_KEY_SECRETS = ['letsencrypt-prod-account-key', 'letsencrypt-staging-account-key'];
@@ -21,6 +23,14 @@ const DEPENDENCY_RELEASES: { release: string; namespace: string }[] = [
 export interface ReleaseTarget {
 	release: string;
 	namespace: string;
+}
+
+export interface CsiTeardownTarget {
+	label: string;
+	provisioner: string;
+	install: CsiInstall;
+	// Only set for StorageClasses kubwave created (via createStorageClass); undefined means skip SC deletion.
+	storageClass?: string;
 }
 
 export interface UninstallPlan {
@@ -42,6 +52,8 @@ export interface UninstallPlan {
 	clusterRoleBindings: string[];
 	// CNPG CRDs: `helm uninstall cnpg` keeps them (resource-policy: keep), so delete them explicitly.
 	customResourceDefinitions: string[];
+	// CSI drivers installed by kubwave that need symmetric teardown (LAST step, after disk reclamation).
+	csiTeardowns: CsiTeardownTarget[];
 }
 
 export interface BuildPlanOpts {
@@ -56,6 +68,10 @@ export interface UninstallOpts {
 	keepStaging: boolean;
 	stagingNamespace: string;
 }
+
+// How long to wait for all PVs backed by a CSI driver to disappear before giving up and leaving the driver in place.
+export const CSI_PV_DRAIN_TIMEOUT_MS = 120_000;
+export const CSI_PV_POLL_INTERVAL_MS = 5_000;
 
 export function registerUninstallCommand(parent: Command): void {
 	parent
@@ -88,7 +104,7 @@ export async function runUninstall(opts: UninstallOpts): Promise<void> {
 	p.log.info(`Server:          ${server}`);
 	p.log.info(`Namespace:       ${APP_NAMESPACE}`);
 	p.log.warn(
-		'This will delete the helm release, all secrets, all PVCs, the namespace, the Traefik + cert-manager + CloudNativePG dependencies (incl. their CRDs), every per-environment namespace (with all tenant services and their volumes), and orphaned cluster-scoped kubwave RBAC. Data cannot be recovered.'
+		'This will delete the helm release, all secrets, all PVCs, the namespace, the Traefik + cert-manager + CloudNativePG dependencies (incl. their CRDs), every per-environment namespace (with all tenant services and their volumes), orphaned cluster-scoped kubwave RBAC, and any detected CSI driver (after PV drain). Data cannot be recovered.'
 	);
 
 	const plan = await buildUninstallPlan({
@@ -120,6 +136,12 @@ export async function runUninstall(opts: UninstallOpts): Promise<void> {
 		p.log.info(`${plan.customResourceDefinitions.length} CloudNativePG CRD(s) found — will be deleted after the operator is removed.`);
 	}
 
+	if (plan.csiTeardowns.length > 0) {
+		for (const t of plan.csiTeardowns) {
+			p.log.info(`CSI driver "${t.label}" detected — will be removed after PV drain.`);
+		}
+	}
+
 	await confirmUninstallPlan(plan, opts.yes);
 
 	const api = kc.makeApiClient(CoreV1Api);
@@ -134,6 +156,7 @@ export async function runUninstall(opts: UninstallOpts): Promise<void> {
 	await deleteEnvironmentNamespaces(api, plan);
 	await deleteClusterScopedRbac(rbacApi, plan);
 	await deleteCustomResourceDefinitions(crdApi, plan);
+	await teardownCsiDrivers(kc, plan);
 
 	p.log.success('kubwave removed from the cluster.');
 	p.outro('Uninstall complete');
@@ -158,6 +181,7 @@ export async function buildUninstallPlan(opts: BuildPlanOpts): Promise<Uninstall
 	const environmentNamespaces = await detectEnvironmentNamespaces(opts.kc);
 	const { clusterRoles, clusterRoleBindings } = await detectOrphanClusterRbac(opts.kc);
 	const customResourceDefinitions = await detectCnpgCrds(opts.kc);
+	const csiTeardowns = await detectCsiTeardowns(opts.kc);
 
 	return {
 		appRelease: { release: HELM_RELEASE_NAME, namespace: APP_NAMESPACE },
@@ -171,7 +195,8 @@ export async function buildUninstallPlan(opts: BuildPlanOpts): Promise<Uninstall
 		environmentNamespaces,
 		clusterRoles,
 		clusterRoleBindings,
-		customResourceDefinitions
+		customResourceDefinitions,
+		csiTeardowns
 	};
 }
 
@@ -201,6 +226,42 @@ async function detectOrphanClusterRbac(kc: KubeConfig): Promise<{ clusterRoles: 
 		items.map(item => item.metadata?.name).filter((name): name is string => typeof name === 'string' && name.startsWith(APP_CLUSTER_RESOURCE_PREFIX));
 
 	return { clusterRoles: matching(roles.items), clusterRoleBindings: matching(bindings.items) };
+}
+
+// CSI drivers installed by kubwave: helm releases checked by listing releases in their namespace; manifest drivers by namespace existence.
+async function detectCsiTeardowns(kc: KubeConfig): Promise<CsiTeardownTarget[]> {
+	const api = kc.makeApiClient(CoreV1Api);
+	const targets: CsiTeardownTarget[] = [];
+	// Cache per namespace so kube-system (hetzner + aws) is only listed once.
+	const releaseCache = new Map<string, string[]>();
+
+	for (const csi of Object.values(CSI_CATALOG)) {
+		let present = false;
+
+		if (csi.install.kind === 'helm') {
+			const ns = csi.install.namespace;
+			if (!releaseCache.has(ns)) releaseCache.set(ns, await listReleaseNames(ns));
+			present = releaseCache.get(ns)!.includes(csi.install.release);
+		} else {
+			try {
+				await api.readNamespace({ name: csi.install.namespace });
+				present = true;
+			} catch (err) {
+				if (!isNotFoundError(err)) throw err;
+			}
+		}
+
+		if (present) {
+			targets.push({
+				label: csi.label,
+				provisioner: csi.provisioner,
+				install: csi.install,
+				storageClass: csi.createStorageClass?.name
+			});
+		}
+	}
+
+	return targets;
 }
 
 interface StagingDetection {
@@ -234,7 +295,8 @@ async function confirmUninstallPlan(plan: UninstallPlan, skipConfirm: boolean): 
 			? `delete ${plan.clusterRoles.length + plan.clusterRoleBindings.length} cluster RBAC objects`
 			: null,
 		plan.customResourceDefinitions.length > 0 ? `delete ${plan.customResourceDefinitions.length} CRDs` : null,
-		`uninstall ${plan.dependencyReleases.length} dependencies`
+		`uninstall ${plan.dependencyReleases.length} dependencies`,
+		plan.csiTeardowns.length > 0 ? `remove ${plan.csiTeardowns.length} CSI driver(s)` : null
 	].filter((part): part is string => part !== null);
 
 	p.log.info(`Planned operations: ${opParts.join(', ')}.`);
@@ -468,4 +530,70 @@ async function deleteCustomResourceDefinitions(api: ApiextensionsV1Api, plan: Un
 	}
 
 	spinner.stop('CloudNativePG CRDs removed');
+}
+
+// Last step: tear down CSI drivers after all workloads and namespaces are gone.
+// Waits for PVs backed by each driver to drain; skips if they persist (safety — never orphan cloud disks).
+export async function teardownCsiDrivers(kc: KubeConfig, plan: UninstallPlan, opts?: { timeoutMs?: number; pollMs?: number }): Promise<void> {
+	if (plan.csiTeardowns.length === 0) return;
+
+	const timeoutMs = opts?.timeoutMs ?? CSI_PV_DRAIN_TIMEOUT_MS;
+	const pollMs = opts?.pollMs ?? CSI_PV_POLL_INTERVAL_MS;
+
+	const coreApi = kc.makeApiClient(CoreV1Api);
+	const storageApi = kc.makeApiClient(StorageV1Api);
+
+	for (const target of plan.csiTeardowns) {
+		const spinner = p.spinner();
+		spinner.start(`Tearing down CSI driver: ${target.label}...`);
+
+		// Wait for all PVs backed by this driver to disappear before removing it.
+		let pvCount = await countCsiPvs(coreApi, target.provisioner);
+		if (pvCount > 0) {
+			const deadline = Date.now() + timeoutMs;
+			while (pvCount > 0 && Date.now() < deadline) {
+				await new Promise(r => setTimeout(r, pollMs));
+				pvCount = await countCsiPvs(coreApi, target.provisioner);
+			}
+		}
+
+		if (pvCount > 0) {
+			// Safety: leave the driver in place rather than risk orphaning cloud disks.
+			spinner.stop(`CSI driver "${target.label}" — SKIPPED (${pvCount} PV(s) still present)`);
+			p.log.warn(
+				`${pvCount} PersistentVolume(s) for driver "${target.provisioner}" still exist. The CSI driver is being LEFT IN PLACE to avoid orphaning cloud disks. Delete the PVs/PVCs and re-run uninstall.`
+			);
+			continue;
+		}
+
+		const csiInstall = target.install;
+		if (csiInstall.kind === 'helm') {
+			await helmUninstall(csiInstall.release, csiInstall.namespace);
+		} else {
+			await deleteManifest(kc, csiInstall.manifest);
+		}
+
+		if (target.storageClass) {
+			try {
+				await storageApi.deleteStorageClass({ name: target.storageClass });
+			} catch (err) {
+				if (!isNotFoundError(err)) throw err;
+			}
+		}
+
+		spinner.stop(`CSI driver "${target.label}" removed`);
+	}
+}
+
+export async function countCsiPvs(api: CoreV1Api, provisioner: string): Promise<number> {
+	let count = 0;
+	let cont: string | undefined;
+	do {
+		const list = await api.listPersistentVolume({ limit: 500, _continue: cont });
+		for (const pv of list.items) {
+			if (pv.spec?.csi?.driver === provisioner) count++;
+		}
+		cont = list.metadata?._continue || undefined;
+	} while (cont);
+	return count;
 }

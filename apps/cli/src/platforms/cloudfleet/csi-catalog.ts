@@ -1,4 +1,8 @@
 import type { CloudProvider } from '~/lib/cloud-provider.js';
+import pdCsiManifest from './gcp/pd-csi-driver.yaml' with { type: 'text' };
+
+// Keep in sync with scripts/gen-gcp-csi-manifest.sh.
+export const GCP_PD_CSI_VERSION = 'v1.26.0';
 
 export type CsiPrerequisite = {
 	kind: 'secret';
@@ -25,16 +29,30 @@ export type StorageClassSpec = {
 	allowVolumeExpansion?: boolean;
 };
 
+export type HelmCsiInstall = {
+	kind: 'helm';
+	repo: { name: string; url: string };
+	chart: string;
+	release: string;
+	namespace: string;
+	extraArgs: string[];
+};
+
+export type ManifestCsiInstall = {
+	kind: 'manifest';
+	namespace: string;
+	driverVersion: string;
+	// Rendered upstream manifest, embedded as text; applied with server-side apply.
+	manifest: string;
+};
+
+export type CsiInstall = HelmCsiInstall | ManifestCsiInstall;
+
 export type CsiDefinition = {
 	label: string;
-	helm: {
-		repo: { name: string; url: string };
-		chart: string;
-		release: string;
-		namespace: string;
-		extraArgs: string[];
-	};
+	install: CsiInstall;
 	storageClass: string;
+	provisioner: string;
 	nodeSelector: Record<string, string>;
 	// StorageClass created (idempotently) post-install when the upstream chart ships none (AWS, GCP); Hetzner already ships "hcloud-volumes".
 	createStorageClass?: StorageClassSpec;
@@ -47,14 +65,9 @@ export type CsiDefinition = {
 export const CSI_CATALOG: Record<CloudProvider, CsiDefinition> = {
 	hetzner: {
 		label: 'Hetzner Cloud CSI Driver',
-		helm: {
-			repo: { name: 'hcloud', url: 'https://charts.hetzner.cloud' },
-			chart: 'hcloud/hcloud-csi',
-			release: 'hcloud-csi',
-			namespace: 'kube-system',
-			extraArgs: ['--set', 'controller.nodeSelector.cfke\\.io/provider=hetzner', '--set', 'node.nodeSelector.cfke\\.io/provider=hetzner']
-		},
+		install: { kind: 'helm', repo: { name: 'hcloud', url: 'https://charts.hetzner.cloud' }, chart: 'hcloud/hcloud-csi', release: 'hcloud-csi', namespace: 'kube-system', extraArgs: ['--set', 'controller.nodeSelector.cfke\\.io/provider=hetzner', '--set', 'node.nodeSelector.cfke\\.io/provider=hetzner'] },
 		storageClass: 'hcloud-volumes',
+		provisioner: 'csi.hetzner.cloud',
 		nodeSelector: { 'cfke.io/provider': 'hetzner' },
 		prerequisite: {
 			kind: 'secret',
@@ -74,14 +87,9 @@ export const CSI_CATALOG: Record<CloudProvider, CsiDefinition> = {
 	},
 	aws: {
 		label: 'AWS EBS CSI Driver',
-		helm: {
-			repo: { name: 'aws-ebs-csi-driver', url: 'https://kubernetes-sigs.github.io/aws-ebs-csi-driver' },
-			chart: 'aws-ebs-csi-driver/aws-ebs-csi-driver',
-			release: 'aws-ebs-csi-driver',
-			namespace: 'kube-system',
-			extraArgs: ['--set', 'controller.nodeSelector.cfke\\.io/provider=aws', '--set', 'node.nodeSelector.cfke\\.io/provider=aws']
-		},
+		install: { kind: 'helm', repo: { name: 'aws-ebs-csi-driver', url: 'https://kubernetes-sigs.github.io/aws-ebs-csi-driver' }, chart: 'aws-ebs-csi-driver/aws-ebs-csi-driver', release: 'aws-ebs-csi-driver', namespace: 'kube-system', extraArgs: ['--set', 'controller.nodeSelector.cfke\\.io/provider=aws', '--set', 'node.nodeSelector.cfke\\.io/provider=aws'] },
 		storageClass: 'ebs-sc',
+		provisioner: 'ebs.csi.aws.com',
 		nodeSelector: { 'cfke.io/provider': 'aws' },
 		createStorageClass: {
 			name: 'ebs-sc',
@@ -95,21 +103,14 @@ export const CSI_CATALOG: Record<CloudProvider, CsiDefinition> = {
 	},
 	gcp: {
 		label: 'GCP Persistent Disk CSI Driver',
-		helm: {
-			repo: { name: 'gcp-pd-csi-driver', url: 'https://kubernetes-sigs.github.io/gcp-compute-persistent-disk-csi-driver/' },
-			chart: 'gcp-pd-csi-driver/gcp-compute-persistent-disk-csi-driver',
-			release: 'gcp-pd-csi-driver',
+		install: {
+			kind: 'manifest',
 			namespace: 'gce-pd-csi-driver',
-			extraArgs: [
-				'--set',
-				'controller.saSecret.name=cloud-sa',
-				'--set',
-				'controller.nodeSelector.cfke\\.io/provider=gcp',
-				'--set',
-				'node.nodeSelector.cfke\\.io/provider=gcp'
-			]
+			driverVersion: GCP_PD_CSI_VERSION,
+			manifest: pdCsiManifest
 		},
 		storageClass: 'pd-ssd',
+		provisioner: 'pd.csi.storage.gke.io',
 		nodeSelector: { 'cfke.io/provider': 'gcp' },
 		createStorageClass: {
 			name: 'pd-ssd',

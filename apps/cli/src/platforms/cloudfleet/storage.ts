@@ -4,6 +4,7 @@ import * as p from '@clack/prompts';
 import type { StorageDecision, StorageOpts } from '~/lib/platforms.js';
 import { detectFleetProviders, type CloudProvider } from '~/lib/cloud-provider.js';
 import { helmRepoAddAndInstall } from '~/lib/dependencies.js';
+import { applyManifest } from '~/lib/k8s-apply.js';
 import { FatalCliError, UserCancelledError } from '~/lib/errors.js';
 import { isNotFoundError } from '~/lib/k8s-errors.js';
 import { CSI_CATALOG, type CsiDefinition, type CsiPrerequisite, type StorageClassSpec } from './csi-catalog.js';
@@ -50,7 +51,7 @@ export function makeCloudfleetStorage(provider: CloudProvider): (kc: KubeConfig,
 		p.log.warn('Default StorageClass: not found');
 		p.log.info(`Platform provider: ${plan.provider} (${nodeCount} matching ${nodeCount === 1 ? 'node' : 'nodes'})`);
 		p.log.info(`Recommendation: ${csi.label}`);
-		p.log.info(`  -> Chart:         ${csi.helm.chart}`);
+		p.log.info(`  -> Install:       ${csi.install.kind === 'helm' ? csi.install.chart : `manifest (${csi.install.driverVersion})`}`);
 		p.log.info(`  -> StorageClass:  ${csi.storageClass}`);
 		p.log.info(`  -> NodeSelector:  ${formatNodeSelector(csi.nodeSelector)}`);
 
@@ -87,7 +88,20 @@ export function makeCloudfleetStorage(provider: CloudProvider): (kc: KubeConfig,
 		const spinner = p.spinner();
 		spinner.start(`Installing ${csi.label}...`);
 		try {
-			await helmRepoAddAndInstall(csi.helm.repo, csi.helm.chart, csi.helm.release, csi.helm.namespace, csi.helm.extraArgs);
+			const install = csi.install;
+			switch (install.kind) {
+				case 'helm':
+					await helmRepoAddAndInstall(install.repo, install.chart, install.release, install.namespace, install.extraArgs);
+					break;
+				case 'manifest': {
+					const applied = await applyManifest(kc, install.manifest);
+					p.log.info(`Applied ${applied} ${csi.label} objects (server-side apply).`);
+					break;
+				}
+				default:
+					install satisfies never;
+					throw new Error(`Unsupported CSI install kind: ${(install as { kind: string }).kind}`);
+			}
 			spinner.stop(`${csi.label} installed.`);
 		} catch (err) {
 			spinner.stop('Installation failed.');
@@ -155,7 +169,7 @@ export async function planCloudfleetStorage(kc: KubeConfig, provider: CloudProvi
 
 export async function confirmStorageInstall(csi: CsiDefinition): Promise<void> {
 	const confirmed = await p.confirm({
-		message: `Install ${csi.label} in ${csi.helm.namespace}?`
+		message: `Install ${csi.label} in ${csi.install.namespace}?`
 	});
 	if (p.isCancel(confirmed)) {
 		throw new UserCancelledError('CSI installation cancelled.');

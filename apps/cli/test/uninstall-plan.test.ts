@@ -4,6 +4,12 @@ import * as realK8s from '../src/lib/k8s.js';
 import * as realHelm from '../src/lib/helm.js';
 import { clackStub } from './support/clack-stub.js';
 
+mock.module('~/lib/k8s-apply.js', () => ({
+	deleteManifest: async () => 0,
+	applyManifest: async () => 0,
+	parseManifest: () => []
+}));
+
 const helmUninstallCalls: Array<{ release: string; namespace: string }> = [];
 const helmListCalls: string[] = [];
 const apiCalls: string[] = [];
@@ -12,6 +18,8 @@ const cancelledPrompt = Symbol('cancelled');
 let pvcMode: 'items' | 'namespace-missing' | 'empty' = 'items';
 let confirmResult: boolean | symbol = true;
 let stagingNamespaceExists = true;
+// GCP CSI uses a manifest with its own namespace; default false so existing tests see no CSI detected.
+let gceCsiNamespaceExists = false;
 let stagingReleaseNames: string[] = ['kubwave-staging'];
 let envNamespaces: string[] = ['kubwave-env-aaa', 'kubwave-env-bbb'];
 let clusterRoles: string[] = ['kubwave-updater-cert-manager', 'unrelated-role'];
@@ -32,9 +40,16 @@ const crdNotFound = new Set<string>();
 const api = {
 	readNamespace: async ({ name }: { name: string }) => {
 		apiCalls.push(`read-namespace:${name}`);
-		// stagingNamespaceExists applies to the default staging namespace; custom ones always exist here.
 		if (name === 'kubwave-staging' && !stagingNamespaceExists) throw { code: 404 };
+		if (name === 'gce-pd-csi-driver' && !gceCsiNamespaceExists) throw { code: 404 };
 		return { metadata: { name } };
+	},
+	listPersistentVolume: async () => {
+		apiCalls.push('list-pvs');
+		return { items: [] };
+	},
+	deleteStorageClass: async ({ name }: { name: string }) => {
+		apiCalls.push(`delete-storageclass:${name}`);
 	},
 	listNamespacedPersistentVolumeClaim: async ({ namespace }: { namespace: string }) => {
 		apiCalls.push(`list-pvcs:${namespace}`);
@@ -178,6 +193,7 @@ function resetFixtures(): void {
 	clusterRoleBindingNotFound.clear();
 	crdDeleteErrors.clear();
 	crdNotFound.clear();
+	gceCsiNamespaceExists = false;
 }
 
 describe('uninstall plan', () => {
@@ -252,9 +268,9 @@ describe('uninstall plan', () => {
 		expect(plan.stagingRelease).toBeNull();
 		expect(plan.stagingNamespaceExists).toBe(false);
 		expect(plan.namespacesToDelete).toEqual(['kubwave', 'traefik', 'cert-manager', 'cnpg-system']);
-		// Detection should be skipped — neither k8s nor helm should be probed.
+		// Staging detection should be skipped — staging namespace must not be probed.
 		expect(apiCalls.find(call => call.startsWith('read-namespace:kubwave-staging'))).toBeUndefined();
-		expect(helmListCalls).toEqual([]);
+		expect(helmListCalls).not.toContain('kubwave-staging');
 	});
 
 	test('probes the override --staging-namespace', async () => {

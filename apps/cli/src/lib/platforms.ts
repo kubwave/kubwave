@@ -2,7 +2,8 @@ import type { KubeConfig } from '@kubernetes/client-node';
 import * as p from '@clack/prompts';
 import type { CloudProvider } from '~/lib/cloud-provider.js';
 import { UserCancelledError } from '~/lib/errors.js';
-import { cloudfleetHetznerDescriptor } from '~/platforms/cloudfleet/hetzner.js';
+import { cloudfleetHetznerDescriptor } from '~/platforms/cloudfleet/hetzner/descriptor.js';
+import { cloudfleetGcpDescriptor } from '~/platforms/cloudfleet/gcp/descriptor.js';
 import type { DependencyStateInput } from '~/lib/dependency-state.js';
 
 export type StorageOpts = {
@@ -36,7 +37,7 @@ export interface PlatformDescriptor {
 	build(opts: PlatformBuildOpts): Promise<Platform>;
 }
 
-export const PLATFORMS: ReadonlyArray<PlatformDescriptor> = [cloudfleetHetznerDescriptor];
+export const PLATFORMS: ReadonlyArray<PlatformDescriptor> = [cloudfleetHetznerDescriptor, cloudfleetGcpDescriptor];
 
 export function getPlatformDescriptor(id: string): PlatformDescriptor {
 	const found = PLATFORMS.find(descriptor => descriptor.id === id);

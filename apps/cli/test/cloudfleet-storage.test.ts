@@ -35,8 +35,9 @@ describe('confirmStorageInstall', () => {
 		await expect(
 			confirmStorageInstall({
 				label: 'Hetzner CSI',
-				helm: { repo: { name: 'hcloud', url: 'https://charts.example.com' }, chart: 'csi', release: 'csi-hetzner', namespace: 'csi', extraArgs: [] },
+				install: { kind: 'helm', repo: { name: 'hcloud', url: 'https://charts.example.com' }, chart: 'csi', release: 'csi-hetzner', namespace: 'csi', extraArgs: [] },
 				storageClass: 'hcloud-volumes',
+				provisioner: 'csi.hetzner.cloud',
 				nodeSelector: { 'cfke.io/provider': 'hetzner' }
 			})
 		).resolves.toBeUndefined();
@@ -47,8 +48,9 @@ describe('confirmStorageInstall', () => {
 		await expect(
 			confirmStorageInstall({
 				label: 'Hetzner CSI',
-				helm: { repo: { name: '', url: '' }, chart: '', release: '', namespace: '', extraArgs: [] },
+				install: { kind: 'helm', repo: { name: '', url: '' }, chart: '', release: '', namespace: '', extraArgs: [] },
 				storageClass: 'hcloud-volumes',
+				provisioner: 'csi.hetzner.cloud',
 				nodeSelector: { 'cfke.io/provider': 'hetzner' }
 			})
 		).rejects.toThrow('CSI installation cancelled.');
@@ -59,8 +61,9 @@ describe('confirmStorageInstall', () => {
 		await expect(
 			confirmStorageInstall({
 				label: 'Hetzner CSI',
-				helm: { repo: { name: '', url: '' }, chart: '', release: '', namespace: '', extraArgs: [] },
+				install: { kind: 'helm', repo: { name: '', url: '' }, chart: '', release: '', namespace: '', extraArgs: [] },
 				storageClass: 'hcloud-volumes',
+				provisioner: 'csi.hetzner.cloud',
 				nodeSelector: { 'cfke.io/provider': 'hetzner' }
 			})
 		).rejects.toThrow('CSI installation declined');
