@@ -18,8 +18,6 @@ const cancelledPrompt = Symbol('cancelled');
 let pvcMode: 'items' | 'namespace-missing' | 'empty' = 'items';
 let confirmResult: boolean | symbol = true;
 let stagingNamespaceExists = true;
-// GCP CSI uses a manifest with its own namespace; default false so existing tests see no CSI detected.
-let gceCsiNamespaceExists = false;
 let stagingReleaseNames: string[] = ['kubwave-staging'];
 let envNamespaces: string[] = ['kubwave-env-aaa', 'kubwave-env-bbb'];
 let clusterRoles: string[] = ['kubwave-updater-cert-manager', 'unrelated-role'];
@@ -41,7 +39,8 @@ const api = {
 	readNamespace: async ({ name }: { name: string }) => {
 		apiCalls.push(`read-namespace:${name}`);
 		if (name === 'kubwave-staging' && !stagingNamespaceExists) throw { code: 404 };
-		if (name === 'gce-pd-csi-driver' && !gceCsiNamespaceExists) throw { code: 404 };
+		// These plan tests never install the GCP CSI driver, so its namespace is always absent.
+		if (name === 'gce-pd-csi-driver') throw { code: 404 };
 		return { metadata: { name } };
 	},
 	listPersistentVolume: async () => {
@@ -193,7 +192,6 @@ function resetFixtures(): void {
 	clusterRoleBindingNotFound.clear();
 	crdDeleteErrors.clear();
 	crdNotFound.clear();
-	gceCsiNamespaceExists = false;
 }
 
 describe('uninstall plan', () => {
