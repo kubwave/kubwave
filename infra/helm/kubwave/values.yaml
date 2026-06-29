@@ -271,10 +271,13 @@ builds:
   buildToolsImage: build-tools:dev
   timeoutSeconds: '1800' # hard cap on a single build (activeDeadlineSeconds)
   jobTtlSeconds: '3600' # how long a finished build Job lingers before Kubernetes TTL-reaps it
-  # Memory request/limit on the BuildKit build container. The request reserves headroom; the limit
-  # caps a runaway build to a clean in-container OOMKill. Defaults suit a ~4Gi build node — raise
-  # both for bigger build nodes / heavier images.
-  memoryRequest: '1Gi'
+  # Memory request/limit on the BuildKit build container. Keep request == limit: this gives the build
+  # Guaranteed QoS AND forces the node autoscaler to provision a node that can actually honor the limit.
+  # A 2Gi request rules out the tiny ~2Gi shared-core spot SKUs (g1-small/e2-small), whose allocatable
+  # drops below 1Gi after kube-reserved + DaemonSets — those nodes can never fit the build, so Karpenter
+  # spins up node after node in an endless provision→pending→provision loop. Raise both together (kept
+  # equal) for heavier images so the node-size floor always tracks the limit.
+  memoryRequest: '2Gi'
   memoryLimit: '2Gi'
   registry:
     # host:port baked into the built image ref — it must be reachable from BOTH the BuildKit build POD

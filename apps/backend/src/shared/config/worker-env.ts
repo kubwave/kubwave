@@ -118,7 +118,7 @@ export function resolveWorkerRuntimeConfig(): WorkerRuntimeConfig {
 		registryPushSecretName: process.env.REGISTRY_PUSH_SECRET_NAME || undefined,
 		buildTimeoutSeconds: num('BUILD_TIMEOUT_SECONDS', 1800),
 		buildJobTtlSeconds: num('BUILD_JOB_TTL_SECONDS', 3600),
-		buildMemoryRequest: process.env.BUILD_MEMORY_REQUEST || '1Gi',
+		buildMemoryRequest: process.env.BUILD_MEMORY_REQUEST || '2Gi',
 		buildMemoryLimit: process.env.BUILD_MEMORY_LIMIT || '2Gi',
 		registryPruneKeep: num('REGISTRY_PRUNE_KEEP', 2),
 		registryPruneIntervalMs: num('REGISTRY_PRUNE_INTERVAL_MS', 60 * 60 * 1000),
