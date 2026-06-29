@@ -59,6 +59,13 @@ export default defineConfig({
 					]
 				},
 				{
+					label: 'Provider setup',
+					items: [
+						{ label: 'Cloudfleet (Hetzner)', slug: 'providers/cloudfleet-hetzner' },
+						{ label: 'Cloudfleet (Google Cloud)', slug: 'providers/cloudfleet-gcp' }
+					]
+				},
+				{
 					label: 'Guides',
 					items: [
 						{ label: 'Deploy a service', slug: 'guides/deploy-a-service' },

@@ -28,7 +28,8 @@ cloud-sa.json
 .claude
 .codex
 .pi
-docs
+# Root-only: the superpowers specs/plans scratch dir. Anchored so it never matches apps/docs (the docs site).
+/docs/
 
 # Editor
 .vscode/*
