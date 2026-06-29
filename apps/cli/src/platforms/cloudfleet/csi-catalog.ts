@@ -27,6 +27,7 @@ export type StorageClassSpec = {
 	reclaimPolicy?: 'Delete' | 'Retain';
 	volumeBindingMode?: 'Immediate' | 'WaitForFirstConsumer';
 	allowVolumeExpansion?: boolean;
+	isDefault?: boolean;
 };
 
 export type HelmCsiInstall = {
@@ -55,6 +56,7 @@ export type CsiDefinition = {
 	provisioner: string;
 	nodeSelector: Record<string, string>;
 	// StorageClass created (idempotently) post-install when the upstream chart ships none (AWS, GCP); Hetzner already ships "hcloud-volumes".
+	// These self-created SCs are marked default (isDefault) so kubwave's PVCs — which omit storageClassName — can bind.
 	createStorageClass?: StorageClassSpec;
 	// Hard prerequisite checked before install; if missing, the CLI aborts with the hint.
 	prerequisite?: CsiPrerequisite;
@@ -111,7 +113,8 @@ export const CSI_CATALOG: Record<CloudProvider, CsiDefinition> = {
 			parameters: { type: 'gp3' },
 			reclaimPolicy: 'Delete',
 			volumeBindingMode: 'WaitForFirstConsumer',
-			allowVolumeExpansion: true
+			allowVolumeExpansion: true,
+			isDefault: true
 		},
 		info: 'AWS EBS CSI needs IAM permissions on the nodes (instance profile, IRSA, or a kube-system/aws-secret secret). If the Cloudfleet AWS nodes do not have a suitable instance profile, the CSI controller will not be able to provision PVCs. Setup guide: https://github.com/kubernetes-sigs/aws-ebs-csi-driver/blob/master/docs/install.md'
 	},
@@ -132,7 +135,8 @@ export const CSI_CATALOG: Record<CloudProvider, CsiDefinition> = {
 			parameters: { type: 'pd-ssd' },
 			reclaimPolicy: 'Delete',
 			volumeBindingMode: 'WaitForFirstConsumer',
-			allowVolumeExpansion: true
+			allowVolumeExpansion: true,
+			isDefault: true
 		},
 		prerequisite: {
 			kind: 'secret',

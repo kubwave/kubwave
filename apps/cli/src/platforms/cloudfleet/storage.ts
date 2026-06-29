@@ -1,5 +1,5 @@
 import type { KubeConfig, V1Secret, V1StorageClass } from '@kubernetes/client-node';
-import { CoreV1Api, StorageV1Api } from '@kubernetes/client-node';
+import { CoreV1Api, KubernetesObjectApi, PatchStrategy, StorageV1Api } from '@kubernetes/client-node';
 import * as p from '@clack/prompts';
 import type { StorageDecision, StorageOpts } from '~/lib/platforms.js';
 import { detectFleetProviders, type CloudProvider } from '~/lib/cloud-provider.js';
@@ -265,7 +265,29 @@ async function bootstrapCsiPrerequisite(kc: KubeConfig, bootstrap: CsiPrerequisi
 export async function ensureStorageClass(kc: KubeConfig, spec: StorageClassSpec): Promise<boolean> {
 	const api = kc.makeApiClient(StorageV1Api);
 	try {
-		await api.readStorageClass({ name: spec.name });
+		const existing = await api.readStorageClass({ name: spec.name });
+		// SC already exists (e.g. a re-run, or it was created before isDefault was introduced). Retrofit the
+		// default annotation when requested and missing — but only if no other StorageClass is already default,
+		// to avoid creating two cluster defaults.
+		if (spec.isDefault && existing.metadata?.annotations?.[DEFAULT_SC_ANNOTATION] !== 'true') {
+			const otherDefault = await findDefaultStorageClass(kc);
+			if (!otherDefault) {
+				const objApi = KubernetesObjectApi.makeApiClient(kc);
+				await objApi.patch(
+					{
+						apiVersion: 'storage.k8s.io/v1',
+						kind: 'StorageClass',
+						metadata: { name: spec.name, annotations: { [DEFAULT_SC_ANNOTATION]: 'true' } }
+					},
+					undefined,
+					undefined,
+					undefined,
+					undefined,
+					PatchStrategy.MergePatch
+				);
+				return true;
+			}
+		}
 		return false;
 	} catch (err) {
 		if (!isNotFoundError(err)) throw err;
@@ -274,7 +296,7 @@ export async function ensureStorageClass(kc: KubeConfig, spec: StorageClassSpec)
 	const body: V1StorageClass = {
 		apiVersion: 'storage.k8s.io/v1',
 		kind: 'StorageClass',
-		metadata: { name: spec.name },
+		metadata: { name: spec.name, ...(spec.isDefault ? { annotations: { [DEFAULT_SC_ANNOTATION]: 'true' } } : {}) },
 		provisioner: spec.provisioner,
 		...(spec.parameters ? { parameters: spec.parameters } : {}),
 		...(spec.reclaimPolicy ? { reclaimPolicy: spec.reclaimPolicy } : {}),
