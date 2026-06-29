@@ -1,0 +1,42 @@
+# Tears down the per-PR preview Worker created by docs-preview.yml once the PR
+# is closed (merged or not), so previews don't accumulate as orphaned Workers.
+name: Docs preview cleanup
+
+on:
+  pull_request:
+    types: [closed]
+    paths:
+      - apps/docs/**
+
+permissions:
+  contents: read
+
+env:
+  BUN_VERSION: 1.3.14
+
+jobs:
+  cleanup:
+    name: Delete preview worker
+    runs-on: ubuntu-latest
+    # Forks never created a preview (no secrets), so nothing to delete.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Delete preview worker
+        working-directory: apps/docs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PR: ${{ github.event.pull_request.number }}
+        # Don't fail the job if the worker is already gone (e.g. never deployed).
+        run: bunx wrangler delete --name "kubwave-docs-pr-${PR}" || true
