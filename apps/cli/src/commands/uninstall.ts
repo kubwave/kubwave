@@ -1,7 +1,15 @@
 import type { Command } from 'commander';
 import * as p from '@clack/prompts';
 import { ApiextensionsV1Api, CoreV1Api, RbacAuthorizationV1Api, StorageV1Api, type KubeConfig } from '@kubernetes/client-node';
-import { APP_NAMESPACE, APP_CLUSTER_RESOURCE_PREFIX, CNPG_CRD_GROUP_SUFFIX, HELM_RELEASE_NAME, WORKER_MANAGED_BY_SELECTOR } from '~/lib/constants.js';
+import {
+	APP_NAMESPACE,
+	APP_CLUSTER_RESOURCE_PREFIX,
+	CNPG_CRD_GROUP_SUFFIX,
+	HELM_RELEASE_NAME,
+	WORKER_MANAGED_BY_SELECTOR,
+	KUBWAVE_MANAGED_BY_LABEL,
+	KUBWAVE_CLI_MANAGED_BY_VALUE
+} from '~/lib/constants.js';
 import { getClusterInfo, loadKubeConfig } from '~/lib/k8s.js';
 import { isNotFoundError } from '~/lib/k8s-errors.js';
 import { helmUninstall, listReleaseNames } from '~/lib/helm.js';
@@ -187,10 +195,13 @@ export async function buildUninstallPlan(opts: BuildPlanOpts): Promise<Uninstall
 	const namespacesToDelete =
 		stagingNamespaceExists && !baseNamespaces.includes(stagingNamespace) ? [...baseNamespaces, stagingNamespace] : baseNamespaces;
 
-	const environmentNamespaces = await detectEnvironmentNamespaces(opts.kc);
-	const { clusterRoles, clusterRoleBindings } = await detectOrphanClusterRbac(opts.kc);
-	const customResourceDefinitions = await detectCnpgCrds(opts.kc);
-	const csiTeardowns = await detectCsiTeardowns(opts.kc);
+	// Independent cluster reads — run concurrently so plan-building doesn't serialize four round-trips.
+	const [environmentNamespaces, { clusterRoles, clusterRoleBindings }, customResourceDefinitions, csiTeardowns] = await Promise.all([
+		detectEnvironmentNamespaces(opts.kc),
+		detectOrphanClusterRbac(opts.kc),
+		detectCnpgCrds(opts.kc),
+		detectCsiTeardowns(opts.kc)
+	]);
 
 	return {
 		appRelease: { release: HELM_RELEASE_NAME, namespace: APP_NAMESPACE },
@@ -237,7 +248,10 @@ async function detectOrphanClusterRbac(kc: KubeConfig): Promise<{ clusterRoles: 
 	return { clusterRoles: matching(roles.items), clusterRoleBindings: matching(bindings.items) };
 }
 
-// CSI drivers installed by kubwave: helm releases checked by listing releases in their namespace; manifest drivers by namespace existence.
+// CSI drivers installed by kubwave: helm releases checked by listing releases in their namespace; manifest
+// drivers by the kubwave ownership label on their namespace (mere existence is NOT proof — the prerequisite
+// hint has users hand-create the namespace + cloud-sa secret before install, so existence-only detection
+// would delete a user-owned namespace + credential the CLI never installed).
 async function detectCsiTeardowns(kc: KubeConfig): Promise<CsiTeardownTarget[]> {
 	const api = kc.makeApiClient(CoreV1Api);
 	const targets: CsiTeardownTarget[] = [];
@@ -253,8 +267,8 @@ async function detectCsiTeardowns(kc: KubeConfig): Promise<CsiTeardownTarget[]> 
 			present = releaseCache.get(ns)!.includes(csi.install.release);
 		} else {
 			try {
-				await api.readNamespace({ name: csi.install.namespace });
-				present = true;
+				const ns = await api.readNamespace({ name: csi.install.namespace });
+				present = ns.metadata?.labels?.[KUBWAVE_MANAGED_BY_LABEL] === KUBWAVE_CLI_MANAGED_BY_VALUE;
 			} catch (err) {
 				if (!isNotFoundError(err)) throw err;
 			}
@@ -556,41 +570,69 @@ export async function teardownCsiDrivers(kc: KubeConfig, plan: UninstallPlan, op
 		const spinner = p.spinner();
 		spinner.start(`Tearing down CSI driver: ${target.label}...`);
 
-		// Wait for all PVs backed by this driver to disappear before removing it.
-		let pvCount = await countCsiPvs(coreApi, target.provisioner);
-		if (pvCount > 0) {
+		// Per-target isolation: a failure on one driver (transient API error, expired PV-list continue token,
+		// a stuck delete) must not abort the rest of the uninstall — this is the final step.
+		try {
+			// Wait for all PVs backed by this driver to disappear before removing it.
+			let pvCount = await countCsiPvs(coreApi, target.provisioner);
 			const deadline = Date.now() + timeoutMs;
 			while (pvCount > 0 && Date.now() < deadline) {
 				await new Promise(r => setTimeout(r, pollMs));
 				pvCount = await countCsiPvs(coreApi, target.provisioner);
 			}
-		}
 
-		if (pvCount > 0) {
-			// Safety: leave the driver in place rather than risk orphaning cloud disks.
-			spinner.stop(`CSI driver "${target.label}" — SKIPPED (${pvCount} PV(s) still present)`);
-			p.log.warn(
-				`${pvCount} PersistentVolume(s) for driver "${target.provisioner}" still exist. The CSI driver is being LEFT IN PLACE to avoid orphaning cloud disks. Once the PVs are gone, re-run uninstall (or raise the drain timeout with KUBWAVE_PV_DRAIN_TIMEOUT=<seconds> on a slow cluster).`
-			);
-			continue;
-		}
-
-		const csiInstall = target.install;
-		if (csiInstall.kind === 'helm') {
-			await helmUninstall(csiInstall.release, csiInstall.namespace);
-		} else {
-			await deleteManifest(kc, csiInstall.manifest);
-		}
-
-		if (target.storageClass) {
-			try {
-				await storageApi.deleteStorageClass({ name: target.storageClass });
-			} catch (err) {
-				if (!isNotFoundError(err)) throw err;
+			if (pvCount > 0) {
+				// Safety: leave the driver in place rather than risk orphaning cloud disks.
+				spinner.stop(`CSI driver "${target.label}" — SKIPPED (${pvCount} PV(s) still present)`);
+				p.log.warn(
+					`${pvCount} PersistentVolume(s) for driver "${target.provisioner}" still exist. The CSI driver is being LEFT IN PLACE to avoid orphaning cloud disks. Once the PVs are gone, re-run uninstall (or raise the drain timeout with KUBWAVE_PV_DRAIN_TIMEOUT=<seconds> on a slow cluster).`
+				);
+				continue;
 			}
-		}
 
-		spinner.stop(`CSI driver "${target.label}" removed`);
+			const csiInstall = target.install;
+			if (csiInstall.kind === 'helm') {
+				await helmUninstall(csiInstall.release, csiInstall.namespace);
+			} else {
+				await deleteManifest(kc, csiInstall.manifest);
+			}
+
+			if (target.storageClass) {
+				await deleteOwnedStorageClass(storageApi, target.storageClass);
+			}
+
+			spinner.stop(`CSI driver "${target.label}" removed`);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			spinner.stop(`CSI driver "${target.label}" — teardown failed`);
+			p.log.warn(`Failed to tear down CSI driver "${target.label}": ${message}. Other teardowns continue; re-run uninstall to retry.`);
+		}
+	}
+}
+
+// Delete a StorageClass only if kubwave created it (ownership label). Protects a user's pre-existing SC of the
+// same name (e.g. a hand-made "pd-ssd"/"ebs-sc" default) from being swept — which would leave the cluster
+// with no default StorageClass.
+async function deleteOwnedStorageClass(api: StorageV1Api, name: string): Promise<void> {
+	let sc;
+	try {
+		sc = await api.readStorageClass({ name });
+	} catch (err) {
+		if (isNotFoundError(err)) return;
+		throw err;
+	}
+
+	if (sc.metadata?.labels?.[KUBWAVE_MANAGED_BY_LABEL] !== KUBWAVE_CLI_MANAGED_BY_VALUE) {
+		p.log.warn(
+			`StorageClass "${name}" was not created by kubwave (missing ${KUBWAVE_MANAGED_BY_LABEL}=${KUBWAVE_CLI_MANAGED_BY_VALUE}) — leaving it in place.`
+		);
+		return;
+	}
+
+	try {
+		await api.deleteStorageClass({ name });
+	} catch (err) {
+		if (!isNotFoundError(err)) throw err;
 	}
 }
 

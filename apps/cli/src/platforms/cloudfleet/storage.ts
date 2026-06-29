@@ -1,10 +1,11 @@
 import type { KubeConfig, V1Secret, V1StorageClass } from '@kubernetes/client-node';
-import { CoreV1Api, KubernetesObjectApi, PatchStrategy, StorageV1Api } from '@kubernetes/client-node';
+import { CoreV1Api, StorageV1Api } from '@kubernetes/client-node';
 import * as p from '@clack/prompts';
 import type { StorageDecision, StorageOpts } from '~/lib/platforms.js';
 import { detectFleetProviders, type CloudProvider } from '~/lib/cloud-provider.js';
 import { helmRepoAddAndInstall } from '~/lib/dependencies.js';
-import { applyManifest } from '~/lib/k8s-apply.js';
+import { applyManifest, mergePatch } from '~/lib/k8s-apply.js';
+import { KUBWAVE_CSI_OWNERSHIP_LABELS } from '~/lib/constants.js';
 import { FatalCliError, UserCancelledError } from '~/lib/errors.js';
 import { isNotFoundError } from '~/lib/k8s-errors.js';
 import { CSI_CATALOG, type CsiDefinition, type CsiPrerequisite, type StorageClassSpec } from './csi-catalog.js';
@@ -94,13 +95,17 @@ export function makeCloudfleetStorage(provider: CloudProvider): (kc: KubeConfig,
 					await helmRepoAddAndInstall(install.repo, install.chart, install.release, install.namespace, install.extraArgs);
 					break;
 				case 'manifest': {
-					const applied = await applyManifest(kc, install.manifest);
+					// Pin the vendored driver to this provider's nodes (it only ships kubernetes.io/os selectors) and
+					// stamp ownership so uninstall tears down only what we applied.
+					const applied = await applyManifest(kc, install.manifest, {
+						labels: KUBWAVE_CSI_OWNERSHIP_LABELS,
+						nodeSelector: csi.nodeSelector
+					});
 					p.log.info(`Applied ${applied} ${csi.label} objects (server-side apply).`);
 					break;
 				}
 				default:
 					install satisfies never;
-					throw new Error(`Unsupported CSI install kind: ${(install as { kind: string }).kind}`);
 			}
 			spinner.stop(`${csi.label} installed.`);
 		} catch (err) {
@@ -266,29 +271,16 @@ export async function ensureStorageClass(kc: KubeConfig, spec: StorageClassSpec)
 	const api = kc.makeApiClient(StorageV1Api);
 	try {
 		const existing = await api.readStorageClass({ name: spec.name });
-		// SC already exists (e.g. a re-run, or it was created before isDefault was introduced). Retrofit the
-		// default annotation when requested and missing — but only if no other StorageClass is already default,
-		// to avoid creating two cluster defaults.
-		if (spec.isDefault && existing.metadata?.annotations?.[DEFAULT_SC_ANNOTATION] !== 'true') {
-			const otherDefault = await findDefaultStorageClass(kc);
-			if (!otherDefault) {
-				const objApi = KubernetesObjectApi.makeApiClient(kc);
-				await objApi.patch(
-					{
-						apiVersion: 'storage.k8s.io/v1',
-						kind: 'StorageClass',
-						metadata: { name: spec.name, annotations: { [DEFAULT_SC_ANNOTATION]: 'true' } }
-					},
-					undefined,
-					undefined,
-					undefined,
-					undefined,
-					PatchStrategy.MergePatch
-				);
-				return true;
-			}
-		}
-		return false;
+		// SC already exists (e.g. a re-run, or it predates isDefault). Retrofit the default annotation only when
+		// requested, missing, and no other StorageClass is already default — never create two cluster defaults.
+		if (!spec.isDefault || existing.metadata?.annotations?.[DEFAULT_SC_ANNOTATION] === 'true') return false;
+		if (await findDefaultStorageClass(kc)) return false;
+		await mergePatch(kc, {
+			apiVersion: 'storage.k8s.io/v1',
+			kind: 'StorageClass',
+			metadata: { name: spec.name, annotations: { [DEFAULT_SC_ANNOTATION]: 'true' } }
+		});
+		return true;
 	} catch (err) {
 		if (!isNotFoundError(err)) throw err;
 	}
@@ -296,7 +288,12 @@ export async function ensureStorageClass(kc: KubeConfig, spec: StorageClassSpec)
 	const body: V1StorageClass = {
 		apiVersion: 'storage.k8s.io/v1',
 		kind: 'StorageClass',
-		metadata: { name: spec.name, ...(spec.isDefault ? { annotations: { [DEFAULT_SC_ANNOTATION]: 'true' } } : {}) },
+		// Ownership label only on SCs we create — never on the retrofit path above, which may touch a user's SC.
+		metadata: {
+			name: spec.name,
+			labels: { ...KUBWAVE_CSI_OWNERSHIP_LABELS },
+			...(spec.isDefault ? { annotations: { [DEFAULT_SC_ANNOTATION]: 'true' } } : {})
+		},
 		provisioner: spec.provisioner,
 		...(spec.parameters ? { parameters: spec.parameters } : {}),
 		...(spec.reclaimPolicy ? { reclaimPolicy: spec.reclaimPolicy } : {}),

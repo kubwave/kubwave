@@ -1,6 +1,12 @@
 import { describe, expect, mock, test } from 'bun:test';
 
 const patchCalls: Array<{ kind: string; fieldManager: string; force: boolean; strategy: string }> = [];
+type PatchedObject = {
+	kind: string;
+	metadata?: { labels?: Record<string, string> };
+	spec?: { template?: { spec?: { nodeSelector?: Record<string, string> } } };
+};
+const patchedObjects: PatchedObject[] = [];
 const deleteCalls: Array<{ kind: string }> = [];
 let failOnKind: string | null = null;
 let deleteNotFoundForKind: string | null = null;
@@ -12,6 +18,7 @@ mock.module('@kubernetes/client-node', () => ({
 			patch: async (obj: { kind: string }, _pretty: unknown, _dryRun: unknown, fieldManager: string, force: boolean, strategy: string) => {
 				if (failOnKind && obj.kind === failOnKind) throw new Error('boom');
 				patchCalls.push({ kind: obj.kind, fieldManager, force, strategy });
+				patchedObjects.push(obj);
 				return obj;
 			},
 			delete: async (obj: { kind: string }) => {
@@ -70,6 +77,43 @@ describe('applyManifest', () => {
 		const kc = {} as never;
 		await expect(applyManifest(kc, MANIFEST)).rejects.toThrow(/Failed to apply DaemonSet\/csi-node: boom/);
 		failOnKind = null;
+	});
+
+	test('stamps ownership labels on every object and merges nodeSelector into pod-templated workloads', async () => {
+		patchedObjects.length = 0;
+		const kc = {} as never;
+		const manifest = `
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: csi-node
+spec:
+  template:
+    spec:
+      nodeSelector:
+        kubernetes.io/os: linux
+      containers: []
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gce-pd-csi-driver
+`;
+		await applyManifest(kc, manifest, {
+			labels: { 'app.kubernetes.io/managed-by': 'kubwave-cli' },
+			nodeSelector: { 'cfke.io/provider': 'gcp' }
+		});
+
+		const ds = patchedObjects.find(o => o.kind === 'DaemonSet');
+		const ns = patchedObjects.find(o => o.kind === 'Namespace');
+
+		// Ownership label lands on every object — the Namespace anchor uninstall checks, plus the workloads.
+		expect(ds?.metadata?.labels?.['app.kubernetes.io/managed-by']).toBe('kubwave-cli');
+		expect(ns?.metadata?.labels?.['app.kubernetes.io/managed-by']).toBe('kubwave-cli');
+		// Provider pin merges into the pod template, preserving the upstream os selector.
+		expect(ds?.spec?.template?.spec?.nodeSelector).toEqual({ 'kubernetes.io/os': 'linux', 'cfke.io/provider': 'gcp' });
+		// Non-pod-templated objects (Namespace) get no nodeSelector.
+		expect(ns?.spec).toBeUndefined();
 	});
 });
 

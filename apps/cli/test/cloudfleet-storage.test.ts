@@ -126,7 +126,7 @@ describe('ensureStorageClass', () => {
 	});
 
 	test('marks created StorageClass as default when isDefault is set', async () => {
-		const created: Array<{ metadata?: { annotations?: Record<string, string> } }> = [];
+		const created: Array<{ metadata?: { labels?: Record<string, string>; annotations?: Record<string, string> } }> = [];
 		const kc = {
 			makeApiClient: () => ({
 				readStorageClass: async () => {
@@ -142,6 +142,8 @@ describe('ensureStorageClass', () => {
 
 		expect(created).toHaveLength(1);
 		expect(created[0]?.metadata?.annotations?.['storageclass.kubernetes.io/is-default-class']).toBe('true');
+		// Ownership label so uninstall only deletes SCs kubwave created.
+		expect(created[0]?.metadata?.labels?.['app.kubernetes.io/managed-by']).toBe('kubwave-cli');
 	});
 
 	test('does not add the default annotation when isDefault is unset', async () => {

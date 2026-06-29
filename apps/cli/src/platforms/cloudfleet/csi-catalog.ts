@@ -1,4 +1,4 @@
-import type { CloudProvider } from '~/lib/cloud-provider.js';
+import { cfkeNodeSelector, type CloudProvider } from '~/lib/cloud-provider.js';
 import pdCsiManifest from './gcp/pd-csi-driver.yaml' with { type: 'text' };
 
 // Keep in sync with scripts/gen-gcp-csi-manifest.sh.
@@ -77,7 +77,7 @@ export const CSI_CATALOG: Record<CloudProvider, CsiDefinition> = {
 		},
 		storageClass: 'hcloud-volumes',
 		provisioner: 'csi.hetzner.cloud',
-		nodeSelector: { 'cfke.io/provider': 'hetzner' },
+		nodeSelector: cfkeNodeSelector('hetzner'),
 		prerequisite: {
 			kind: 'secret',
 			namespace: 'kube-system',
@@ -106,7 +106,7 @@ export const CSI_CATALOG: Record<CloudProvider, CsiDefinition> = {
 		},
 		storageClass: 'ebs-sc',
 		provisioner: 'ebs.csi.aws.com',
-		nodeSelector: { 'cfke.io/provider': 'aws' },
+		nodeSelector: cfkeNodeSelector('aws'),
 		createStorageClass: {
 			name: 'ebs-sc',
 			provisioner: 'ebs.csi.aws.com',
@@ -128,7 +128,7 @@ export const CSI_CATALOG: Record<CloudProvider, CsiDefinition> = {
 		},
 		storageClass: 'pd-ssd',
 		provisioner: 'pd.csi.storage.gke.io',
-		nodeSelector: { 'cfke.io/provider': 'gcp' },
+		nodeSelector: cfkeNodeSelector('gcp'),
 		createStorageClass: {
 			name: 'pd-ssd',
 			provisioner: 'pd.csi.storage.gke.io',

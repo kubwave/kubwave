@@ -9,6 +9,8 @@ const helmListReleases: Record<string, string[]> = {};
 const deleteManifestCalls: string[] = [];
 const deleteStorageClassCalls: string[] = [];
 const promptEvents: string[] = [];
+// When set, the deleteManifest mock throws it — exercises per-target teardown isolation.
+let deleteManifestError: Error | null = null;
 
 // PV state: items returned by listPersistentVolume. pvEmptyAfterCall = how many calls before switching to [].
 let pvItems: Array<{ spec?: { csi?: { driver: string } } }> = [];
@@ -17,17 +19,29 @@ let pvEmptyAfterCall = Infinity;
 
 // CSI namespace presence
 let gceCsiNamespaceExists = false;
+// Whether the gce namespace carries the kubwave ownership label (only labelled namespaces are torn down).
+let gceCsiNamespaceManaged = true;
+// Whether a read StorageClass carries the kubwave ownership label (only owned SCs are deleted).
+let storageClassManaged = true;
+
+const OWNERSHIP_LABEL = { 'app.kubernetes.io/managed-by': 'kubwave-cli' };
 
 const api = {
 	readNamespace: async ({ name }: { name: string }) => {
 		if (name === 'kubwave-staging') throw { code: 404 };
-		if (name === 'gce-pd-csi-driver' && !gceCsiNamespaceExists) throw { code: 404 };
+		if (name === 'gce-pd-csi-driver') {
+			if (!gceCsiNamespaceExists) throw { code: 404 };
+			return { metadata: { name, ...(gceCsiNamespaceManaged ? { labels: { ...OWNERSHIP_LABEL } } : {}) } };
+		}
 		return { metadata: { name } };
 	},
 	listPersistentVolume: async (_param?: { limit?: number; _continue?: string }) => {
 		pvCallCount++;
 		return { items: pvCallCount > pvEmptyAfterCall ? [] : [...pvItems], metadata: {} };
 	},
+	readStorageClass: async ({ name }: { name: string }) => ({
+		metadata: { name, ...(storageClassManaged ? { labels: { ...OWNERSHIP_LABEL } } : {}) }
+	}),
 	deleteStorageClass: async ({ name }: { name: string }) => {
 		deleteStorageClassCalls.push(name);
 	},
@@ -82,6 +96,7 @@ mock.module('~/lib/helm.js', () => ({
 mock.module('~/lib/k8s-apply.js', () => ({
 	deleteManifest: async (_kc: unknown, manifest: string) => {
 		deleteManifestCalls.push(manifest.slice(0, 20));
+		if (deleteManifestError) throw deleteManifestError;
 		return 0;
 	},
 	applyManifest: async () => 0,
@@ -102,6 +117,9 @@ function resetFixtures(): void {
 	pvCallCount = 0;
 	pvEmptyAfterCall = Infinity;
 	gceCsiNamespaceExists = false;
+	gceCsiNamespaceManaged = true;
+	storageClassManaged = true;
+	deleteManifestError = null;
 }
 
 // Minimal plan with GCP CSI teardown target for teardown-focused tests.
@@ -168,15 +186,26 @@ function hetznerCsiPlan(): Parameters<typeof teardownCsiDrivers>[1] {
 }
 
 describe('CSI teardown detection', () => {
-	test('detects GCP CSI when its namespace exists', async () => {
+	test('detects GCP CSI when its namespace carries the kubwave ownership label', async () => {
 		resetFixtures();
 		gceCsiNamespaceExists = true;
+		gceCsiNamespaceManaged = true;
 		const plan = await buildUninstallPlan({ kc: mockKc });
 		const gcp = plan.csiTeardowns.find(t => t.provisioner === 'pd.csi.storage.gke.io');
 		expect(gcp).toBeDefined();
 		expect(gcp?.label).toBe('GCP Persistent Disk CSI Driver');
 		expect(gcp?.storageClass).toBe('pd-ssd');
 		expect(gcp?.install.kind).toBe('manifest');
+	});
+
+	test('does NOT detect GCP CSI when the namespace exists but lacks the kubwave ownership label', async () => {
+		resetFixtures();
+		// The prerequisite hint has users hand-create this namespace + cloud-sa before install; existence alone
+		// must not trigger teardown, or a declined/aborted install would still get its namespace + secret deleted.
+		gceCsiNamespaceExists = true;
+		gceCsiNamespaceManaged = false;
+		const plan = await buildUninstallPlan({ kc: mockKc });
+		expect(plan.csiTeardowns.find(t => t.provisioner === 'pd.csi.storage.gke.io')).toBeUndefined();
 	});
 
 	test('detects hetzner CSI when its helm release is listed', async () => {
@@ -308,6 +337,47 @@ describe('CSI teardown safety', () => {
 		// GCP skipped
 		expect(deleteManifestCalls).toHaveLength(0);
 		// AWS torn down
+		expect(helmUninstallCalls).toContainEqual({ release: 'aws-ebs-csi-driver', namespace: 'kube-system' });
+		expect(deleteStorageClassCalls).toContain('ebs-sc');
+	});
+
+	test('does NOT delete a StorageClass kubwave did not create (no ownership label)', async () => {
+		resetFixtures();
+		storageClassManaged = false; // pd-ssd exists but was made by the user
+		const plan = gcpCsiPlan();
+		await teardownCsiDrivers(mockKc, plan, { timeoutMs: 100, pollMs: 5 });
+
+		// Driver still removed, but the user's StorageClass is left in place.
+		expect(deleteManifestCalls).toHaveLength(1);
+		expect(deleteStorageClassCalls).toHaveLength(0);
+		const warnings = promptEvents.filter(e => e.startsWith('warn:'));
+		expect(warnings.some(w => w.includes('pd-ssd') && w.includes('not created by kubwave'))).toBe(true);
+	});
+
+	test('a failed teardown is isolated — remaining drivers still tear down', async () => {
+		resetFixtures();
+		deleteManifestError = new Error('boom'); // GCP (manifest) teardown blows up
+		const plan = gcpCsiPlan();
+		plan.csiTeardowns.push({
+			label: 'AWS EBS CSI Driver',
+			provisioner: 'ebs.csi.aws.com',
+			install: {
+				kind: 'helm',
+				repo: { name: 'aws-ebs-csi-driver', url: '' },
+				chart: 'aws-ebs-csi-driver/aws-ebs-csi-driver',
+				release: 'aws-ebs-csi-driver',
+				namespace: 'kube-system',
+				extraArgs: []
+			},
+			storageClass: 'ebs-sc'
+		});
+
+		// Must not throw despite the GCP failure.
+		await teardownCsiDrivers(mockKc, plan, { timeoutMs: 100, pollMs: 5 });
+
+		const warnings = promptEvents.filter(e => e.startsWith('warn:'));
+		expect(warnings.some(w => w.includes('Failed to tear down') && w.includes('GCP Persistent Disk CSI Driver'))).toBe(true);
+		// AWS still torn down after the GCP failure.
 		expect(helmUninstallCalls).toContainEqual({ release: 'aws-ebs-csi-driver', namespace: 'kube-system' });
 		expect(deleteStorageClassCalls).toContain('ebs-sc');
 	});
