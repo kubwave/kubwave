@@ -1,0 +1,42 @@
+# Tears down the per-PR preview Worker created by docs-preview.yml once the PR
+# is closed (merged or not), so previews don't accumulate as orphaned Workers.
+# Deletes via the REST API rather than `wrangler delete` so the token only needs
+# Workers Scripts:Edit (wrangler delete also probes KV and fails without it).
+name: Docs preview cleanup
+
+on:
+  pull_request:
+    types: [closed]
+    paths:
+      - apps/docs/**
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    name: Delete preview worker
+    runs-on: ubuntu-latest
+    # Forks never created a preview (no secrets), so nothing to delete.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Delete preview worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          name="kubwave-docs-pr-${PR}"
+          code="$(curl -sS -o /tmp/resp.json -w '%{http_code}' -X DELETE \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${name}?force=true" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")"
+          echo "HTTP ${code}"
+          cat /tmp/resp.json || true
+          echo
+          # 200 = deleted; 404 = already gone. Anything else is a real failure.
+          if [ "${code}" != "200" ] && [ "${code}" != "404" ]; then
+            echo "Failed to delete ${name}" >&2
+            exit 1
+          fi
+          echo "Preview worker ${name} removed."

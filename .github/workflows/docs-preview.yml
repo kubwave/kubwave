@@ -1,3 +1,8 @@
+# Deploys a throwaway preview Worker (kubwave-docs-pr-<N>) for each PR and posts
+# its *.workers.dev URL as a comment. A real deploy is used (not `versions upload`)
+# because version preview URLs do not serve static assets for an assets-only Worker.
+# Production (docs.kubwave.com) is only published by release.yml on a stable release.
+# The preview Worker is torn down by docs-preview-cleanup.yml when the PR closes.
 name: Docs preview
 
 on:
@@ -37,20 +42,21 @@ jobs:
       - name: Build docs
         run: bun run --filter=docs build
 
-      # `versions upload` publishes a non-production version and prints a preview URL;
-      # it never touches docs.kubwave.com (that only moves on `wrangler deploy` at release).
-      - name: Upload preview version
-        id: upload
+      # Deploy under a per-PR worker name using the `preview` environment, which
+      # enables a *.workers.dev URL. This never touches docs.kubwave.com.
+      - name: Deploy preview worker
+        id: deploy
         working-directory: apps/docs
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PR: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
-          bunx wrangler versions upload | tee /tmp/wrangler-upload.log
-          url="$(grep -oE 'https://[a-z0-9-]+\.workers\.dev' /tmp/wrangler-upload.log | head -1)"
+          bunx wrangler deploy --env preview --name "kubwave-docs-pr-${PR}" 2>&1 | tee /tmp/wrangler-deploy.log
+          url="$(grep -oE 'https://kubwave-docs-pr-[0-9]+\.[a-z0-9.-]+\.workers\.dev' /tmp/wrangler-deploy.log | head -1 || true)"
           if [ -z "$url" ]; then
-            echo "Could not parse a preview URL from wrangler output" >&2
+            echo "Could not parse the preview URL from wrangler output" >&2
             exit 1
           fi
           echo "url=$url" >> "$GITHUB_OUTPUT"
@@ -59,9 +65,11 @@ jobs:
         uses: actions/github-script@v9
         with:
           script: |
-            const url = '${{ steps.upload.outputs.url }}';
+            const url = '${{ steps.deploy.outputs.url }}';
             const marker = '<!-- docs-preview -->';
-            const body = `${marker}\n📖 **Docs-Preview:** ${url}\n\n_Aktualisiert bei jedem Push. Production (docs.kubwave.com) wird nur beim Release deployed._`;
+            const footer =
+              '_Updated on every push; torn down when the PR closes. Production (docs.kubwave.com) is only deployed on release._';
+            const body = `${marker}\n📖 **Docs preview:** ${url}\n\n${footer}`;
 
             const { owner, repo } = context.repo;
             const issue_number = context.issue.number;
