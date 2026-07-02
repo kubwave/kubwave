@@ -24,6 +24,13 @@ spec:
   # The `app` owner is a normal role (NOT a superuser, unlike the vanilla postgres image).
   # The schema only needs gen_random_uuid() (core in PG13+) — no extensions, no superuser.
   enableSuperuserAccess: false
+  postgresql:
+    parameters:
+      # Reap dead client sessions (e.g. a pod killed mid-migration) in ~2min so they release advisory locks,
+      # instead of blocking the next boot migration until the OS TCP-keepalive default (hours) kicks in.
+      tcp_keepalives_idle: "60"
+      tcp_keepalives_interval: "10"
+      tcp_keepalives_count: "6"
   {{- with .Values.imagePullSecrets }}
   imagePullSecrets:
     {{- toYaml . | nindent 4 }}
