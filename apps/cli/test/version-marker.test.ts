@@ -178,7 +178,7 @@ describe('version marker', () => {
 					storage_class: 'fast',
 					node_selector_json: '{"cfke.io/provider":"hetzner"}',
 					dependencies_json:
-						'{"traefik":{"kind":"traefik","namespace":"traefik","releaseName":"traefik","ingressClassName":"traefik","helmValues":{"ingressClass":{"enabled":true,"isDefaultClass":true},"nodeSelector":{"cfke.io/provider":"hetzner"}}},"certManager":{},"cnpg":{}}'
+						'{"traefik":{"kind":"traefik","namespace":"traefik","releaseName":"traefik","ingressClassName":"traefik","helmValues":{"ingressClass":{"enabled":true,"isDefaultClass":true},"resources":{"requests":{"cpu":"100m","memory":"128Mi"}},"nodeSelector":{"cfke.io/provider":"hetzner"}}},"certManager":{},"cnpg":{}}'
 				}
 			}
 		});
