@@ -8,7 +8,7 @@ export interface AdoptionResult {
 	reuseData: boolean;
 }
 
-export async function checkAdoption(kc: KubeConfig): Promise<AdoptionResult> {
+export async function checkAdoption(kc: KubeConfig, assumeYes = false): Promise<AdoptionResult> {
 	const api = kc.makeApiClient(CoreV1Api);
 
 	try {
@@ -36,6 +36,7 @@ export async function checkAdoption(kc: KubeConfig): Promise<AdoptionResult> {
 		}
 
 		p.log.warn('Existing data from a previous installation found (PVC without Helm release).');
+		if (assumeYes) return { hasOrphans: true, reuseData: true };
 		const reuse = await p.confirm({
 			message: 'Reuse existing Postgres data?',
 			initialValue: true

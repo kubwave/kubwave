@@ -80,6 +80,29 @@ describe('startup self-update', () => {
 		expect(out.logs).toEqual(['New kubwave CLI available: v1.0.0 -> v1.2.3. Update now? Run kubwave update to refresh the local binary.']);
 	});
 
+	test('nonInteractive (--yes) logs instead of prompting even on a TTY', async () => {
+		let confirmed = false;
+		const out = reporter();
+		await maybeRunStartupSelfUpdate({
+			commandName: 'install',
+			nonInteractive: true,
+			currentVersion: '1.0.0',
+			stdinIsTTY: true,
+			stdoutIsTTY: true,
+			reporter: out,
+			resolveLatest: async () => release,
+			describe: () => ({ current: '1.0.0', target: '1.2.3', needed: true }),
+			getAssetName: () => 'kubwave-darwin-arm64',
+			confirm: async () => {
+				confirmed = true;
+				return true;
+			}
+		});
+
+		expect(confirmed).toBe(false);
+		expect(out.logs).toEqual(['New kubwave CLI available: v1.0.0 -> v1.2.3. Update now? Run kubwave update to refresh the local binary.']);
+	});
+
 	test('continues when platform asset is missing', async () => {
 		let prompted = false;
 		const out = reporter();

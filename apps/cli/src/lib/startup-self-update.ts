@@ -11,6 +11,7 @@ type ConfirmFn = (message: string) => Promise<boolean | symbol>;
 
 export interface StartupSelfUpdateOptions {
 	commandName: string;
+	nonInteractive?: boolean;
 	argv?: string[];
 	env?: Record<string, string | undefined>;
 	currentVersion?: string;
@@ -64,7 +65,7 @@ export async function maybeRunStartupSelfUpdate(opts: StartupSelfUpdateOptions):
 	}
 
 	const message = `New kubwave CLI available: v${decision.current} -> v${decision.target}. Update now?`;
-	if (!isInteractive(opts, env)) {
+	if (opts.nonInteractive || !isInteractive(opts, env)) {
 		reporter.log(`${message} Run kubwave update to refresh the local binary.`);
 		return;
 	}

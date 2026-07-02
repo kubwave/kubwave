@@ -102,6 +102,21 @@ describe('checkAdoption', () => {
 		});
 	});
 
+	test('assumeYes reuses orphaned data without prompting', async () => {
+		logs.length = 0;
+		confirmAnswer = cancelled; // would abort if the prompt ran
+		const kc = {
+			makeApiClient: () => ({
+				readNamespace: async () => ({}),
+				listNamespacedPersistentVolumeClaim: async () => ({ items: [{ metadata: { name: 'postgres-data' } }] }),
+				listNamespacedSecret: async () => ({ items: [] })
+			})
+		} as never;
+
+		const result = await checkAdoption(kc, true);
+		expect(result).toEqual({ hasOrphans: true, reuseData: true });
+	});
+
 	test('returns no orphans when user cancels the reuse prompt', async () => {
 		logs.length = 0;
 		confirmAnswer = cancelled;

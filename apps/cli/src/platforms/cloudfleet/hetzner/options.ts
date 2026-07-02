@@ -16,12 +16,16 @@ export interface CloudfleetHetznerOptions {
 	lbLocation: HetznerLbLocation;
 }
 
-export async function promptHetznerOptions(opts: { lbLocation?: string }): Promise<CloudfleetHetznerOptions> {
+export async function promptHetznerOptions(opts: { lbLocation?: string; assumeYes?: boolean }): Promise<CloudfleetHetznerOptions> {
 	if (opts.lbLocation) {
 		if (!isHetznerLbLocation(opts.lbLocation)) {
 			throw new FatalCliError(`Unknown Hetzner LB location "${opts.lbLocation}". Allowed: ${HETZNER_LB_LOCATIONS.join(', ')}.`);
 		}
 		return { lbLocation: opts.lbLocation };
+	}
+
+	if (opts.assumeYes) {
+		throw new FatalCliError(`--yes requires --hetzner-lb-location for the Hetzner platform. Allowed: ${HETZNER_LB_LOCATIONS.join(', ')}.`);
 	}
 
 	const choice = await p.select({

@@ -18,7 +18,7 @@ const cprompts = {
 
 mock.module('@clack/prompts', () => ({ ...clackStub(), ...cprompts }));
 
-const { promptInstallInputs } = await import('../src/lib/prompts.js');
+const { promptInstallInputs, assertValidInstallFlags } = await import('../src/lib/prompts.js');
 
 describe('promptInstallInputs', () => {
 	test('uses flag values when provided, skips text prompts', async () => {
@@ -58,5 +58,27 @@ describe('promptInstallInputs', () => {
 	test('throws UserCancelledError when email prompt is cancelled', async () => {
 		textResponses = ['app.example.com', cancelled];
 		await expect(promptInstallInputs({})).rejects.toThrow('Installation aborted.');
+	});
+
+	test('rejects an invalid --domain flag that bypasses the interactive validator', async () => {
+		textPrompts.length = 0;
+		await expect(promptInstallInputs({ domain: 'not_a_domain', email: 'ops@example.com' })).rejects.toThrow('Invalid --domain');
+		expect(textPrompts).toEqual([]);
+	});
+
+	test('rejects an invalid --email flag that bypasses the interactive validator', async () => {
+		await expect(promptInstallInputs({ domain: 'app.example.com', email: 'bogus' })).rejects.toThrow('Invalid --email');
+	});
+});
+
+describe('assertValidInstallFlags', () => {
+	test('accepts valid flags and undefined (interactive) values', () => {
+		expect(() => assertValidInstallFlags({ domain: 'app.example.com', email: 'ops@example.com' })).not.toThrow();
+		expect(() => assertValidInstallFlags({})).not.toThrow();
+	});
+
+	test('throws on an invalid domain or email flag', () => {
+		expect(() => assertValidInstallFlags({ domain: 'not_a_domain' })).toThrow('Invalid --domain');
+		expect(() => assertValidInstallFlags({ email: 'bogus' })).toThrow('Invalid --email');
 	});
 });

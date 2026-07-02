@@ -72,7 +72,7 @@ export function makeCloudfleetStorage(provider: CloudProvider): (kc: KubeConfig,
 			}
 		}
 
-		await confirmStorageInstall(csi);
+		await confirmStorageInstall(csi, opts.assumeYes);
 
 		if (plan.prerequisiteBootstrap) {
 			const spinner = p.spinner();
@@ -174,7 +174,8 @@ export async function planCloudfleetStorage(kc: KubeConfig, provider: CloudProvi
 	};
 }
 
-export async function confirmStorageInstall(csi: CsiDefinition): Promise<void> {
+export async function confirmStorageInstall(csi: CsiDefinition, assumeYes = false): Promise<void> {
+	if (assumeYes) return;
 	const confirmed = await p.confirm({
 		message: `Install ${csi.label} in ${csi.install.namespace}?`
 	});

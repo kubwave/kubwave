@@ -54,4 +54,10 @@ describe('confirmDependencyInstall', () => {
 		const certManager = getDependencies().find(dep => dep.id === 'certManager')!;
 		await expect(confirmDependencyInstall(certManager)).rejects.toThrow('cert-manager is required.');
 	});
+
+	test('assumeYes resolves even when the prompt answer would reject', async () => {
+		confirmResult = false;
+		const traefik = getDependencies().find(dep => dep.id === 'traefik')!;
+		await expect(confirmDependencyInstall(traefik, true)).resolves.toBeUndefined();
+	});
 });
