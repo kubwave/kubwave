@@ -10,19 +10,19 @@
 name: Verify install
 
 on:
-  #pull_request:
-  #  paths:
-  #    - 'infra/helm/**'
-  #    - 'apps/backend/**'
-  #    - 'apps/build-tools/**'
-  #    - 'apps/cli/**'
-  #    - 'apps/console/**'
-  #    - 'packages/**'
-  #    - 'package.json'
-  #    - 'bun.lock'
-  #    - '.github/workflows/verify-install.yml'
-  #    - '.github/workflows/verify-install-skip.yml'
-  #    - '.github/actions/verify-install/**'
+  pull_request:
+    paths-ignore:
+      - 'infra/helm/**'
+      - 'apps/backend/**'
+      - 'apps/build-tools/**'
+      - 'apps/cli/**'
+      - 'apps/console/**'
+      - 'packages/**'
+      - 'package.json'
+      - 'bun.lock'
+      - '.github/workflows/verify-install.yml'
+      - '.github/workflows/verify-install-skip.yml'
+      - '.github/actions/verify-install/**'
   workflow_dispatch:
 
 permissions:
@@ -34,6 +34,9 @@ concurrency:
 
 jobs:
   build-images:
+    # Must match the real workflow's explicit job name (`build-images (<app>)`) so
+    # the required status checks resolve on skipped PRs too.
+    name: build-images (${{ matrix.app }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
