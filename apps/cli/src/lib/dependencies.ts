@@ -29,6 +29,21 @@ const CNPG_CLUSTER_CRD = 'clusters.postgresql.cnpg.io';
 const CNPG_READINESS_TIMEOUT_MS = 120 * 1000;
 const CNPG_READINESS_POLL_MS = 3000;
 
+// Resource requests so CFKE's node auto-provisioner can size nodes; these charts ship none, which makes
+// provisioning under-count and saturate nodes. Requests only (CPU limits would throttle; the policy needs requests).
+function resourceRequestArgs(prefix: string, cpu: string, memory: string): string[] {
+	return ['--set', `${prefix}.requests.cpu=${cpu}`, '--set', `${prefix}.requests.memory=${memory}`];
+}
+
+const CERT_MANAGER_RESOURCE_ARGS = [
+	...resourceRequestArgs('resources', '10m', '64Mi'),
+	...resourceRequestArgs('webhook.resources', '10m', '32Mi'),
+	...resourceRequestArgs('cainjector.resources', '10m', '64Mi'),
+	...resourceRequestArgs('startupapicheck.resources', '10m', '32Mi')
+];
+
+const CNPG_RESOURCE_ARGS = resourceRequestArgs('resources', '50m', '100Mi');
+
 export interface ClusterDependency {
 	id: keyof DependencyStateMap;
 	name: string;
@@ -249,7 +264,7 @@ const DEPENDENCIES: ClusterDependency[] = [
 				CERT_MANAGER_CHART,
 				CERT_MANAGER_RELEASE,
 				CERT_MANAGER_NAMESPACE,
-				['--set', 'crds.enabled=true'],
+				['--set', 'crds.enabled=true', ...CERT_MANAGER_RESOURCE_ARGS],
 				{ context }
 			);
 		},
@@ -275,7 +290,9 @@ const DEPENDENCIES: ClusterDependency[] = [
 		},
 		install: async (_kc, _state, context) => {
 			// helm --wait blocks until the operator + CRDs are ready, so the chart's `Cluster` CR has somewhere to land.
-			await helmRepoAddAndInstall({ name: 'cnpg', url: CNPG_REPO_URL }, CNPG_CHART, CNPG_RELEASE, CNPG_NAMESPACE, [], { context });
+			await helmRepoAddAndInstall({ name: 'cnpg', url: CNPG_REPO_URL }, CNPG_CHART, CNPG_RELEASE, CNPG_NAMESPACE, [...CNPG_RESOURCE_ARGS], {
+				context
+			});
 		},
 		wait: async kc => {
 			await waitForCnpgReady(kc);

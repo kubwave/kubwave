@@ -13,6 +13,10 @@ const BASE_TRAEFIK_VALUES = {
 	ingressClass: {
 		enabled: true,
 		isDefaultClass: true
+	},
+	// Resource requests so CFKE's node auto-provisioner can size nodes for the ingress controller.
+	resources: {
+		requests: { cpu: '100m', memory: '128Mi' }
 	}
 };
 

@@ -240,6 +240,9 @@ describe('dependency checks and installation orchestration', () => {
 		expect(execHelmCalls).toHaveLength(3);
 		expect(execHelmCalls[2]).toContain('jetstack/cert-manager');
 		expect(execHelmCalls[2]).not.toContain('traefik/traefik');
+		expect(execHelmCalls[2]).toContain('resources.requests.cpu=10m');
+		expect(execHelmCalls[2]).toContain('webhook.resources.requests.memory=32Mi');
+		expect(execHelmCalls[2]).toContain('cainjector.resources.requests.memory=64Mi');
 	});
 
 	test('reports silent install failures', async () => {
@@ -305,6 +308,8 @@ describe('dependency checks and installation orchestration', () => {
 			message: 'CloudNativePG successfully installed'
 		});
 		expect(execHelmCalls[2]).toContain('cnpg/cloudnative-pg');
+		expect(execHelmCalls[2]).toContain('resources.requests.cpu=50m');
+		expect(execHelmCalls[2]).toContain('resources.requests.memory=100Mi');
 	});
 });
 
