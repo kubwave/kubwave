@@ -4,8 +4,9 @@ import * as p from '@clack/prompts';
 import type { StorageDecision, StorageOpts } from '~/lib/platforms.js';
 import { detectFleetProviders, type CloudProvider } from '~/lib/cloud-provider.js';
 import { helmRepoAddAndInstall } from '~/lib/dependencies.js';
+import { stampHelmReleaseOwnership } from '~/lib/helm-ownership.js';
 import { applyManifest, mergePatch } from '~/lib/k8s-apply.js';
-import { KUBWAVE_CSI_OWNERSHIP_LABELS } from '~/lib/constants.js';
+import { buildOwnershipLabels } from '~/lib/ownership.js';
 import { FatalCliError, UserCancelledError } from '~/lib/errors.js';
 import { isNotFoundError } from '~/lib/k8s-errors.js';
 import { CSI_CATALOG, type CsiDefinition, type CsiPrerequisite, type StorageClassSpec } from './csi-catalog.js';
@@ -86,21 +87,22 @@ export function makeCloudfleetStorage(provider: CloudProvider): (kc: KubeConfig,
 			}
 		}
 
+		const csiLabels = buildOwnershipLabels({ component: 'csi-driver', instance: plan.provider, cliManaged: true });
 		const spinner = p.spinner();
 		spinner.start(`Installing ${csi.label}...`);
 		try {
 			const install = csi.install;
 			switch (install.kind) {
-				case 'helm':
+				case 'helm': {
 					await helmRepoAddAndInstall(install.repo, install.chart, install.release, install.namespace, install.extraArgs);
+					// Stamp ownership labels (incl. the CSIDriver) so detection is uniform with the manifest path.
+					await stampHelmReleaseOwnership(kc, install.release, install.namespace);
 					break;
+				}
 				case 'manifest': {
 					// Pin the vendored driver to this provider's nodes (it only ships kubernetes.io/os selectors) and
 					// stamp ownership so uninstall tears down only what we applied.
-					const applied = await applyManifest(kc, install.manifest, {
-						labels: KUBWAVE_CSI_OWNERSHIP_LABELS,
-						nodeSelector: csi.nodeSelector
-					});
+					const applied = await applyManifest(kc, install.manifest, { labels: csiLabels, nodeSelector: csi.nodeSelector });
 					p.log.info(`Applied ${applied} ${csi.label} objects (server-side apply).`);
 					break;
 				}
@@ -117,7 +119,7 @@ export function makeCloudfleetStorage(provider: CloudProvider): (kc: KubeConfig,
 			const sc = csi.createStorageClass;
 			spinner.start(`Ensuring StorageClass ${sc.name}...`);
 			try {
-				const created = await ensureStorageClass(kc, sc);
+				const created = await ensureStorageClass(kc, sc, csiLabels);
 				spinner.stop(created ? `StorageClass ${sc.name} created.` : `StorageClass ${sc.name} already exists.`);
 			} catch (err) {
 				spinner.stop('StorageClass creation failed.');
@@ -267,7 +269,11 @@ async function bootstrapCsiPrerequisite(kc: KubeConfig, bootstrap: CsiPrerequisi
 	return true;
 }
 
-export async function ensureStorageClass(kc: KubeConfig, spec: StorageClassSpec): Promise<boolean> {
+export async function ensureStorageClass(
+	kc: KubeConfig,
+	spec: StorageClassSpec,
+	ownershipLabels: Record<string, string> = buildOwnershipLabels({ component: 'csi-driver', cliManaged: true })
+): Promise<boolean> {
 	const api = kc.makeApiClient(StorageV1Api);
 	try {
 		const existing = await api.readStorageClass({ name: spec.name });
@@ -291,7 +297,7 @@ export async function ensureStorageClass(kc: KubeConfig, spec: StorageClassSpec)
 		// Ownership label only on SCs we create — never on the retrofit path above, which may touch a user's SC.
 		metadata: {
 			name: spec.name,
-			labels: { ...KUBWAVE_CSI_OWNERSHIP_LABELS },
+			labels: { ...ownershipLabels },
 			...(spec.isDefault ? { annotations: { [DEFAULT_SC_ANNOTATION]: 'true' } } : {})
 		},
 		provisioner: spec.provisioner,

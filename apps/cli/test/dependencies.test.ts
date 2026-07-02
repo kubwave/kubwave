@@ -18,6 +18,9 @@ mock.module('~/lib/helm.js', () => ({
 	}
 }));
 
+// Ownership stamping has its own test; keep it out of the dependency-orchestration call counts.
+mock.module('~/lib/helm-ownership.js', () => ({ stampHelmReleaseOwnership: async () => {} }));
+
 mock.module('@clack/prompts', () => ({
 	...clackStub(),
 	confirm: mock(async () => confirmResult),

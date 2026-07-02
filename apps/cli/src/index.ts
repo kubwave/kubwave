@@ -5,6 +5,7 @@ import { ensureClusterCA } from '~/lib/k8s.js';
 ensureClusterCA();
 
 import { program } from 'commander';
+import { registerAuditCommand } from '~/commands/audit.js';
 import { registerInstallCommand } from '~/commands/install.js';
 import { registerStatusCommand } from '~/commands/status.js';
 import { registerUninstallCommand } from '~/commands/uninstall.js';
@@ -22,6 +23,7 @@ registerInstallCommand(program);
 registerUpdateCommand(program);
 registerStatusCommand(program);
 registerUninstallCommand(program);
+registerAuditCommand(program);
 registerVersionCommand(program);
 
 program.hook('preAction', async (_thisCommand, actionCommand) => {
