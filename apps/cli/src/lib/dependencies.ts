@@ -340,7 +340,8 @@ export async function checkDependencies(
 	return results;
 }
 
-export async function confirmDependencyInstall(dep: ClusterDependency): Promise<void> {
+export async function confirmDependencyInstall(dep: ClusterDependency, assumeYes = false): Promise<void> {
+	if (assumeYes) return;
 	const shouldInstall = await p.confirm({
 		message: `Install ${dep.name} now? (${dep.description})`
 	});
@@ -357,7 +358,8 @@ export async function confirmDependencyInstall(dep: ClusterDependency): Promise<
 export async function ensureDependencies(
 	kc: KubeConfig,
 	dependencyState?: DependencyStateInput | DependencyStateMap,
-	context?: string
+	context?: string,
+	options: { assumeYes?: boolean } = {}
 ): Promise<EnsureResult[]> {
 	const results: EnsureResult[] = [];
 	const state = mergeDependencyState(dependencyState);
@@ -370,7 +372,7 @@ export async function ensureDependencies(
 		}
 
 		p.log.warn(`${dep.name}: ${status.message}`);
-		await confirmDependencyInstall(dep);
+		await confirmDependencyInstall(dep, options.assumeYes);
 
 		const spinner = p.spinner();
 

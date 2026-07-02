@@ -9,6 +9,7 @@ import type { DependencyStateInput } from '~/lib/dependency-state.js';
 export type StorageOpts = {
 	storageMode: 'auto' | 'skip';
 	storageClass?: string;
+	assumeYes?: boolean;
 };
 
 export type StorageDecision = {
@@ -28,6 +29,7 @@ export interface Platform {
 
 export interface PlatformBuildOpts {
 	hetznerLbLocation?: string;
+	assumeYes?: boolean;
 }
 
 export interface PlatformDescriptor {

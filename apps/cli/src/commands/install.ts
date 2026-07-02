@@ -6,7 +6,7 @@ import { loadKubeConfig } from '~/lib/k8s.js';
 import { runPreflightChecks } from '~/lib/preflight.js';
 import { confirmClusterContext } from '~/lib/context-confirm.js';
 import { ensureDependencies } from '~/lib/dependencies.js';
-import { promptInstallInputs } from '~/lib/prompts.js';
+import { assertValidInstallFlags, promptInstallInputs } from '~/lib/prompts.js';
 import { checkAdoption } from '~/lib/adoption.js';
 import { resolveCertManagerClusterIssuer } from '~/lib/cert-manager.js';
 import { createSecrets } from '~/lib/secrets.js';
@@ -46,6 +46,7 @@ export function registerInstallCommand(parent: Command): void {
 			'off'
 		)
 		.option('--ha', 'Enable high availability (3 replicas of api/console/worker + the CNPG database, soft-spread across nodes)', false)
+		.option('--yes', 'Non-interactive: assume yes for all confirmations (requires --domain, --email, --platform)', false)
 		.action(
 			async (opts: {
 				domain?: string;
@@ -61,6 +62,7 @@ export function registerInstallCommand(parent: Command): void {
 				tenantPodSecurity: string;
 				tenantRuntimeClass: string;
 				ha: boolean;
+				yes: boolean;
 			}) => {
 				try {
 					await runInstall(opts);
@@ -85,9 +87,15 @@ async function runInstall(opts: {
 	tenantPodSecurity: string;
 	tenantRuntimeClass: string;
 	ha: boolean;
+	yes: boolean;
 }): Promise<void> {
 	p.intro('kubwave install');
 
+	const assumeYes = opts.yes;
+	if (assumeYes && (!opts.domain || !opts.email || !opts.platform)) {
+		throw new FatalCliError('--yes is non-interactive and requires --domain, --email, and --platform.');
+	}
+	assertValidInstallFlags({ domain: opts.domain, email: opts.email });
 	const channel = parseChannel(opts.channel, '--channel');
 	const storageMode = parseStorageMode(opts.storage);
 	const tenantPodSecurity = parseTenantPodSecurity(opts.tenantPodSecurity);
@@ -96,11 +104,11 @@ async function runInstall(opts: {
 	validateTargetForChannel(cliVersion, channel);
 	const kc = await loadAndCheckCluster(opts.inCluster);
 
-	await confirmClusterContext(kc, opts.clusterConfirmed);
-	const platform = await selectPlatform({ platform: opts.platform, hetznerLbLocation: opts.hetznerLbLocation });
-	await ensureDependencies(kc, platform.dependencies);
-	const storage = await platform.ensureStorage(kc, { storageMode, storageClass: opts.storageClass });
-	await checkAdoption(kc);
+	await confirmClusterContext(kc, opts.clusterConfirmed || assumeYes);
+	const platform = await selectPlatform({ platform: opts.platform, hetznerLbLocation: opts.hetznerLbLocation, assumeYes });
+	await ensureDependencies(kc, platform.dependencies, undefined, { assumeYes });
+	const storage = await platform.ensureStorage(kc, { storageMode, storageClass: opts.storageClass, assumeYes });
+	await checkAdoption(kc, assumeYes);
 
 	const config = await resolveInstallConfig(opts, storage, channel, cliVersion, platform, tenantPodSecurity, tenantRuntimeClass);
 	const resolvedConfig = await resolveInstallClusterIssuer(kc, config);

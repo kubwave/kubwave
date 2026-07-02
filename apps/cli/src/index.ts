@@ -27,7 +27,7 @@ registerAuditCommand(program);
 registerVersionCommand(program);
 
 program.hook('preAction', async (_thisCommand, actionCommand) => {
-	await maybeRunStartupSelfUpdate({ commandName: actionCommand.name() });
+	await maybeRunStartupSelfUpdate({ commandName: actionCommand.name(), nonInteractive: actionCommand.opts().yes === true });
 });
 
 program.parse();

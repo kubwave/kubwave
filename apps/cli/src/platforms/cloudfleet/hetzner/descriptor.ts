@@ -7,5 +7,6 @@ export const cloudfleetHetznerDescriptor = makeCloudfleetDescriptor({
 	label: 'Cloudfleet (Hetzner)',
 	description: 'Cloudfleet-managed Kubernetes auf Hetzner Cloud',
 	provider: 'hetzner',
-	buildTraefikValues: async opts => buildHetznerTraefikValues(await promptHetznerOptions({ lbLocation: opts.hetznerLbLocation }))
+	buildTraefikValues: async opts =>
+		buildHetznerTraefikValues(await promptHetznerOptions({ lbLocation: opts.hetznerLbLocation, assumeYes: opts.assumeYes }))
 });

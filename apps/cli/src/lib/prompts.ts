@@ -1,5 +1,5 @@
 import * as p from '@clack/prompts';
-import { UserCancelledError } from '~/lib/errors.js';
+import { FatalCliError, UserCancelledError } from '~/lib/errors.js';
 
 const FQDN_RE = /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -7,6 +7,16 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export interface InstallInputs {
 	domain: string;
 	email: string;
+}
+
+// Call before any cluster mutation; the --domain/--email flag path bypasses the interactive validate() below.
+export function assertValidInstallFlags(flags: { domain?: string; email?: string }): void {
+	if (flags.domain !== undefined && !FQDN_RE.test(flags.domain)) {
+		throw new FatalCliError(`Invalid --domain "${flags.domain}": must be a valid FQDN (e.g. app.example.com).`);
+	}
+	if (flags.email !== undefined && !EMAIL_RE.test(flags.email)) {
+		throw new FatalCliError(`Invalid --email "${flags.email}": must be a valid email address.`);
+	}
 }
 
 export async function promptInstallInputs(flags: { domain?: string; email?: string }): Promise<InstallInputs> {
@@ -38,5 +48,7 @@ export async function promptInstallInputs(flags: { domain?: string; email?: stri
 		throw new UserCancelledError('Installation aborted.');
 	}
 
-	return { domain: domain as string, email: email as string };
+	const inputs = { domain: domain as string, email: email as string };
+	assertValidInstallFlags(inputs);
+	return inputs;
 }

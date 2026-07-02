@@ -50,6 +50,22 @@ describe('confirmStorageInstall', () => {
 		).resolves.toBeUndefined();
 	});
 
+	test('assumeYes resolves even when the prompt answer would decline', async () => {
+		confirmResult = false;
+		await expect(
+			confirmStorageInstall(
+				{
+					label: 'GCP PD CSI',
+					install: { kind: 'manifest', namespace: 'gce-pd-csi-driver', driverVersion: 'v1.26.0', manifest: '' },
+					storageClass: 'pd-ssd',
+					provisioner: 'pd.csi.storage.gke.io',
+					nodeSelector: { 'cfke.io/provider': 'gcp' }
+				},
+				true
+			)
+		).resolves.toBeUndefined();
+	});
+
 	test('throws UserCancelledError when cancelled', async () => {
 		confirmResult = cancelled;
 		await expect(

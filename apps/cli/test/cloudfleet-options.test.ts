@@ -35,6 +35,11 @@ describe('promptHetznerOptions', () => {
 		selectValue = cancelled;
 		await expect(promptHetznerOptions({})).rejects.toThrow('Hetzner LB location selection aborted.');
 	});
+
+	test('throws instead of prompting under assumeYes without lbLocation', async () => {
+		selectValue = cancelled; // would abort if the prompt ran
+		await expect(promptHetznerOptions({ assumeYes: true })).rejects.toThrow('--yes requires --hetzner-lb-location');
+	});
 });
 
 describe('HETZNER_LB_LOCATIONS', () => {
