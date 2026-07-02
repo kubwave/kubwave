@@ -55,6 +55,13 @@ export async function mergePatch(kc: KubeConfig, obj: KubernetesObject): Promise
 	await mergePatchWith(KubernetesObjectApi.makeApiClient(kc), obj);
 }
 
+// No namespace → the all-namespaces collection endpoint (like `kubectl get <kind> -A`) for a namespaced kind.
+// Client-supplied so a caller can reuse one KubernetesObjectApi across many kinds (API discovery cached once).
+export async function listAllCustomObjectsWith(api: KubernetesObjectApi, apiVersion: string, kind: string): Promise<KubernetesObject[]> {
+	const result = await api.list<KubernetesObject>(apiVersion, kind);
+	return result.items;
+}
+
 // Same, against a caller-supplied client — reuse one across many objects so API discovery is cached once.
 export async function mergePatchWith(api: KubernetesObjectApi, obj: KubernetesObject): Promise<void> {
 	await api.patch(obj, undefined, undefined, FIELD_MANAGER, undefined, PatchStrategy.MergePatch);

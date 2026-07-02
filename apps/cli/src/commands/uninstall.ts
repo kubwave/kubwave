@@ -1,6 +1,6 @@
 import type { Command } from 'commander';
 import * as p from '@clack/prompts';
-import { ApiextensionsV1Api, CoreV1Api, RbacAuthorizationV1Api, StorageV1Api, type KubeConfig } from '@kubernetes/client-node';
+import { ApiextensionsV1Api, CoreV1Api, KubernetesObjectApi, RbacAuthorizationV1Api, StorageV1Api, type KubeConfig } from '@kubernetes/client-node';
 import {
 	APP_NAMESPACE,
 	APP_CLUSTER_RESOURCE_PREFIX,
@@ -17,7 +17,7 @@ import { isNotFoundError } from '~/lib/k8s-errors.js';
 import { helmUninstall, listReleaseNames } from '~/lib/helm.js';
 import { UserCancelledError, printAndExit } from '~/lib/errors.js';
 import { CSI_CATALOG, type CsiDefinition, type CsiInstall } from '~/platforms/cloudfleet/csi-catalog.js';
-import { deleteManifest } from '~/lib/k8s-apply.js';
+import { deleteManifest, listAllCustomObjectsWith, mergePatchWith } from '~/lib/k8s-apply.js';
 
 const CERT_MANAGER_NAMESPACE = 'cert-manager';
 const ACME_ACCOUNT_KEY_SECRETS = ['letsencrypt-prod-account-key', 'letsencrypt-staging-account-key'];
@@ -43,6 +43,14 @@ export interface CsiTeardownTarget {
 	storageClass?: string;
 }
 
+// A dependency CRD helm keeps (resource-policy:keep), carrying the served apiVersion/kind needed to reach its CRs —
+// resolved once at plan time so teardown never has to re-list every CRD on the cluster.
+export interface DependencyCrd {
+	name: string;
+	apiVersion: string;
+	kind: string;
+}
+
 export interface UninstallPlan {
 	appRelease: ReleaseTarget;
 	// Detected staging release; null when --keep-staging or no staging namespace. Acted on only when non-null.
@@ -61,7 +69,7 @@ export interface UninstallPlan {
 	clusterRoles: string[];
 	clusterRoleBindings: string[];
 	// CNPG CRDs: `helm uninstall cnpg` keeps them (resource-policy: keep), so delete them explicitly.
-	customResourceDefinitions: string[];
+	customResourceDefinitions: DependencyCrd[];
 	// CSI drivers installed by kubwave that need symmetric teardown (LAST step, after disk reclamation).
 	csiTeardowns: CsiTeardownTarget[];
 }
@@ -171,6 +179,7 @@ export async function runUninstall(opts: UninstallOpts): Promise<void> {
 	await deletePersistentVolumeClaims(api, plan);
 	await deleteAcmeAccountKeys(api, plan);
 	await uninstallDependencyReleases(plan);
+	await drainDependencyCustomResources(kc, plan);
 	await deleteNamespaces(api, plan);
 	await deleteEnvironmentNamespaces(api, plan);
 	await deleteClusterScopedRbac(rbacApi, plan);
@@ -224,19 +233,26 @@ export async function buildUninstallPlan(opts: BuildPlanOpts): Promise<Uninstall
 
 // Dependency CRDs helm keeps (resource-policy:keep) — deleting them cascades any remaining CRs in those groups.
 // Guarded by part-of=kubwave (stamped on the CRDs we installed) so a user's pre-existing cert-manager is left intact.
-async function detectKeptDependencyCrds(kc: KubeConfig): Promise<string[]> {
+async function detectKeptDependencyCrds(kc: KubeConfig): Promise<DependencyCrd[]> {
 	const api = kc.makeApiClient(ApiextensionsV1Api);
 	const result = await api.listCustomResourceDefinition();
 
-	return result.items
-		.filter(
-			crd =>
-				crd.metadata?.labels?.[KUBWAVE_PART_OF_LABEL] === KUBWAVE_PART_OF_VALUE &&
-				typeof crd.spec?.group === 'string' &&
-				KEPT_DEPENDENCY_CRD_GROUPS.includes(crd.spec.group)
-		)
-		.map(crd => crd.metadata?.name)
-		.filter((name): name is string => typeof name === 'string');
+	return result.items.flatMap((crd): DependencyCrd[] => {
+		const group = crd.spec?.group;
+		if (
+			crd.metadata?.labels?.[KUBWAVE_PART_OF_LABEL] !== KUBWAVE_PART_OF_VALUE ||
+			typeof group !== 'string' ||
+			!KEPT_DEPENDENCY_CRD_GROUPS.includes(group)
+		) {
+			return [];
+		}
+
+		const name = crd.metadata?.name;
+		const kind = crd.spec?.names?.kind;
+		const version = (crd.spec?.versions ?? []).find(v => v.served)?.name ?? crd.spec?.versions?.[0]?.name;
+		if (!name || !kind || !version) return [];
+		return [{ name, apiVersion: `${group}/${version}`, kind }];
+	});
 }
 
 // Worker per-env namespaces (managed-by label); helm has no record, so without this they orphan with their tenant services, PVCs and volumes.
@@ -561,6 +577,58 @@ async function deleteClusterScopedRbac(api: RbacAuthorizationV1Api, plan: Uninst
 	spinner.stop('Cluster-scoped kubwave RBAC removed');
 }
 
+// The dependency operators finalize their own CRs (cert-manager Certificates/Orders/Challenges, CNPG Clusters).
+// We've just removed those operators, so any leftover CR would hang in Terminating forever — wedging both its
+// namespace's deletion AND its CRD's. A stuck CRD then makes the NEXT install's `helm --wait` on the recreating
+// CRD time out (it reads the still-Terminating CRD as NotFound). Strip finalizers now (operators gone → none re-add).
+export async function drainDependencyCustomResources(kc: KubeConfig, plan: UninstallPlan): Promise<void> {
+	if (plan.customResourceDefinitions.length === 0) return;
+
+	// One client across every kind and patch so API discovery is done once, not per-call.
+	const api = KubernetesObjectApi.makeApiClient(kc);
+	const spinner = p.spinner();
+	spinner.start('Clearing finalizers on leftover dependency resources...');
+
+	let cleared = 0;
+	let failed = 0;
+
+	for (const { apiVersion, kind } of plan.customResourceDefinitions) {
+		let items;
+		try {
+			items = await listAllCustomObjectsWith(api, apiVersion, kind);
+		} catch (err) {
+			// A gone CRD (404) means nothing to drain; anything else leaves CRs potentially wedged — count it.
+			if (!isNotFoundError(err)) {
+				failed++;
+				p.log.warn(`Could not list ${kind} (${apiVersion}) to clear finalizers: ${err instanceof Error ? err.message : String(err)}`);
+			}
+			continue;
+		}
+
+		for (const item of items) {
+			const crName = item.metadata?.name;
+			if (!crName || !item.metadata?.finalizers?.length) continue;
+
+			try {
+				await mergePatchWith(api, { apiVersion, kind, metadata: { name: crName, namespace: item.metadata.namespace, finalizers: [] } });
+				cleared++;
+			} catch (err) {
+				if (!isNotFoundError(err)) {
+					failed++;
+					p.log.warn(`Could not clear finalizers on ${kind}/${crName}: ${err instanceof Error ? err.message : String(err)}`);
+				}
+			}
+		}
+	}
+
+	// Never report a clean drain when a strip failed — a still-wedged CR is the exact failure this step prevents.
+	const base =
+		cleared === 0 && failed === 0
+			? 'No leftover dependency resources needed finalizer cleanup'
+			: `Cleared finalizers on ${cleared} leftover resource(s)`;
+	spinner.stop(failed > 0 ? `${base}; ${failed} could not be cleared (see warnings above)` : base);
+}
+
 // Delete the dependency CRDs helm keeps; runs after the operators are gone so no controller fights it.
 async function deleteCustomResourceDefinitions(api: ApiextensionsV1Api, plan: UninstallPlan): Promise<void> {
 	if (plan.customResourceDefinitions.length === 0) return;
@@ -568,7 +636,7 @@ async function deleteCustomResourceDefinitions(api: ApiextensionsV1Api, plan: Un
 	const spinner = p.spinner();
 	spinner.start('Deleting dependency CRDs...');
 
-	for (const name of plan.customResourceDefinitions) {
+	for (const { name } of plan.customResourceDefinitions) {
 		try {
 			await api.deleteCustomResourceDefinition({ name });
 			p.log.success(`CRD "${name}" deleted`);

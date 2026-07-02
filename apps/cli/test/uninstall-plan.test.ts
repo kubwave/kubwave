@@ -46,6 +46,12 @@ const crdDeleteErrors = new Map<string, Error>();
 const crdNotFound = new Set<string>();
 
 const api = {
+	setDefaultNamespace: () => {},
+	list: async (apiVersion: string, kind: string) => {
+		apiCalls.push(`list-cr:${apiVersion}|${kind}`);
+		return { items: [] };
+	},
+	patch: async () => ({}),
 	readNamespace: async ({ name }: { name: string }) => {
 		apiCalls.push(`read-namespace:${name}`);
 		if (name === 'kubwave-staging' && !stagingNamespaceExists) throw { code: 404 };
@@ -122,11 +128,17 @@ const api = {
 	},
 	listCustomResourceDefinition: async () => {
 		apiCalls.push('list-crds');
-		// Real CRD names are `<plural>.<group>`; expose spec.group + the part-of stamp so detection matches by group AND ownership.
-		const toItem = (name: string, owned: boolean) => ({
-			metadata: { name, ...(owned ? { labels: { 'app.kubernetes.io/part-of': 'kubwave' } } : {}) },
-			spec: { group: name.slice(name.indexOf('.') + 1) }
-		});
+		// Real CRD names are `<plural>.<group>`; expose spec.group/names.kind/versions + the part-of stamp so
+		// detection matches by group AND ownership and can resolve the served apiVersion/kind for each CRD.
+		const toItem = (name: string, owned: boolean) => {
+			const plural = name.slice(0, name.indexOf('.'));
+			const group = name.slice(name.indexOf('.') + 1);
+			const kind = plural.charAt(0).toUpperCase() + plural.slice(1);
+			return {
+				metadata: { name, ...(owned ? { labels: { 'app.kubernetes.io/part-of': 'kubwave' } } : {}) },
+				spec: { group, names: { kind }, versions: [{ name: 'v1', served: true }] }
+			};
+		};
 		return { items: [...crds.map(name => toItem(name, true)), ...unownedCrds.map(name => toItem(name, false))] };
 	},
 	deleteCustomResourceDefinition: async ({ name }: { name: string }) => {
@@ -464,16 +476,17 @@ describe('uninstall plan', () => {
 		resetFixtures();
 		const plan = await buildUninstallPlan({ kc: mockKc });
 		expect(plan.customResourceDefinitions).toEqual([
-			'clusters.postgresql.cnpg.io',
-			'backups.postgresql.cnpg.io',
-			'certificates.cert-manager.io',
-			'challenges.acme.cert-manager.io'
+			{ name: 'clusters.postgresql.cnpg.io', apiVersion: 'postgresql.cnpg.io/v1', kind: 'Clusters' },
+			{ name: 'backups.postgresql.cnpg.io', apiVersion: 'postgresql.cnpg.io/v1', kind: 'Backups' },
+			{ name: 'certificates.cert-manager.io', apiVersion: 'cert-manager.io/v1', kind: 'Certificates' },
+			{ name: 'challenges.acme.cert-manager.io', apiVersion: 'acme.cert-manager.io/v1', kind: 'Challenges' }
 		]);
-		expect(plan.customResourceDefinitions).not.toContain('widgets.example.com');
+		const crdNames = plan.customResourceDefinitions.map(c => c.name);
+		expect(crdNames).not.toContain('widgets.example.com');
 		// Matched by exact group, so a third-party group nested under cert-manager.io is never swept.
-		expect(plan.customResourceDefinitions).not.toContain('bundles.trust.cert-manager.io');
+		expect(crdNames).not.toContain('bundles.trust.cert-manager.io');
 		// Guarded by part-of=kubwave, so a pre-existing (unstamped) cert-manager CRD in a kept group is left intact.
-		expect(plan.customResourceDefinitions).not.toContain('issuers.cert-manager.io');
+		expect(crdNames).not.toContain('issuers.cert-manager.io');
 
 		await runUninstall({ yes: true, inCluster: false, keepStaging: false, stagingNamespace: 'kubwave-staging' });
 		// The operators are helm-uninstalled, then their kept CRDs (incl. cert-manager's resource-policy:keep group) are swept.
