@@ -46,6 +46,10 @@ env:
 
 jobs:
   build-images:
+    # Explicit name so the check context is `build-images (backend)` etc. — stable
+    # regardless of the extra `dockerfile` matrix key. Must match the skip twin's
+    # job name and the required status checks on main, or required checks hang.
+    name: build-images (${{ matrix.app }})
     runs-on: ubuntu-latest
     timeout-minutes: 40
     # Suppress the *.dockerbuild build-record artifact (UI-only blob) — same

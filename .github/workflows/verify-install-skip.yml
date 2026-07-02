@@ -34,6 +34,9 @@ concurrency:
 
 jobs:
   build-images:
+    # Must match the real workflow's explicit job name (`build-images (<app>)`) so
+    # the required status checks resolve on skipped PRs too.
+    name: build-images (${{ matrix.app }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
