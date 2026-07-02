@@ -10,19 +10,19 @@
 name: Verify install
 
 on:
-  #pull_request:
-  #  paths:
-  #    - 'infra/helm/**'
-  #    - 'apps/backend/**'
-  #    - 'apps/build-tools/**'
-  #    - 'apps/cli/**'
-  #    - 'apps/console/**'
-  #    - 'packages/**'
-  #    - 'package.json'
-  #    - 'bun.lock'
-  #    - '.github/workflows/verify-install.yml'
-  #    - '.github/workflows/verify-install-skip.yml'
-  #    - '.github/actions/verify-install/**'
+  pull_request:
+    paths:
+      - 'infra/helm/**'
+      - 'apps/backend/**'
+      - 'apps/build-tools/**'
+      - 'apps/cli/**'
+      - 'apps/console/**'
+      - 'packages/**'
+      - 'package.json'
+      - 'bun.lock'
+      - '.github/workflows/verify-install.yml'
+      - '.github/workflows/verify-install-skip.yml'
+      - '.github/actions/verify-install/**'
   workflow_dispatch:
 
 permissions:
