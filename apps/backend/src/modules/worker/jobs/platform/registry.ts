@@ -56,6 +56,7 @@ const PUBLIC_EGRESS_PORTS = [80, 443];
 const INGRESS_CONTROLLER_EGRESS_PORTS = [80, 443, 8000, 8443];
 const MANAGED_INGRESS_RULE_ANNOTATION = 'kubwave.io/builder-networkpolicy-managed-ingress';
 const MANAGED_PUBLIC_PORTS_ANNOTATION = 'kubwave.io/builder-networkpolicy-managed-public-ports';
+const REGISTRY_APPLY_ERROR_KEYS = ['registry_apply_error', 'registry_apply_error_at', 'registry_apply_mode', 'registry_apply_fingerprint'] as const;
 
 interface MarkerState {
 	currentVersion: string;
@@ -146,7 +147,9 @@ export async function reconcileBuildRegistryApply(kc: KubeConfig): Promise<void>
 		// creation is instant, but the registry:2 pod still has to pull its image and mount the PVC — so
 		// hold off mirroring the "applied" marker (which the setup flow polls before it logs the admin in)
 		// until the Deployment reports an available replica. A later reconcile tick records it once ready.
+		// Clear any stale apply-error first so the settings UI reads this window as "pending", not "failed".
 		if (effective.mode === 'platform' && !(await registryDeploymentReady(appsApi, namespace))) {
+			await clearRegistryApplyError(coreApi, namespace);
 			return;
 		}
 
@@ -504,10 +507,7 @@ async function mirrorRegistryMarker(
 		else delete next.registry_cluster_issuer;
 		if (state.credentialHash) next.registry_credential_hash = state.credentialHash;
 		else delete next.registry_credential_hash;
-		delete next.registry_apply_error;
-		delete next.registry_apply_error_at;
-		delete next.registry_apply_mode;
-		delete next.registry_apply_fingerprint;
+		for (const key of REGISTRY_APPLY_ERROR_KEYS) delete next[key];
 		return next;
 	});
 }
@@ -524,6 +524,17 @@ async function mirrorRegistryError(coreApi: CoreV1Api, namespace: string, desire
 		registry_apply_error_at: new Date().toISOString(),
 		...(desired.mode === 'external' ? { registry_apply_fingerprint: buildRegistryCredentialHash(desired) } : {})
 	}));
+}
+
+async function clearRegistryApplyError(coreApi: CoreV1Api, namespace: string): Promise<void> {
+	const existing = await readConfigMapOrNull(coreApi, namespace, PLATFORM_CONFIGMAP_NAME);
+	const data = existing?.data;
+	if (!data || !REGISTRY_APPLY_ERROR_KEYS.some(key => key in data)) return;
+	await replaceMarker(coreApi, namespace, current => {
+		const next = { ...current };
+		for (const key of REGISTRY_APPLY_ERROR_KEYS) delete next[key];
+		return next;
+	});
 }
 
 async function replaceMarker(coreApi: CoreV1Api, namespace: string, mutate: (data: Record<string, string>) => Record<string, string>): Promise<void> {
