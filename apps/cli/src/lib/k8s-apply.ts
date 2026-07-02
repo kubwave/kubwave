@@ -56,8 +56,8 @@ export async function mergePatch(kc: KubeConfig, obj: KubernetesObject): Promise
 }
 
 // No namespace → the all-namespaces collection endpoint (like `kubectl get <kind> -A`) for a namespaced kind.
-export async function listAllCustomObjects(kc: KubeConfig, apiVersion: string, kind: string): Promise<KubernetesObject[]> {
-	const api = KubernetesObjectApi.makeApiClient(kc);
+// Client-supplied so a caller can reuse one KubernetesObjectApi across many kinds (API discovery cached once).
+export async function listAllCustomObjectsWith(api: KubernetesObjectApi, apiVersion: string, kind: string): Promise<KubernetesObject[]> {
 	const result = await api.list<KubernetesObject>(apiVersion, kind);
 	return result.items;
 }
