@@ -141,6 +141,15 @@ export async function reconcileBuildRegistryApply(kc: KubeConfig): Promise<void>
 
 		await ensureBuilderNetworkPolicy(networkingApi, namespace, effective, stalePublicRegistryPorts(marker, effective));
 		await applyWorkerRegistryEnv(appsApi, namespace, effective);
+
+		// The platform registry only counts as applied once its Deployment is actually serving. Object
+		// creation is instant, but the registry:2 pod still has to pull its image and mount the PVC — so
+		// hold off mirroring the "applied" marker (which the setup flow polls before it logs the admin in)
+		// until the Deployment reports an available replica. A later reconcile tick records it once ready.
+		if (effective.mode === 'platform' && !(await registryDeploymentReady(appsApi, namespace))) {
+			return;
+		}
+
 		await mirrorRegistryMarker(coreApi, namespace, {
 			mode: effective.mode,
 			host: effective.endpoint,
@@ -240,6 +249,11 @@ async function ensurePlatformRegistry(
 	await ensureRegistryService(coreApi, namespace);
 	await ensureRegistryDeployment(appsApi, namespace, marker?.nodeSelector ?? {});
 	await ensureRegistryIngress(networkingApi, namespace, effective, marker?.ingressClassName);
+}
+
+async function registryDeploymentReady(appsApi: AppsV1Api, namespace: string): Promise<boolean> {
+	const deployment = await readDeploymentOrNull(appsApi, namespace, REGISTRY_NAME);
+	return (deployment?.status?.availableReplicas ?? 0) >= 1;
 }
 
 async function disablePlatformRegistry(coreApi: CoreV1Api, appsApi: AppsV1Api, networkingApi: NetworkingV1Api, namespace: string): Promise<void> {
