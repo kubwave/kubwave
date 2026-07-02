@@ -17,7 +17,7 @@ import { isNotFoundError } from '~/lib/k8s-errors.js';
 import { helmUninstall, listReleaseNames } from '~/lib/helm.js';
 import { UserCancelledError, printAndExit } from '~/lib/errors.js';
 import { CSI_CATALOG, type CsiDefinition, type CsiInstall } from '~/platforms/cloudfleet/csi-catalog.js';
-import { deleteManifest } from '~/lib/k8s-apply.js';
+import { deleteManifest, listAllCustomObjects, mergePatch } from '~/lib/k8s-apply.js';
 
 const CERT_MANAGER_NAMESPACE = 'cert-manager';
 const ACME_ACCOUNT_KEY_SECRETS = ['letsencrypt-prod-account-key', 'letsencrypt-staging-account-key'];
@@ -171,6 +171,7 @@ export async function runUninstall(opts: UninstallOpts): Promise<void> {
 	await deletePersistentVolumeClaims(api, plan);
 	await deleteAcmeAccountKeys(api, plan);
 	await uninstallDependencyReleases(plan);
+	await drainDependencyCustomResources(kc, plan);
 	await deleteNamespaces(api, plan);
 	await deleteEnvironmentNamespaces(api, plan);
 	await deleteClusterScopedRbac(rbacApi, plan);
@@ -559,6 +560,67 @@ async function deleteClusterScopedRbac(api: RbacAuthorizationV1Api, plan: Uninst
 	}
 
 	spinner.stop('Cluster-scoped kubwave RBAC removed');
+}
+
+// The dependency operators finalize their own CRs (cert-manager Certificates/Orders/Challenges, CNPG Clusters).
+// We've just removed those operators, so any leftover CR would hang in Terminating forever — wedging both its
+// namespace's deletion AND its CRD's. A stuck CRD then makes the NEXT install's `helm --wait` on the recreating
+// CRD time out (it reads the still-Terminating CRD as NotFound). Strip finalizers now (operators gone → none re-add).
+export async function drainDependencyCustomResources(kc: KubeConfig, plan: UninstallPlan): Promise<void> {
+	if (plan.customResourceDefinitions.length === 0) return;
+
+	const crdApi = kc.makeApiClient(ApiextensionsV1Api);
+	const spinner = p.spinner();
+	spinner.start('Clearing finalizers on leftover dependency resources...');
+
+	let crdItems: Awaited<ReturnType<ApiextensionsV1Api['listCustomResourceDefinition']>>['items'];
+	try {
+		crdItems = (await crdApi.listCustomResourceDefinition()).items;
+	} catch (err) {
+		spinner.stop('Skipped finalizer cleanup (could not list CRDs)');
+		p.log.warn(`Could not list CRDs to clear finalizers: ${err instanceof Error ? err.message : String(err)}`);
+		return;
+	}
+
+	const targeted = new Set(plan.customResourceDefinitions);
+	let cleared = 0;
+
+	for (const crd of crdItems) {
+		const name = crd.metadata?.name;
+		if (!name || !targeted.has(name)) continue;
+
+		const group = crd.spec?.group;
+		const kind = crd.spec?.names?.kind;
+		const version = (crd.spec?.versions ?? []).find(v => v.served)?.name ?? crd.spec?.versions?.[0]?.name;
+		if (!group || !kind || !version) continue;
+		const apiVersion = `${group}/${version}`;
+
+		let items;
+		try {
+			items = await listAllCustomObjects(kc, apiVersion, kind);
+		} catch (err) {
+			if (!isNotFoundError(err)) {
+				p.log.warn(`Could not list ${kind} (${apiVersion}) to clear finalizers: ${err instanceof Error ? err.message : String(err)}`);
+			}
+			continue;
+		}
+
+		for (const item of items) {
+			const crName = item.metadata?.name;
+			if (!crName || !item.metadata?.finalizers?.length) continue;
+
+			try {
+				await mergePatch(kc, { apiVersion, kind, metadata: { name: crName, namespace: item.metadata.namespace, finalizers: [] } });
+				cleared++;
+			} catch (err) {
+				if (!isNotFoundError(err)) {
+					p.log.warn(`Could not clear finalizers on ${kind}/${crName}: ${err instanceof Error ? err.message : String(err)}`);
+				}
+			}
+		}
+	}
+
+	spinner.stop(cleared === 0 ? 'No leftover dependency resources needed finalizer cleanup' : `Cleared finalizers on ${cleared} leftover resource(s)`);
 }
 
 // Delete the dependency CRDs helm keeps; runs after the operators are gone so no controller fights it.
