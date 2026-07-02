@@ -118,6 +118,15 @@ Helm values that the platform sets must stay mirrored in:
 
 Update the CLI Helm tests when those values change.
 
+## Code Comments
+
+Keep comments minimal. Write code that explains itself through clear naming instead of narrating it with comments.
+
+- Add a comment only when the _why_ is non-obvious (a workaround, a subtle invariant, a non-trivial decision). Never comment _what_ the code already says.
+- When a comment is genuinely needed, keep it to 1 line, 2 at most.
+- Do not add section-divider banners, restating-the-obvious comments, or step-by-step narration.
+- Do not leave commented-out code.
+
 ## Backend Conventions
 
 `apps/backend/src` is split by runtime and responsibility:
