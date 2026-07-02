@@ -24,7 +24,16 @@ let gceCsiNamespaceManaged = true;
 // Whether a read StorageClass carries the kubwave ownership label (only owned SCs are deleted).
 let storageClassManaged = true;
 
+// CSIDriver objects returned by the label-based primary detection.
+let csiDrivers: Array<{ metadata: { name: string; labels?: Record<string, string> } }> = [];
+
 const OWNERSHIP_LABEL = { 'app.kubernetes.io/managed-by': 'kubwave-cli' };
+
+// A CSIDriver carrying the part-of anchor the install path stamps (helm sweep sets only part-of; the manifest
+// path also adds component/instance, but detection keys on part-of + a catalog-matching name).
+function ownedCsiDriver(name: string): { metadata: { name: string; labels: Record<string, string> } } {
+	return { metadata: { name, labels: { 'app.kubernetes.io/part-of': 'kubwave' } } };
+}
 
 const api = {
 	readNamespace: async ({ name }: { name: string }) => {
@@ -45,6 +54,7 @@ const api = {
 	deleteStorageClass: async ({ name }: { name: string }) => {
 		deleteStorageClassCalls.push(name);
 	},
+	listCSIDriver: async () => ({ items: csiDrivers }),
 	// Stubs for the rest of buildUninstallPlan detection
 	listNamespace: async () => ({ items: [] }),
 	listClusterRole: async () => ({ items: [] }),
@@ -120,6 +130,7 @@ function resetFixtures(): void {
 	gceCsiNamespaceManaged = true;
 	storageClassManaged = true;
 	deleteManifestError = null;
+	csiDrivers = [];
 }
 
 // Minimal plan with GCP CSI teardown target for teardown-focused tests.
@@ -232,6 +243,46 @@ describe('CSI teardown detection', () => {
 		resetFixtures();
 		const plan = await buildUninstallPlan({ kc: mockKc });
 		expect(plan.csiTeardowns).toHaveLength(0);
+	});
+
+	test('detects hetzner CSI by its labelled CSIDriver even when the helm release was renamed', async () => {
+		resetFixtures();
+		// Legacy release-name path would miss this; the labelled CSIDriver proves ownership regardless.
+		helmListReleases['kube-system'] = ['my-renamed-hetzner-release'];
+		csiDrivers = [ownedCsiDriver('csi.hetzner.cloud')];
+		const plan = await buildUninstallPlan({ kc: mockKc });
+		const hetzner = plan.csiTeardowns.find(t => t.provisioner === 'csi.hetzner.cloud');
+		expect(hetzner).toBeDefined();
+		expect(hetzner?.label).toBe('Hetzner Cloud CSI Driver');
+	});
+
+	test('detects GCP CSI by its labelled CSIDriver even when the namespace lacks the legacy label', async () => {
+		resetFixtures();
+		gceCsiNamespaceExists = true;
+		gceCsiNamespaceManaged = false; // legacy namespace-label path would miss it
+		csiDrivers = [ownedCsiDriver('pd.csi.storage.gke.io')];
+		const plan = await buildUninstallPlan({ kc: mockKc });
+		const gcp = plan.csiTeardowns.find(t => t.provisioner === 'pd.csi.storage.gke.io');
+		expect(gcp).toBeDefined();
+		expect(gcp?.storageClass).toBe('pd-ssd');
+	});
+
+	test('does NOT detect a CSIDriver that lacks the kubwave ownership labels', async () => {
+		resetFixtures();
+		// A user-installed driver of the same provisioner, no part-of/component labels — must be left alone.
+		csiDrivers = [{ metadata: { name: 'csi.hetzner.cloud' } }];
+		const plan = await buildUninstallPlan({ kc: mockKc });
+		expect(plan.csiTeardowns.find(t => t.provisioner === 'csi.hetzner.cloud')).toBeUndefined();
+	});
+
+	test('deduplicates a driver found by BOTH the label path and the legacy release-name path', async () => {
+		resetFixtures();
+		// Both detection paths fire (labelled CSIDriver + listed release) — the driver must appear exactly once.
+		helmListReleases['kube-system'] = ['hcloud-csi'];
+		csiDrivers = [ownedCsiDriver('csi.hetzner.cloud')];
+		const plan = await buildUninstallPlan({ kc: mockKc });
+		const hetznerTargets = plan.csiTeardowns.filter(t => t.provisioner === 'csi.hetzner.cloud');
+		expect(hetznerTargets).toHaveLength(1);
 	});
 
 	test('includes CSI teardown in planned operations string', async () => {

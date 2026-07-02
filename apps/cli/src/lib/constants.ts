@@ -17,24 +17,29 @@ export const REGISTRY_PULL_SECRET_NAME = 'kubwave-registry-pull';
 // Traefik install namespace (dev uses kube-system); the per-env NetworkPolicy must allow ingress from here or a strict CNI blocks Traefik → tenants.
 export const TRAEFIK_NAMESPACE = 'traefik';
 
+// part-of=kubwave is the single cluster-wide ownership/audit anchor carried by the chart, CLI-created objects, CSI
+// drivers, and (via a post-install label sweep) dependency charts; component/instance discriminate the piece.
+export const KUBWAVE_PART_OF_LABEL = 'app.kubernetes.io/part-of';
+export const KUBWAVE_PART_OF_VALUE = 'kubwave';
+export const KUBWAVE_COMPONENT_LABEL = 'app.kubernetes.io/component';
+export const KUBWAVE_INSTANCE_LABEL = 'app.kubernetes.io/instance';
+export const KUBWAVE_PART_OF_SELECTOR = `${KUBWAVE_PART_OF_LABEL}=${KUBWAVE_PART_OF_VALUE}`;
+
 export const APP_LABELS = {
-	'app.kubernetes.io/part-of': 'kubwave'
+	[KUBWAVE_PART_OF_LABEL]: KUBWAVE_PART_OF_VALUE
 } as const;
 
 // Mirrors @kubwave/kube (MANAGED_BY_VALUE); worker stamps every per-env namespace/workload, uninstall sweeps by this selector.
 export const WORKER_MANAGED_BY_SELECTOR = 'app.kubernetes.io/managed-by=kubwave-worker';
 
-// Ownership stamp the CLI puts on every CSI driver resource it installs (manifest objects incl. the driver
-// Namespace, and self-created StorageClasses). Uninstall tears down ONLY resources carrying it, so a user's
-// pre-existing namespace, hand-created cloud-sa secret, or StorageClass is never deleted by mistake.
+// managed-by=kubwave-cli marks resources the CLI fully owns (manifest objects, self-created SCs) — never
+// third-party helm output, which keeps its own managed-by=Helm.
 export const KUBWAVE_MANAGED_BY_LABEL = 'app.kubernetes.io/managed-by';
 export const KUBWAVE_CLI_MANAGED_BY_VALUE = 'kubwave-cli';
-export const KUBWAVE_CSI_OWNERSHIP_LABELS: Readonly<Record<string, string>> = {
-	[KUBWAVE_MANAGED_BY_LABEL]: KUBWAVE_CLI_MANAGED_BY_VALUE
-};
 
 // Shared prefix on every cluster-scoped object; uninstall sweeps label-less ClusterRole(Binding) leftovers helm can't reclaim.
 export const APP_CLUSTER_RESOURCE_PREFIX = 'kubwave-';
 
-// CNPG CRDs carry resource-policy:keep, so helm uninstall cnpg leaves the whole API group behind; uninstall sweeps it to fully remove the operator.
-export const CNPG_CRD_GROUP_SUFFIX = '.postgresql.cnpg.io';
+// CNPG/cert-manager ship resource-policy:keep CRDs helm won't remove; uninstall sweeps these exact groups —
+// matched by group, not name-endsWith, which would also catch nested third-party groups like trust.cert-manager.io.
+export const KEPT_DEPENDENCY_CRD_GROUPS: readonly string[] = ['postgresql.cnpg.io', 'cert-manager.io', 'acme.cert-manager.io'];

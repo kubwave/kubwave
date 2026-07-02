@@ -141,6 +141,23 @@ Installed at:    2026-06-01T12:00:00.000Z
 Installed by:    kubwave CLI v0.1.0
 ```
 
+### `kubwave audit`
+
+Lists every cluster resource kubwave installed, found by the single ownership
+label `app.kubernetes.io/part-of=kubwave`. The CLI stamps this label on its own
+chart objects, the resources it creates directly, the CSI drivers, and — via a
+post-install label sweep — the third-party dependency charts (Traefik,
+cert-manager, CloudNativePG). Results are grouped by `app.kubernetes.io/component`;
+a kind the caller cannot list (RBAC) is reported as skipped rather than aborting the audit.
+
+```sh
+kubwave audit
+```
+
+| Flag           | Default | Description                    |
+| -------------- | ------- | ------------------------------ |
+| `--in-cluster` | `false` | Use the in-cluster kubeconfig. |
+
 ### `kubwave version`
 
 Prints the CLI version, embedded Helm version, and the active release channel

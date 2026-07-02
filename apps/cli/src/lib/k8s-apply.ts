@@ -52,7 +52,11 @@ function mergeNodeSelector(obj: KubernetesObject, nodeSelector: Record<string, s
 
 // Server-side merge-patch a single object (e.g. stamp an annotation/label onto an existing resource).
 export async function mergePatch(kc: KubeConfig, obj: KubernetesObject): Promise<void> {
-	const api = KubernetesObjectApi.makeApiClient(kc);
+	await mergePatchWith(KubernetesObjectApi.makeApiClient(kc), obj);
+}
+
+// Same, against a caller-supplied client — reuse one across many objects so API discovery is cached once.
+export async function mergePatchWith(api: KubernetesObjectApi, obj: KubernetesObject): Promise<void> {
 	await api.patch(obj, undefined, undefined, FIELD_MANAGER, undefined, PatchStrategy.MergePatch);
 }
 

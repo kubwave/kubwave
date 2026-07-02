@@ -22,7 +22,17 @@ let stagingReleaseNames: string[] = ['kubwave-staging'];
 let envNamespaces: string[] = ['kubwave-env-aaa', 'kubwave-env-bbb'];
 let clusterRoles: string[] = ['kubwave-updater-cert-manager', 'unrelated-role'];
 let clusterRoleBindings: string[] = ['kubwave-updater-cert-manager'];
-let crds: string[] = ['clusters.postgresql.cnpg.io', 'backups.postgresql.cnpg.io', 'widgets.example.com'];
+let crds: string[] = [
+	'clusters.postgresql.cnpg.io',
+	'backups.postgresql.cnpg.io',
+	'certificates.cert-manager.io',
+	'challenges.acme.cert-manager.io',
+	// A third-party group nested under cert-manager.io (trust-manager): must NOT be swept — kubwave never installed it.
+	'bundles.trust.cert-manager.io',
+	'widgets.example.com'
+];
+// CRDs in a kept group but NOT stamped part-of=kubwave (e.g. a user's pre-existing cert-manager): must NOT be swept.
+let unownedCrds: string[] = ['issuers.cert-manager.io'];
 const helmUninstallErrors = new Map<string, Error>();
 const pvcDeleteErrors = new Map<string, Error>();
 const secretDeleteErrors = new Map<string, Error>();
@@ -45,6 +55,11 @@ const api = {
 	},
 	listPersistentVolume: async () => {
 		apiCalls.push('list-pvs');
+		return { items: [] };
+	},
+	// These plan tests never install a CSI driver, so no owned CSIDriver objects exist.
+	listCSIDriver: async () => {
+		apiCalls.push('list-csidrivers');
 		return { items: [] };
 	},
 	deleteStorageClass: async ({ name }: { name: string }) => {
@@ -107,7 +122,12 @@ const api = {
 	},
 	listCustomResourceDefinition: async () => {
 		apiCalls.push('list-crds');
-		return { items: crds.map(name => ({ metadata: { name } })) };
+		// Real CRD names are `<plural>.<group>`; expose spec.group + the part-of stamp so detection matches by group AND ownership.
+		const toItem = (name: string, owned: boolean) => ({
+			metadata: { name, ...(owned ? { labels: { 'app.kubernetes.io/part-of': 'kubwave' } } : {}) },
+			spec: { group: name.slice(name.indexOf('.') + 1) }
+		});
+		return { items: [...crds.map(name => toItem(name, true)), ...unownedCrds.map(name => toItem(name, false))] };
 	},
 	deleteCustomResourceDefinition: async ({ name }: { name: string }) => {
 		apiCalls.push(`delete-crd:${name}`);
@@ -179,7 +199,15 @@ function resetFixtures(): void {
 	envNamespaces = ['kubwave-env-aaa', 'kubwave-env-bbb'];
 	clusterRoles = ['kubwave-updater-cert-manager', 'unrelated-role'];
 	clusterRoleBindings = ['kubwave-updater-cert-manager'];
-	crds = ['clusters.postgresql.cnpg.io', 'backups.postgresql.cnpg.io', 'widgets.example.com'];
+	crds = [
+		'clusters.postgresql.cnpg.io',
+		'backups.postgresql.cnpg.io',
+		'certificates.cert-manager.io',
+		'challenges.acme.cert-manager.io',
+		'bundles.trust.cert-manager.io',
+		'widgets.example.com'
+	];
+	unownedCrds = ['issuers.cert-manager.io'];
 	helmUninstallErrors.clear();
 	pvcDeleteErrors.clear();
 	secretDeleteErrors.clear();
@@ -432,18 +460,30 @@ describe('uninstall plan', () => {
 		expect(apiCalls.find(c => c.startsWith('delete-crd'))).toBeUndefined();
 	});
 
-	test('discovers and deletes CloudNativePG CRDs while leaving unrelated CRDs alone', async () => {
+	test('discovers and deletes kept dependency CRDs (CNPG + cert-manager) while leaving unrelated CRDs alone', async () => {
 		resetFixtures();
 		const plan = await buildUninstallPlan({ kc: mockKc });
-		expect(plan.customResourceDefinitions).toEqual(['clusters.postgresql.cnpg.io', 'backups.postgresql.cnpg.io']);
+		expect(plan.customResourceDefinitions).toEqual([
+			'clusters.postgresql.cnpg.io',
+			'backups.postgresql.cnpg.io',
+			'certificates.cert-manager.io',
+			'challenges.acme.cert-manager.io'
+		]);
 		expect(plan.customResourceDefinitions).not.toContain('widgets.example.com');
+		// Matched by exact group, so a third-party group nested under cert-manager.io is never swept.
+		expect(plan.customResourceDefinitions).not.toContain('bundles.trust.cert-manager.io');
+		// Guarded by part-of=kubwave, so a pre-existing (unstamped) cert-manager CRD in a kept group is left intact.
+		expect(plan.customResourceDefinitions).not.toContain('issuers.cert-manager.io');
 
 		await runUninstall({ yes: true, inCluster: false, keepStaging: false, stagingNamespace: 'kubwave-staging' });
-		// The cnpg operator is helm-uninstalled, then its kept CRDs are swept.
+		// The operators are helm-uninstalled, then their kept CRDs (incl. cert-manager's resource-policy:keep group) are swept.
 		expect(helmUninstallCalls.find(c => c.release === 'cnpg')).toEqual({ release: 'cnpg', namespace: 'cnpg-system' });
 		expect(apiCalls).toContain('delete-crd:clusters.postgresql.cnpg.io');
-		expect(apiCalls).toContain('delete-crd:backups.postgresql.cnpg.io');
+		expect(apiCalls).toContain('delete-crd:certificates.cert-manager.io');
+		expect(apiCalls).toContain('delete-crd:challenges.acme.cert-manager.io');
 		expect(apiCalls).not.toContain('delete-crd:widgets.example.com');
+		expect(apiCalls).not.toContain('delete-crd:bundles.trust.cert-manager.io');
+		expect(apiCalls).not.toContain('delete-crd:issuers.cert-manager.io');
 	});
 
 	test('skips PVC deletion when the namespace is already gone or no PVCs exist', async () => {

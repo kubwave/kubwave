@@ -3,6 +3,7 @@ import { ApiextensionsV1Api, AppsV1Api, CoreV1Api, NetworkingV1Api } from '@kube
 import * as p from '@clack/prompts';
 import { FatalCliError, UserCancelledError } from '~/lib/errors.js';
 import { execHelm } from '~/lib/helm.js';
+import { stampHelmReleaseOwnership } from '~/lib/helm-ownership.js';
 import { isNotFoundError } from '~/lib/k8s-errors.js';
 import { mergeDependencyState, type DependencyStateInput, type DependencyStateMap, type TraefikDependencyState } from '~/lib/dependency-state.js';
 import { readRecord, readString } from '~/lib/object-path.js';
@@ -199,11 +200,9 @@ const DEPENDENCIES: ClusterDependency[] = [
 				config.namespace,
 				// Pin the validated chart version + --reuse-values so a partial pre-existing release keeps operator overrides; the rendered values file overlays last.
 				['--version', TRAEFIK_CHART_VERSION, '--reuse-values', '-f', valuesFile],
-				{
-					wait: false,
-					context
-				}
+				{ wait: false, context }
 			);
+			await stampHelmReleaseOwnership(kc, config.releaseName, config.namespace);
 			await waitForTraefikReady(kc, { controller: config });
 			await logTraefikLoadBalancerPending(kc, config);
 		},
@@ -258,7 +257,7 @@ const DEPENDENCIES: ClusterDependency[] = [
 				return { installed: false, message: 'cert-manager check failed' };
 			}
 		},
-		install: async (_kc, _state, context) => {
+		install: async (kc, _state, context) => {
 			await helmRepoAddAndInstall(
 				{ name: 'jetstack', url: CERT_MANAGER_REPO_URL },
 				CERT_MANAGER_CHART,
@@ -267,6 +266,7 @@ const DEPENDENCIES: ClusterDependency[] = [
 				['--set', 'crds.enabled=true', ...CERT_MANAGER_RESOURCE_ARGS],
 				{ context }
 			);
+			await stampHelmReleaseOwnership(kc, CERT_MANAGER_RELEASE, CERT_MANAGER_NAMESPACE);
 		},
 		wait: async kc => {
 			await waitForCertManagerReady(kc);
@@ -288,11 +288,12 @@ const DEPENDENCIES: ClusterDependency[] = [
 				return { installed: false, message: 'CloudNativePG check failed' };
 			}
 		},
-		install: async (_kc, _state, context) => {
+		install: async (kc, _state, context) => {
 			// helm --wait blocks until the operator + CRDs are ready, so the chart's `Cluster` CR has somewhere to land.
 			await helmRepoAddAndInstall({ name: 'cnpg', url: CNPG_REPO_URL }, CNPG_CHART, CNPG_RELEASE, CNPG_NAMESPACE, [...CNPG_RESOURCE_ARGS], {
 				context
 			});
+			await stampHelmReleaseOwnership(kc, CNPG_RELEASE, CNPG_NAMESPACE);
 		},
 		wait: async kc => {
 			await waitForCnpgReady(kc);

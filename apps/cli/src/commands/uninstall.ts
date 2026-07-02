@@ -4,17 +4,19 @@ import { ApiextensionsV1Api, CoreV1Api, RbacAuthorizationV1Api, StorageV1Api, ty
 import {
 	APP_NAMESPACE,
 	APP_CLUSTER_RESOURCE_PREFIX,
-	CNPG_CRD_GROUP_SUFFIX,
+	KEPT_DEPENDENCY_CRD_GROUPS,
 	HELM_RELEASE_NAME,
 	WORKER_MANAGED_BY_SELECTOR,
 	KUBWAVE_MANAGED_BY_LABEL,
-	KUBWAVE_CLI_MANAGED_BY_VALUE
+	KUBWAVE_CLI_MANAGED_BY_VALUE,
+	KUBWAVE_PART_OF_LABEL,
+	KUBWAVE_PART_OF_VALUE
 } from '~/lib/constants.js';
 import { getClusterInfo, loadKubeConfig } from '~/lib/k8s.js';
 import { isNotFoundError } from '~/lib/k8s-errors.js';
 import { helmUninstall, listReleaseNames } from '~/lib/helm.js';
 import { UserCancelledError, printAndExit } from '~/lib/errors.js';
-import { CSI_CATALOG, type CsiInstall } from '~/platforms/cloudfleet/csi-catalog.js';
+import { CSI_CATALOG, type CsiDefinition, type CsiInstall } from '~/platforms/cloudfleet/csi-catalog.js';
 import { deleteManifest } from '~/lib/k8s-apply.js';
 
 const CERT_MANAGER_NAMESPACE = 'cert-manager';
@@ -150,7 +152,7 @@ export async function runUninstall(opts: UninstallOpts): Promise<void> {
 	}
 
 	if (plan.customResourceDefinitions.length > 0) {
-		p.log.info(`${plan.customResourceDefinitions.length} CloudNativePG CRD(s) found — will be deleted after the operator is removed.`);
+		p.log.info(`${plan.customResourceDefinitions.length} dependency CRD(s) found — will be deleted after the operators are removed.`);
 	}
 
 	if (plan.csiTeardowns.length > 0) {
@@ -199,7 +201,7 @@ export async function buildUninstallPlan(opts: BuildPlanOpts): Promise<Uninstall
 	const [environmentNamespaces, { clusterRoles, clusterRoleBindings }, customResourceDefinitions, csiTeardowns] = await Promise.all([
 		detectEnvironmentNamespaces(opts.kc),
 		detectOrphanClusterRbac(opts.kc),
-		detectCnpgCrds(opts.kc),
+		detectKeptDependencyCrds(opts.kc),
 		detectCsiTeardowns(opts.kc)
 	]);
 
@@ -220,14 +222,21 @@ export async function buildUninstallPlan(opts: BuildPlanOpts): Promise<Uninstall
 	};
 }
 
-// CNPG CRDs helm keeps (resource-policy:keep); deleting them cascades any remaining Cluster CRs.
-async function detectCnpgCrds(kc: KubeConfig): Promise<string[]> {
+// Dependency CRDs helm keeps (resource-policy:keep) — deleting them cascades any remaining CRs in those groups.
+// Guarded by part-of=kubwave (stamped on the CRDs we installed) so a user's pre-existing cert-manager is left intact.
+async function detectKeptDependencyCrds(kc: KubeConfig): Promise<string[]> {
 	const api = kc.makeApiClient(ApiextensionsV1Api);
 	const result = await api.listCustomResourceDefinition();
 
 	return result.items
+		.filter(
+			crd =>
+				crd.metadata?.labels?.[KUBWAVE_PART_OF_LABEL] === KUBWAVE_PART_OF_VALUE &&
+				typeof crd.spec?.group === 'string' &&
+				KEPT_DEPENDENCY_CRD_GROUPS.includes(crd.spec.group)
+		)
 		.map(crd => crd.metadata?.name)
-		.filter((name): name is string => typeof name === 'string' && name.endsWith(CNPG_CRD_GROUP_SUFFIX));
+		.filter((name): name is string => typeof name === 'string');
 }
 
 // Worker per-env namespaces (managed-by label); helm has no record, so without this they orphan with their tenant services, PVCs and volumes.
@@ -248,17 +257,44 @@ async function detectOrphanClusterRbac(kc: KubeConfig): Promise<{ clusterRoles: 
 	return { clusterRoles: matching(roles.items), clusterRoleBindings: matching(bindings.items) };
 }
 
-// CSI drivers installed by kubwave: helm releases checked by listing releases in their namespace; manifest
-// drivers by the kubwave ownership label on their namespace (mere existence is NOT proof — the prerequisite
-// hint has users hand-create the namespace + cloud-sa secret before install, so existence-only detection
-// would delete a user-owned namespace + credential the CLI never installed).
+// Detect kubwave's CSI drivers by the ownership labels on their CSIDriver object (named after the provisioner,
+// created by both helm and manifest installs, never a user-created prerequisite) — uniform and rename-robust.
+// A legacy fallback (helm release name / manifest namespace label) catches pre-label installs, deduped by provisioner.
 async function detectCsiTeardowns(kc: KubeConfig): Promise<CsiTeardownTarget[]> {
-	const api = kc.makeApiClient(CoreV1Api);
-	const targets: CsiTeardownTarget[] = [];
-	// Cache per namespace so kube-system (hetzner + aws) is only listed once.
-	const releaseCache = new Map<string, string[]>();
+	const coreApi = kc.makeApiClient(CoreV1Api);
+	const storageApi = kc.makeApiClient(StorageV1Api);
 
+	const byProvisioner = new Map(Object.values(CSI_CATALOG).map(csi => [csi.provisioner, csi]));
+	const found = new Map<string, CsiTeardownTarget>();
+	const add = (csi: CsiDefinition): void => {
+		if (found.has(csi.provisioner)) return;
+		found.set(csi.provisioner, {
+			label: csi.label,
+			provisioner: csi.provisioner,
+			install: csi.install,
+			storageClass: csi.createStorageClass?.name
+		});
+	};
+
+	// part-of + a CSIDriver name that matches a catalog provisioner is proof we installed it: a user's own
+	// driver of the same name carries no part-of=kubwave. (component is chart-owned on helm drivers, so not checked.)
+	try {
+		const drivers = await storageApi.listCSIDriver();
+		for (const driver of drivers.items) {
+			if (driver.metadata?.labels?.[KUBWAVE_PART_OF_LABEL] !== KUBWAVE_PART_OF_VALUE) continue;
+			const csi = byProvisioner.get(driver.metadata?.name ?? '');
+			if (csi) add(csi);
+		}
+	} catch (err) {
+		// Label-based detection unavailable (missing RBAC / transient API error) — warn, then fall through to legacy detection.
+		const message = err instanceof Error ? err.message : String(err);
+		p.log.warn(`Could not list CSIDrivers (${message}); falling back to release-name/namespace detection, which may miss a renamed CSI release.`);
+	}
+
+	// Cache helm releases per namespace so kube-system (hetzner + aws) is listed once.
+	const releaseCache = new Map<string, string[]>();
 	for (const csi of Object.values(CSI_CATALOG)) {
+		if (found.has(csi.provisioner)) continue;
 		let present = false;
 
 		if (csi.install.kind === 'helm') {
@@ -267,24 +303,17 @@ async function detectCsiTeardowns(kc: KubeConfig): Promise<CsiTeardownTarget[]> 
 			present = releaseCache.get(ns)!.includes(csi.install.release);
 		} else {
 			try {
-				const ns = await api.readNamespace({ name: csi.install.namespace });
+				const ns = await coreApi.readNamespace({ name: csi.install.namespace });
 				present = ns.metadata?.labels?.[KUBWAVE_MANAGED_BY_LABEL] === KUBWAVE_CLI_MANAGED_BY_VALUE;
 			} catch (err) {
 				if (!isNotFoundError(err)) throw err;
 			}
 		}
 
-		if (present) {
-			targets.push({
-				label: csi.label,
-				provisioner: csi.provisioner,
-				install: csi.install,
-				storageClass: csi.createStorageClass?.name
-			});
-		}
+		if (present) add(csi);
 	}
 
-	return targets;
+	return [...found.values()];
 }
 
 interface StagingDetection {
@@ -532,12 +561,12 @@ async function deleteClusterScopedRbac(api: RbacAuthorizationV1Api, plan: Uninst
 	spinner.stop('Cluster-scoped kubwave RBAC removed');
 }
 
-// Delete the CNPG CRDs helm keeps; runs after the operator is gone so no controller fights it.
+// Delete the dependency CRDs helm keeps; runs after the operators are gone so no controller fights it.
 async function deleteCustomResourceDefinitions(api: ApiextensionsV1Api, plan: UninstallPlan): Promise<void> {
 	if (plan.customResourceDefinitions.length === 0) return;
 
 	const spinner = p.spinner();
-	spinner.start('Deleting CloudNativePG CRDs...');
+	spinner.start('Deleting dependency CRDs...');
 
 	for (const name of plan.customResourceDefinitions) {
 		try {
@@ -552,7 +581,7 @@ async function deleteCustomResourceDefinitions(api: ApiextensionsV1Api, plan: Un
 		}
 	}
 
-	spinner.stop('CloudNativePG CRDs removed');
+	spinner.stop('Dependency CRDs removed');
 }
 
 // Last step: tear down CSI drivers after all workloads and namespaces are gone.
