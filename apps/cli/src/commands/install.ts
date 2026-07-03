@@ -114,7 +114,7 @@ async function runInstall(opts: {
 	await confirmClusterContext(kc, opts.clusterConfirmed || assumeYes);
 	const platform = await selectPlatform({ platform: opts.platform, hetznerLbLocation: opts.hetznerLbLocation, assumeYes });
 	const warmup = await warmNodes(kc, platform, { ha: opts.ha, assumeYes, enabled: opts.warmNodes });
-	if (warmup.deficit && !warmup.warmed) raiseInstallTimeoutForColdStart();
+	if (warmup.raiseTimeout) raiseInstallTimeoutForColdStart();
 	try {
 		await ensureDependencies(kc, platform.dependencies, undefined, { assumeYes });
 		const storage = await platform.ensureStorage(kc, { storageMode, storageClass: opts.storageClass, assumeYes });

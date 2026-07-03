@@ -11,6 +11,10 @@ export function addCapacity(a: Capacity, b: Capacity): Capacity {
 	return { cpuMillis: a.cpuMillis + b.cpuMillis, memBytes: a.memBytes + b.memBytes };
 }
 
+export function scaleCapacity(c: Capacity, factor: number): Capacity {
+	return { cpuMillis: Math.ceil(c.cpuMillis * factor), memBytes: Math.ceil(c.memBytes * factor) };
+}
+
 export function parseCpuToMillis(value: unknown): number {
 	if (value === undefined || value === null) return 0;
 	const s = String(value).trim();
@@ -60,35 +64,30 @@ function selectorMatches(labels: Record<string, string>, selector: Record<string
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+function containerRequests(c: any): Capacity {
+	const req = c?.resources?.requests;
+	return req ? { cpuMillis: parseCpuToMillis(req.cpu), memBytes: parseMemToBytes(req.memory) } : { cpuMillis: 0, memBytes: 0 };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function sumContainerRequests(containers: any): Capacity {
 	const list = Array.isArray(containers) ? containers : [];
-	let cpuMillis = 0;
-	let memBytes = 0;
-	for (const c of list) {
-		const req = c?.resources?.requests;
-		if (!req) continue;
-		cpuMillis += parseCpuToMillis(req.cpu);
-		memBytes += parseMemToBytes(req.memory);
-	}
-	return { cpuMillis, memBytes };
+	return list.reduce((acc, c) => addCapacity(acc, containerRequests(c)), { cpuMillis: 0, memBytes: 0 });
 }
 
 // Regular containers + native (restartPolicy: Always) sidecars, floored at the largest single init container
 // (each runs to completion before the app containers, so the scheduler reserves at least that much).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function podEffectiveRequests(podSpec: any): Capacity {
-	const initList: unknown[] = Array.isArray(podSpec?.initContainers) ? podSpec.initContainers : [];
-	const isSidecar = (c: unknown): boolean => (c as { restartPolicy?: string })?.restartPolicy === 'Always';
-	const base = addCapacity(sumContainerRequests(podSpec?.containers), sumContainerRequests(initList.filter(isSidecar)));
-	let initMaxCpu = 0;
-	let initMaxMem = 0;
-	for (const c of initList.filter(c => !isSidecar(c))) {
-		const req = (c as { resources?: { requests?: { cpu?: unknown; memory?: unknown } } })?.resources?.requests;
-		if (!req) continue;
-		initMaxCpu = Math.max(initMaxCpu, parseCpuToMillis(req.cpu));
-		initMaxMem = Math.max(initMaxMem, parseMemToBytes(req.memory));
+	const init = Array.isArray(podSpec?.initContainers) ? podSpec.initContainers : [];
+	let base = sumContainerRequests(podSpec?.containers);
+	let initMax: Capacity = { cpuMillis: 0, memBytes: 0 };
+	for (const c of init) {
+		const r = containerRequests(c);
+		if (c?.restartPolicy === 'Always') base = addCapacity(base, r);
+		else initMax = { cpuMillis: Math.max(initMax.cpuMillis, r.cpuMillis), memBytes: Math.max(initMax.memBytes, r.memBytes) };
 	}
-	return { cpuMillis: Math.max(base.cpuMillis, initMaxCpu), memBytes: Math.max(base.memBytes, initMaxMem) };
+	return { cpuMillis: Math.max(base.cpuMillis, initMax.cpuMillis), memBytes: Math.max(base.memBytes, initMax.memBytes) };
 }
 
 // Sum resource requests from `helm template` output. Deployments/StatefulSets scale by replicas and the CNPG

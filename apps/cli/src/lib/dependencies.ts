@@ -5,6 +5,7 @@ import { FatalCliError, UserCancelledError } from '~/lib/errors.js';
 import { execHelm } from '~/lib/helm.js';
 import { stampHelmReleaseOwnership } from '~/lib/helm-ownership.js';
 import { isNotFoundError } from '~/lib/k8s-errors.js';
+import { parseDurationMs } from '~/lib/duration.js';
 import { mergeDependencyState, type DependencyStateInput, type DependencyStateMap, type TraefikDependencyState } from '~/lib/dependency-state.js';
 import { readRecord, readString } from '~/lib/object-path.js';
 import { TRAEFIK_CHART, TRAEFIK_CHART_NAME, TRAEFIK_CHART_VERSION, TRAEFIK_REPO_URL, writeTraefikValuesFile } from '~/lib/traefik.js';
@@ -107,19 +108,8 @@ export async function helmRepoAddAndInstall(
 	}
 }
 
-function parseDurationMs(raw: string | undefined): number | undefined {
-	const m = raw?.trim().match(/^(\d+)(m|s)?$/);
-	if (!m) return undefined;
-	const n = parseInt(m[1] ?? '', 10);
-	return m[2] === 's' ? n * 1000 : n * 60 * 1000;
-}
-
 // On a cold cluster the installer raises KUBWAVE_INSTALL_TIMEOUT; dependency installs run first and also --wait,
-// so let their helm timeout and readiness waits scale with it, or they'd fail while nodes are still scaling up.
-function dependencyInstallTimeout(): string {
-	return process.env.KUBWAVE_INSTALL_TIMEOUT?.trim() || '5m';
-}
-
+// so their readiness waits scale with it too, or they'd fail while nodes are still scaling up.
 function readinessTimeoutMs(defaultMs: number): number {
 	const fromEnv = parseDurationMs(process.env.KUBWAVE_INSTALL_TIMEOUT);
 	return fromEnv && fromEnv > defaultMs ? fromEnv : defaultMs;
@@ -133,7 +123,7 @@ export function buildHelmDependencyInstallArgs(
 	options: HelmInstallOptions = {}
 ): string[] {
 	const wait = options.wait ?? true;
-	const timeout = options.timeout ?? dependencyInstallTimeout();
+	const timeout = options.timeout ?? (process.env.KUBWAVE_INSTALL_TIMEOUT?.trim() || '5m');
 	const args = ['upgrade', '--install', release, chart, '--namespace', namespace, '--create-namespace'];
 
 	if (options.context) {

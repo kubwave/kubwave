@@ -9,7 +9,8 @@ import { APP_NAMESPACE, HELM_RELEASE_NAME } from '~/lib/constants.js';
 import { buildOwnershipLabels } from '~/lib/ownership.js';
 import { isAlreadyExistsError, isNotFoundError } from '~/lib/k8s-errors.js';
 import { UserCancelledError } from '~/lib/errors.js';
-import { addCapacity, formatCpu, formatMem, getSchedulableCapacity, sumRequestsFromManifests, type Capacity } from '~/lib/capacity.js';
+import { addCapacity, formatCpu, formatMem, getSchedulableCapacity, scaleCapacity, sumRequestsFromManifests, type Capacity } from '~/lib/capacity.js';
+import { parseDurationMs } from '~/lib/duration.js';
 
 const PRIMER_NAME = 'kubwave-node-primer';
 const PRIMER_NAMESPACE = 'default';
@@ -34,15 +35,14 @@ const DEFAULT_WARMUP_TIMEOUT_MS = 10 * 60 * 1000;
 const POLL_INTERVAL_MS = 5000;
 
 export interface WarmupResult {
-	// A primer ran to completion (nodes provisioned) — the install can use the normal timeout.
-	warmed: boolean;
-	// Capacity was short. When true but warmed is false, the caller should raise the install timeout instead.
-	deficit: boolean;
+	// Capacity was short and no primer holds it — the caller should raise the install timeout.
+	raiseTimeout: boolean;
 	// Call only after the real workloads are scheduled — the primer holds the nodes until then.
 	cleanup: () => Promise<void>;
 }
 
 const NOOP_CLEANUP = async (): Promise<void> => {};
+const NO_WARMUP: WarmupResult = { raiseTimeout: false, cleanup: NOOP_CLEANUP };
 
 export interface WarmupPlan {
 	deficit: Capacity;
@@ -65,8 +65,7 @@ export function planWarmup(required: Capacity, available: Capacity, ha: boolean)
 export async function computeRequiredCapacity(opts: { ha: boolean; nodeSelector: Record<string, string> }): Promise<Capacity> {
 	const rendered = await renderChartRequests(opts);
 	const base = rendered ?? (opts.ha ? FALLBACK_HA : FALLBACK_BASE);
-	const withDeps = addCapacity(base, DEPENDENCY_ALLOWANCE);
-	return { cpuMillis: Math.ceil(withDeps.cpuMillis * HEADROOM_FACTOR), memBytes: Math.ceil(withDeps.memBytes * HEADROOM_FACTOR) };
+	return scaleCapacity(addCapacity(base, DEPENDENCY_ALLOWANCE), HEADROOM_FACTOR);
 }
 
 async function renderChartRequests(opts: { ha: boolean; nodeSelector: Record<string, string> }): Promise<Capacity | null> {
@@ -94,9 +93,9 @@ export async function warmNodes(
 	platform: Platform,
 	opts: { ha: boolean; assumeYes: boolean; enabled: boolean }
 ): Promise<WarmupResult> {
-	if (!opts.enabled) return { warmed: false, deficit: false, cleanup: NOOP_CLEANUP };
+	if (!opts.enabled) return NO_WARMUP;
 	const nodeSelector = platform.nodeSelector ?? {};
-	if (Object.keys(nodeSelector).length === 0) return { warmed: false, deficit: false, cleanup: NOOP_CLEANUP };
+	if (Object.keys(nodeSelector).length === 0) return NO_WARMUP;
 
 	const spinner = p.spinner();
 	spinner.start('Checking cluster capacity...');
@@ -108,7 +107,7 @@ export async function warmNodes(
 	} catch (err) {
 		spinner.stop('Capacity check skipped.');
 		p.log.warn(`Could not assess cluster capacity: ${err instanceof Error ? err.message : String(err)}. Continuing without node warm-up.`);
-		return { warmed: false, deficit: false, cleanup: NOOP_CLEANUP };
+		return NO_WARMUP;
 	}
 	spinner.stop('Capacity check complete');
 
@@ -120,7 +119,7 @@ export async function warmNodes(
 	const plan = planWarmup(required, available.capacity, opts.ha);
 	if (!plan) {
 		p.log.success('Capacity sufficient — no node warm-up needed.');
-		return { warmed: false, deficit: false, cleanup: NOOP_CLEANUP };
+		return NO_WARMUP;
 	}
 
 	p.log.warn(
@@ -134,14 +133,14 @@ export async function warmNodes(
 		if (p.isCancel(ok)) throw new UserCancelledError('Node warm-up cancelled.');
 		if (!ok) {
 			p.log.info('Skipping node warm-up; the install timeout will be raised instead.');
-			return { warmed: false, deficit: true, cleanup: NOOP_CLEANUP };
+			return { raiseTimeout: true, cleanup: NOOP_CLEANUP };
 		}
 	}
 
 	const completed = await startPrimer(kc, { nodeSelector, replicas: plan.replicas, perPod: plan.perPod });
 	// Keep the primer running so its nodes aren't consolidated away before the real pods land; real (default-priority)
 	// workloads preempt the negative-priority primer, and cleanup removes whatever is left.
-	return { warmed: completed, deficit: true, cleanup: () => cleanupPrimer(kc) };
+	return { raiseTimeout: !completed, cleanup: () => cleanupPrimer(kc) };
 }
 
 async function startPrimer(kc: KubeConfig, cfg: { nodeSelector: Record<string, string>; replicas: number; perPod: Capacity }): Promise<boolean> {
@@ -259,12 +258,7 @@ async function deletePrimer(apps: AppsV1Api): Promise<void> {
 }
 
 function warmupTimeoutMs(): number {
-	const raw = process.env.KUBWAVE_WARMUP_TIMEOUT?.trim();
-	if (!raw) return DEFAULT_WARMUP_TIMEOUT_MS;
-	const m = raw.match(/^(\d+)(m|s)?$/);
-	if (!m) return DEFAULT_WARMUP_TIMEOUT_MS;
-	const n = parseInt(m[1] ?? '', 10);
-	return m[2] === 's' ? n * 1000 : n * 60 * 1000;
+	return parseDurationMs(process.env.KUBWAVE_WARMUP_TIMEOUT) ?? DEFAULT_WARMUP_TIMEOUT_MS;
 }
 
 function selectorText(selector: Record<string, string>): string {
