@@ -1,4 +1,4 @@
-import type { KubeConfig } from '@kubernetes/client-node';
+import type { KubeConfig, V1Node, V1Pod } from '@kubernetes/client-node';
 import { CoreV1Api } from '@kubernetes/client-node';
 import { parseAllDocuments } from 'yaml';
 
@@ -60,17 +60,35 @@ function selectorMatches(labels: Record<string, string>, selector: Record<string
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function podSpecRequests(podSpec: any): Capacity {
-	const containers = Array.isArray(podSpec?.containers) ? podSpec.containers : [];
+function sumContainerRequests(containers: any): Capacity {
+	const list = Array.isArray(containers) ? containers : [];
 	let cpuMillis = 0;
 	let memBytes = 0;
-	for (const c of containers) {
+	for (const c of list) {
 		const req = c?.resources?.requests;
 		if (!req) continue;
 		cpuMillis += parseCpuToMillis(req.cpu);
 		memBytes += parseMemToBytes(req.memory);
 	}
 	return { cpuMillis, memBytes };
+}
+
+// Regular containers + native (restartPolicy: Always) sidecars, floored at the largest single init container
+// (each runs to completion before the app containers, so the scheduler reserves at least that much).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function podEffectiveRequests(podSpec: any): Capacity {
+	const initList: unknown[] = Array.isArray(podSpec?.initContainers) ? podSpec.initContainers : [];
+	const isSidecar = (c: unknown): boolean => (c as { restartPolicy?: string })?.restartPolicy === 'Always';
+	const base = addCapacity(sumContainerRequests(podSpec?.containers), sumContainerRequests(initList.filter(isSidecar)));
+	let initMaxCpu = 0;
+	let initMaxMem = 0;
+	for (const c of initList.filter(c => !isSidecar(c))) {
+		const req = (c as { resources?: { requests?: { cpu?: unknown; memory?: unknown } } })?.resources?.requests;
+		if (!req) continue;
+		initMaxCpu = Math.max(initMaxCpu, parseCpuToMillis(req.cpu));
+		initMaxMem = Math.max(initMaxMem, parseMemToBytes(req.memory));
+	}
+	return { cpuMillis: Math.max(base.cpuMillis, initMaxCpu), memBytes: Math.max(base.memBytes, initMaxMem) };
 }
 
 // Sum resource requests from `helm template` output. Deployments/StatefulSets scale by replicas and the CNPG
@@ -84,10 +102,10 @@ export function sumRequestsFromManifests(renderedYaml: string): Capacity {
 		if (!obj || typeof obj !== 'object' || typeof obj.kind !== 'string') continue;
 		if (obj.kind === 'Deployment' || obj.kind === 'StatefulSet' || obj.kind === 'ReplicaSet') {
 			const replicas = typeof obj.spec?.replicas === 'number' ? obj.spec.replicas : 1;
-			const per = podSpecRequests(obj.spec?.template?.spec);
+			const per = podEffectiveRequests(obj.spec?.template?.spec);
 			total = addCapacity(total, { cpuMillis: per.cpuMillis * replicas, memBytes: per.memBytes * replicas });
 		} else if (obj.kind === 'Pod' || obj.kind === 'Job') {
-			total = addCapacity(total, podSpecRequests(obj.spec?.template?.spec ?? obj.spec));
+			total = addCapacity(total, podEffectiveRequests(obj.spec?.template?.spec ?? obj.spec));
 		} else if (obj.kind === 'Cluster' && String(obj.apiVersion ?? '').startsWith('postgresql.cnpg.io')) {
 			const instances = typeof obj.spec?.instances === 'number' ? obj.spec.instances : 1;
 			const req = obj.spec?.resources?.requests;
@@ -103,10 +121,13 @@ export interface SchedulableCapacity {
 	matchingNodes: number;
 }
 
-// Allocatable capacity of the Ready, schedulable nodes matching the platform node selector.
+// Free (allocatable minus already-requested) capacity of the nodes the platform workloads can actually schedule
+// on: matching the node selector, Ready, schedulable, and not carrying a NoSchedule/NoExecute taint (the platform
+// pods have no special tolerations). Using free rather than total avoids skipping a warm-up on a busy cluster.
 export async function getSchedulableCapacity(kc: KubeConfig, nodeSelector: Record<string, string>): Promise<SchedulableCapacity> {
 	const api = kc.makeApiClient(CoreV1Api);
-	const nodes = await api.listNode();
+	const [nodes, pods] = await Promise.all([api.listNode(), api.listPodForAllNamespaces()]);
+	const usedByNode = usedRequestsByNode(pods.items);
 	let cpuMillis = 0;
 	let memBytes = 0;
 	let readyNodes = 0;
@@ -115,11 +136,26 @@ export async function getSchedulableCapacity(kc: KubeConfig, nodeSelector: Recor
 		if (!selectorMatches(node.metadata?.labels ?? {}, nodeSelector)) continue;
 		matchingNodes++;
 		const ready = node.status?.conditions?.some(c => c.type === 'Ready' && c.status === 'True');
-		if (!ready || node.spec?.unschedulable) continue;
+		if (!ready || node.spec?.unschedulable || hasBlockingTaint(node)) continue;
 		readyNodes++;
-		const alloc = node.status?.allocatable ?? {};
-		cpuMillis += parseCpuToMillis(alloc.cpu);
-		memBytes += parseMemToBytes(alloc.memory);
+		const used = usedByNode.get(node.metadata?.name ?? '') ?? { cpuMillis: 0, memBytes: 0 };
+		cpuMillis += Math.max(0, parseCpuToMillis(node.status?.allocatable?.cpu) - used.cpuMillis);
+		memBytes += Math.max(0, parseMemToBytes(node.status?.allocatable?.memory) - used.memBytes);
 	}
 	return { capacity: { cpuMillis, memBytes }, readyNodes, matchingNodes };
+}
+
+function hasBlockingTaint(node: V1Node): boolean {
+	return (node.spec?.taints ?? []).some(t => t.effect === 'NoSchedule' || t.effect === 'NoExecute');
+}
+
+function usedRequestsByNode(pods: V1Pod[]): Map<string, Capacity> {
+	const used = new Map<string, Capacity>();
+	for (const pod of pods) {
+		const node = pod.spec?.nodeName;
+		if (!node) continue;
+		if (pod.status?.phase === 'Succeeded' || pod.status?.phase === 'Failed') continue;
+		used.set(node, addCapacity(used.get(node) ?? { cpuMillis: 0, memBytes: 0 }, podEffectiveRequests(pod.spec)));
+	}
+	return used;
 }

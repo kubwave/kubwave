@@ -115,20 +115,24 @@ async function runInstall(opts: {
 	const platform = await selectPlatform({ platform: opts.platform, hetznerLbLocation: opts.hetznerLbLocation, assumeYes });
 	const warmup = await warmNodes(kc, platform, { ha: opts.ha, assumeYes, enabled: opts.warmNodes });
 	if (warmup.deficit && !warmup.warmed) raiseInstallTimeoutForColdStart();
-	await ensureDependencies(kc, platform.dependencies, undefined, { assumeYes });
-	const storage = await platform.ensureStorage(kc, { storageMode, storageClass: opts.storageClass, assumeYes });
-	await checkAdoption(kc, assumeYes);
+	try {
+		await ensureDependencies(kc, platform.dependencies, undefined, { assumeYes });
+		const storage = await platform.ensureStorage(kc, { storageMode, storageClass: opts.storageClass, assumeYes });
+		await checkAdoption(kc, assumeYes);
 
-	const config = await resolveInstallConfig(opts, storage, channel, cliVersion, platform, tenantPodSecurity, tenantRuntimeClass);
-	const resolvedConfig = await resolveInstallClusterIssuer(kc, config);
-	if (resolvedConfig.ha) await warnIfFewNodesForHa(kc);
-	await prepareClusterResources(kc, resolvedConfig);
-	await installChart(resolvedConfig);
-	await writeInstallMarker(kc, resolvedConfig, cliVersion, channel, platform);
+		const config = await resolveInstallConfig(opts, storage, channel, cliVersion, platform, tenantPodSecurity, tenantRuntimeClass);
+		const resolvedConfig = await resolveInstallClusterIssuer(kc, config);
+		if (resolvedConfig.ha) await warnIfFewNodesForHa(kc);
+		await prepareClusterResources(kc, resolvedConfig);
+		await installChart(resolvedConfig);
+		await writeInstallMarker(kc, resolvedConfig, cliVersion, channel, platform);
 
-	p.log.success(`kubwave v${cliVersion} (${channel} channel) installed successfully on ${platform.label}!`);
-	p.log.info(`Open https://${resolvedConfig.domain} to create the first admin account.`);
-	p.outro('Installation complete');
+		p.log.success(`kubwave v${cliVersion} (${channel} channel) installed successfully on ${platform.label}!`);
+		p.log.info(`Open https://${resolvedConfig.domain} to create the first admin account.`);
+		p.outro('Installation complete');
+	} finally {
+		await warmup.cleanup();
+	}
 }
 
 async function loadAndCheckCluster(inCluster: boolean): Promise<KubeConfig> {

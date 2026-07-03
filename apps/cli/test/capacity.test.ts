@@ -98,4 +98,30 @@ spec:
 `;
 		expect(sumRequestsFromManifests(yaml)).toEqual({ cpuMillis: 250, memBytes: 512 * 2 ** 20 });
 	});
+
+	test('adds native sidecars and floors at the largest init container', () => {
+		const yaml = `
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: api }
+spec:
+  replicas: 1
+  template:
+    spec:
+      initContainers:
+        - name: sidecar
+          restartPolicy: Always
+          resources: { requests: { cpu: 100m, memory: 128Mi } }
+        - name: migrate
+          resources: { requests: { cpu: 2, memory: 1Gi } }
+      containers:
+        - name: api
+          resources: { requests: { cpu: 100m, memory: 256Mi } }
+`;
+		// base = api(100m/256Mi) + sidecar(100m/128Mi) = 200m/384Mi; one-shot migrate = 2000m/1Gi
+		// effective (per resource) = max(base, initMax) = 2000m / 1Gi
+		const total = sumRequestsFromManifests(yaml);
+		expect(total.cpuMillis).toBe(2000);
+		expect(total.memBytes).toBe(2 ** 30);
+	});
 });

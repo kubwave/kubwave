@@ -1,5 +1,5 @@
-import type { KubeConfig, V1Deployment } from '@kubernetes/client-node';
-import { AppsV1Api } from '@kubernetes/client-node';
+import type { KubeConfig, V1Deployment, V1PriorityClass } from '@kubernetes/client-node';
+import { AppsV1Api, SchedulingV1Api } from '@kubernetes/client-node';
 import * as p from '@clack/prompts';
 import type { Platform } from '~/lib/platforms.js';
 import { execHelm } from '~/lib/helm-exec.js';
@@ -7,7 +7,7 @@ import { getChartPath } from '~/lib/embedded.js';
 import { generateValuesFile } from '~/lib/helm.js';
 import { APP_NAMESPACE, HELM_RELEASE_NAME } from '~/lib/constants.js';
 import { buildOwnershipLabels } from '~/lib/ownership.js';
-import { isNotFoundError } from '~/lib/k8s-errors.js';
+import { isAlreadyExistsError, isNotFoundError } from '~/lib/k8s-errors.js';
 import { UserCancelledError } from '~/lib/errors.js';
 import { addCapacity, formatCpu, formatMem, getSchedulableCapacity, sumRequestsFromManifests, type Capacity } from '~/lib/capacity.js';
 
@@ -38,7 +38,11 @@ export interface WarmupResult {
 	warmed: boolean;
 	// Capacity was short. When true but warmed is false, the caller should raise the install timeout instead.
 	deficit: boolean;
+	// Call only after the real workloads are scheduled — the primer holds the nodes until then.
+	cleanup: () => Promise<void>;
 }
+
+const NOOP_CLEANUP = async (): Promise<void> => {};
 
 export interface WarmupPlan {
 	deficit: Capacity;
@@ -90,9 +94,9 @@ export async function warmNodes(
 	platform: Platform,
 	opts: { ha: boolean; assumeYes: boolean; enabled: boolean }
 ): Promise<WarmupResult> {
-	if (!opts.enabled) return { warmed: false, deficit: false };
+	if (!opts.enabled) return { warmed: false, deficit: false, cleanup: NOOP_CLEANUP };
 	const nodeSelector = platform.nodeSelector ?? {};
-	if (Object.keys(nodeSelector).length === 0) return { warmed: false, deficit: false };
+	if (Object.keys(nodeSelector).length === 0) return { warmed: false, deficit: false, cleanup: NOOP_CLEANUP };
 
 	const spinner = p.spinner();
 	spinner.start('Checking cluster capacity...');
@@ -104,7 +108,7 @@ export async function warmNodes(
 	} catch (err) {
 		spinner.stop('Capacity check skipped.');
 		p.log.warn(`Could not assess cluster capacity: ${err instanceof Error ? err.message : String(err)}. Continuing without node warm-up.`);
-		return { warmed: false, deficit: false };
+		return { warmed: false, deficit: false, cleanup: NOOP_CLEANUP };
 	}
 	spinner.stop('Capacity check complete');
 
@@ -116,7 +120,7 @@ export async function warmNodes(
 	const plan = planWarmup(required, available.capacity, opts.ha);
 	if (!plan) {
 		p.log.success('Capacity sufficient — no node warm-up needed.');
-		return { warmed: false, deficit: false };
+		return { warmed: false, deficit: false, cleanup: NOOP_CLEANUP };
 	}
 
 	p.log.warn(
@@ -130,19 +134,22 @@ export async function warmNodes(
 		if (p.isCancel(ok)) throw new UserCancelledError('Node warm-up cancelled.');
 		if (!ok) {
 			p.log.info('Skipping node warm-up; the install timeout will be raised instead.');
-			return { warmed: false, deficit: true };
+			return { warmed: false, deficit: true, cleanup: NOOP_CLEANUP };
 		}
 	}
 
-	const completed = await runPrimer(kc, { nodeSelector, replicas: plan.replicas, perPod: plan.perPod });
-	return { warmed: completed, deficit: true };
+	const completed = await startPrimer(kc, { nodeSelector, replicas: plan.replicas, perPod: plan.perPod });
+	// Keep the primer running so its nodes aren't consolidated away before the real pods land; real (default-priority)
+	// workloads preempt the negative-priority primer, and cleanup removes whatever is left.
+	return { warmed: completed, deficit: true, cleanup: () => cleanupPrimer(kc) };
 }
 
-async function runPrimer(kc: KubeConfig, cfg: { nodeSelector: Record<string, string>; replicas: number; perPod: Capacity }): Promise<boolean> {
+async function startPrimer(kc: KubeConfig, cfg: { nodeSelector: Record<string, string>; replicas: number; perPod: Capacity }): Promise<boolean> {
 	const apps = kc.makeApiClient(AppsV1Api);
 	const spinner = p.spinner();
 	spinner.start(`Warming up ${cfg.replicas} node(s) (provisioning capacity, may take a few minutes)...`);
 	try {
+		await ensurePrimerPriorityClass(kc);
 		await applyPrimerDeployment(apps, cfg);
 		await waitForDeploymentAvailable(apps, cfg.replicas, warmupTimeoutMs());
 		spinner.stop(`Nodes warmed up — ${cfg.replicas} primer pod(s) Running.`);
@@ -151,8 +158,32 @@ async function runPrimer(kc: KubeConfig, cfg: { nodeSelector: Record<string, str
 		spinner.stop('Node warm-up did not complete.');
 		p.log.warn(`Warm-up incomplete: ${err instanceof Error ? err.message : String(err)}. Continuing; the install timeout will be raised.`);
 		return false;
-	} finally {
-		await deletePrimer(apps);
+	}
+}
+
+async function cleanupPrimer(kc: KubeConfig): Promise<void> {
+	await deletePrimer(kc.makeApiClient(AppsV1Api));
+	try {
+		await kc.makeApiClient(SchedulingV1Api).deletePriorityClass({ name: PRIMER_NAME });
+	} catch (err) {
+		if (!isNotFoundError(err)) {
+			p.log.warn(`Could not remove the node-primer PriorityClass ${PRIMER_NAME}: ${err instanceof Error ? err.message : String(err)}.`);
+		}
+	}
+}
+
+async function ensurePrimerPriorityClass(kc: KubeConfig): Promise<void> {
+	const body: V1PriorityClass = {
+		metadata: { name: PRIMER_NAME, labels: buildOwnershipLabels({ component: 'platform', instance: 'node-primer', cliManaged: true }) },
+		value: -1,
+		preemptionPolicy: 'Never',
+		globalDefault: false,
+		description: 'kubwave node warm-up primer; preempted by real workloads.'
+	};
+	try {
+		await kc.makeApiClient(SchedulingV1Api).createPriorityClass({ body });
+	} catch (err) {
+		if (!isAlreadyExistsError(err)) throw err;
 	}
 }
 
@@ -172,6 +203,7 @@ async function applyPrimerDeployment(
 				metadata: { labels: { app: PRIMER_NAME } },
 				spec: {
 					nodeSelector: cfg.nodeSelector,
+					priorityClassName: PRIMER_NAME,
 					terminationGracePeriodSeconds: 0,
 					affinity: {
 						podAntiAffinity: {
@@ -194,7 +226,7 @@ async function applyPrimerDeployment(
 	try {
 		await apps.createNamespacedDeployment({ namespace: PRIMER_NAMESPACE, body });
 	} catch (err) {
-		if (isNotFoundError(err)) throw err;
+		if (!isAlreadyExistsError(err)) throw err;
 		// A leftover primer from an aborted run — replace it so replica count and pod shape match this plan.
 		await apps.replaceNamespacedDeployment({ namespace: PRIMER_NAMESPACE, name: PRIMER_NAME, body });
 	}

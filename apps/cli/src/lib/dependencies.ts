@@ -107,6 +107,24 @@ export async function helmRepoAddAndInstall(
 	}
 }
 
+function parseDurationMs(raw: string | undefined): number | undefined {
+	const m = raw?.trim().match(/^(\d+)(m|s)?$/);
+	if (!m) return undefined;
+	const n = parseInt(m[1] ?? '', 10);
+	return m[2] === 's' ? n * 1000 : n * 60 * 1000;
+}
+
+// On a cold cluster the installer raises KUBWAVE_INSTALL_TIMEOUT; dependency installs run first and also --wait,
+// so let their helm timeout and readiness waits scale with it, or they'd fail while nodes are still scaling up.
+function dependencyInstallTimeout(): string {
+	return process.env.KUBWAVE_INSTALL_TIMEOUT?.trim() || '5m';
+}
+
+function readinessTimeoutMs(defaultMs: number): number {
+	const fromEnv = parseDurationMs(process.env.KUBWAVE_INSTALL_TIMEOUT);
+	return fromEnv && fromEnv > defaultMs ? fromEnv : defaultMs;
+}
+
 export function buildHelmDependencyInstallArgs(
 	chart: string,
 	release: string,
@@ -115,7 +133,7 @@ export function buildHelmDependencyInstallArgs(
 	options: HelmInstallOptions = {}
 ): string[] {
 	const wait = options.wait ?? true;
-	const timeout = options.timeout ?? '5m';
+	const timeout = options.timeout ?? dependencyInstallTimeout();
 	const args = ['upgrade', '--install', release, chart, '--namespace', namespace, '--create-namespace'];
 
 	if (options.context) {
@@ -448,7 +466,7 @@ export async function waitForTraefikReady(
 	const controller = options.controller ?? mergeDependencyState().traefik;
 	const appsApi = kc.makeApiClient(AppsV1Api);
 	const networkingApi = kc.makeApiClient(NetworkingV1Api);
-	const timeoutMs = options.timeoutMs ?? TRAEFIK_READINESS_TIMEOUT_MS;
+	const timeoutMs = options.timeoutMs ?? readinessTimeoutMs(TRAEFIK_READINESS_TIMEOUT_MS);
 	const pollMs = options.pollMs ?? TRAEFIK_READINESS_POLL_MS;
 	const deadline = Date.now() + timeoutMs;
 
@@ -480,7 +498,7 @@ export async function waitForTraefikReady(
 export async function waitForCertManagerReady(kc: KubeConfig, options: { timeoutMs?: number; pollMs?: number } = {}): Promise<void> {
 	const extensionsApi = kc.makeApiClient(ApiextensionsV1Api);
 	const appsApi = kc.makeApiClient(AppsV1Api);
-	const timeoutMs = options.timeoutMs ?? CERT_MANAGER_READINESS_TIMEOUT_MS;
+	const timeoutMs = options.timeoutMs ?? readinessTimeoutMs(CERT_MANAGER_READINESS_TIMEOUT_MS);
 	const pollMs = options.pollMs ?? CERT_MANAGER_READINESS_POLL_MS;
 	const deadline = Date.now() + timeoutMs;
 
@@ -514,7 +532,7 @@ export async function waitForCertManagerReady(kc: KubeConfig, options: { timeout
 
 export async function waitForCnpgReady(kc: KubeConfig, options: { timeoutMs?: number; pollMs?: number } = {}): Promise<void> {
 	const api = kc.makeApiClient(ApiextensionsV1Api);
-	const timeoutMs = options.timeoutMs ?? CNPG_READINESS_TIMEOUT_MS;
+	const timeoutMs = options.timeoutMs ?? readinessTimeoutMs(CNPG_READINESS_TIMEOUT_MS);
 	const pollMs = options.pollMs ?? CNPG_READINESS_POLL_MS;
 	const deadline = Date.now() + timeoutMs;
 
