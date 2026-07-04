@@ -55,6 +55,19 @@ describe('useAppForm', () => {
 		expect(form.state.fieldMeta.email?.errors?.length ?? 0).toBeGreaterThan(0);
 	});
 
+	test('does not validate on blur — errors appear only after submit', async () => {
+		const { form } = useAppForm({
+			schema: z.object({ email: z.string().email('bad') }),
+			defaultValues: { email: 'not-an-email' },
+			onSubmit: async () => {}
+		});
+		const field = form.getFieldInfo('email').instance;
+		field?.handleBlur();
+		expect(form.state.fieldMeta.email?.errors?.length ?? 0).toBe(0);
+		await form.handleSubmit();
+		expect(form.state.fieldMeta.email?.errors?.length ?? 0).toBeGreaterThan(0);
+	});
+
 	test('applies zod transforms (.trim) to the value passed to onSubmit', async () => {
 		let submitted: { name: string } | null = null;
 		const { form } = useAppForm({
