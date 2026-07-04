@@ -227,7 +227,13 @@ async function applyPrimerDeployment(
 	} catch (err) {
 		if (!isAlreadyExistsError(err)) throw err;
 		// A leftover primer from an aborted run — replace it so replica count and pod shape match this plan.
-		await apps.replaceNamespacedDeployment({ namespace: PRIMER_NAMESPACE, name: PRIMER_NAME, body });
+		// A replace (PUT) must carry the current resourceVersion or the API rejects the update.
+		const existing = await apps.readNamespacedDeployment({ namespace: PRIMER_NAMESPACE, name: PRIMER_NAME });
+		await apps.replaceNamespacedDeployment({
+			namespace: PRIMER_NAMESPACE,
+			name: PRIMER_NAME,
+			body: { ...body, metadata: { ...body.metadata, resourceVersion: existing.metadata?.resourceVersion } }
+		});
 	}
 }
 
