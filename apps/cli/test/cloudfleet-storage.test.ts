@@ -26,6 +26,12 @@ mock.module('~/lib/dependencies.js', () => ({
 	})
 }));
 
+// stampHelmReleaseOwnership spawns the real embedded helm binary (`helm get manifest`); leaving it unmocked makes
+// the install-csi tests spawn a subprocess and intermittently blow the 5s timeout. It is best-effort, so stub it out.
+mock.module('~/lib/helm-ownership.js', () => ({
+	stampHelmReleaseOwnership: mock(async () => {})
+}));
+
 const { confirmStorageInstall, ensureStorageClass, makeCloudfleetStorage, planCloudfleetStorage } =
 	await import('../src/platforms/cloudfleet/storage.js');
 
