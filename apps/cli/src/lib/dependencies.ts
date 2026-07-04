@@ -5,6 +5,7 @@ import { FatalCliError, UserCancelledError } from '~/lib/errors.js';
 import { execHelm } from '~/lib/helm.js';
 import { stampHelmReleaseOwnership } from '~/lib/helm-ownership.js';
 import { isNotFoundError } from '~/lib/k8s-errors.js';
+import { parseDurationMs } from '~/lib/duration.js';
 import { mergeDependencyState, type DependencyStateInput, type DependencyStateMap, type TraefikDependencyState } from '~/lib/dependency-state.js';
 import { readRecord, readString } from '~/lib/object-path.js';
 import { TRAEFIK_CHART, TRAEFIK_CHART_NAME, TRAEFIK_CHART_VERSION, TRAEFIK_REPO_URL, writeTraefikValuesFile } from '~/lib/traefik.js';
@@ -107,6 +108,13 @@ export async function helmRepoAddAndInstall(
 	}
 }
 
+// On a cold cluster the installer raises KUBWAVE_INSTALL_TIMEOUT; dependency installs run first and also --wait,
+// so their readiness waits scale with it too, or they'd fail while nodes are still scaling up.
+function readinessTimeoutMs(defaultMs: number): number {
+	const fromEnv = parseDurationMs(process.env.KUBWAVE_INSTALL_TIMEOUT);
+	return fromEnv && fromEnv > defaultMs ? fromEnv : defaultMs;
+}
+
 export function buildHelmDependencyInstallArgs(
 	chart: string,
 	release: string,
@@ -115,7 +123,7 @@ export function buildHelmDependencyInstallArgs(
 	options: HelmInstallOptions = {}
 ): string[] {
 	const wait = options.wait ?? true;
-	const timeout = options.timeout ?? '5m';
+	const timeout = options.timeout ?? (process.env.KUBWAVE_INSTALL_TIMEOUT?.trim() || '5m');
 	const args = ['upgrade', '--install', release, chart, '--namespace', namespace, '--create-namespace'];
 
 	if (options.context) {
@@ -448,7 +456,7 @@ export async function waitForTraefikReady(
 	const controller = options.controller ?? mergeDependencyState().traefik;
 	const appsApi = kc.makeApiClient(AppsV1Api);
 	const networkingApi = kc.makeApiClient(NetworkingV1Api);
-	const timeoutMs = options.timeoutMs ?? TRAEFIK_READINESS_TIMEOUT_MS;
+	const timeoutMs = options.timeoutMs ?? readinessTimeoutMs(TRAEFIK_READINESS_TIMEOUT_MS);
 	const pollMs = options.pollMs ?? TRAEFIK_READINESS_POLL_MS;
 	const deadline = Date.now() + timeoutMs;
 
@@ -480,7 +488,7 @@ export async function waitForTraefikReady(
 export async function waitForCertManagerReady(kc: KubeConfig, options: { timeoutMs?: number; pollMs?: number } = {}): Promise<void> {
 	const extensionsApi = kc.makeApiClient(ApiextensionsV1Api);
 	const appsApi = kc.makeApiClient(AppsV1Api);
-	const timeoutMs = options.timeoutMs ?? CERT_MANAGER_READINESS_TIMEOUT_MS;
+	const timeoutMs = options.timeoutMs ?? readinessTimeoutMs(CERT_MANAGER_READINESS_TIMEOUT_MS);
 	const pollMs = options.pollMs ?? CERT_MANAGER_READINESS_POLL_MS;
 	const deadline = Date.now() + timeoutMs;
 
@@ -514,7 +522,7 @@ export async function waitForCertManagerReady(kc: KubeConfig, options: { timeout
 
 export async function waitForCnpgReady(kc: KubeConfig, options: { timeoutMs?: number; pollMs?: number } = {}): Promise<void> {
 	const api = kc.makeApiClient(ApiextensionsV1Api);
-	const timeoutMs = options.timeoutMs ?? CNPG_READINESS_TIMEOUT_MS;
+	const timeoutMs = options.timeoutMs ?? readinessTimeoutMs(CNPG_READINESS_TIMEOUT_MS);
 	const pollMs = options.pollMs ?? CNPG_READINESS_POLL_MS;
 	const deadline = Date.now() + timeoutMs;
 
