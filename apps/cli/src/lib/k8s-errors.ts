@@ -47,3 +47,7 @@ export function getStatusBody(err: unknown): unknown {
 export function isNotFoundError(err: unknown): boolean {
 	return getStatusCode(err) === 404;
 }
+
+export function isAlreadyExistsError(err: unknown): boolean {
+	return getStatusCode(err) === 409;
+}

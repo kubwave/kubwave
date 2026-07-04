@@ -12,6 +12,7 @@ import { resolveCertManagerClusterIssuer } from '~/lib/cert-manager.js';
 import { createSecrets } from '~/lib/secrets.js';
 import { generateValuesFile, helmUpgradeInstall } from '~/lib/helm.js';
 import { selectPlatform } from '~/lib/platforms.js';
+import { warmNodes } from '~/lib/node-warmup.js';
 import { writeVersionMarker } from '~/lib/version-marker.js';
 import { getCliVersion } from '~/lib/cli-version.js';
 import { parseChannel, type Channel } from '~/lib/channel.js';
@@ -46,6 +47,10 @@ export function registerInstallCommand(parent: Command): void {
 			'off'
 		)
 		.option('--ha', 'Enable high availability (3 replicas of api/console/worker + the CNPG database, soft-spread across nodes)', false)
+		.option(
+			'--no-warm-nodes',
+			'Disable pre-provisioning capacity before install. By default, on autoscaling clusters short on capacity, the CLI briefly runs pause pods so the required nodes come up before helm --wait starts.'
+		)
 		.option('--yes', 'Non-interactive: assume yes for all confirmations (requires --domain, --email, --platform)', false)
 		.action(
 			async (opts: {
@@ -62,6 +67,7 @@ export function registerInstallCommand(parent: Command): void {
 				tenantPodSecurity: string;
 				tenantRuntimeClass: string;
 				ha: boolean;
+				warmNodes: boolean;
 				yes: boolean;
 			}) => {
 				try {
@@ -87,6 +93,7 @@ async function runInstall(opts: {
 	tenantPodSecurity: string;
 	tenantRuntimeClass: string;
 	ha: boolean;
+	warmNodes: boolean;
 	yes: boolean;
 }): Promise<void> {
 	p.intro('kubwave install');
@@ -106,20 +113,26 @@ async function runInstall(opts: {
 
 	await confirmClusterContext(kc, opts.clusterConfirmed || assumeYes);
 	const platform = await selectPlatform({ platform: opts.platform, hetznerLbLocation: opts.hetznerLbLocation, assumeYes });
-	await ensureDependencies(kc, platform.dependencies, undefined, { assumeYes });
-	const storage = await platform.ensureStorage(kc, { storageMode, storageClass: opts.storageClass, assumeYes });
-	await checkAdoption(kc, assumeYes);
+	const warmup = await warmNodes(kc, platform, { ha: opts.ha, assumeYes, enabled: opts.warmNodes });
+	if (warmup.raiseTimeout) raiseInstallTimeoutForColdStart();
+	try {
+		await ensureDependencies(kc, platform.dependencies, undefined, { assumeYes });
+		const storage = await platform.ensureStorage(kc, { storageMode, storageClass: opts.storageClass, assumeYes });
+		await checkAdoption(kc, assumeYes);
 
-	const config = await resolveInstallConfig(opts, storage, channel, cliVersion, platform, tenantPodSecurity, tenantRuntimeClass);
-	const resolvedConfig = await resolveInstallClusterIssuer(kc, config);
-	if (resolvedConfig.ha) await warnIfFewNodesForHa(kc);
-	await prepareClusterResources(kc, resolvedConfig);
-	await installChart(resolvedConfig);
-	await writeInstallMarker(kc, resolvedConfig, cliVersion, channel, platform);
+		const config = await resolveInstallConfig(opts, storage, channel, cliVersion, platform, tenantPodSecurity, tenantRuntimeClass);
+		const resolvedConfig = await resolveInstallClusterIssuer(kc, config);
+		if (resolvedConfig.ha) await warnIfFewNodesForHa(kc);
+		await prepareClusterResources(kc, resolvedConfig);
+		await installChart(resolvedConfig);
+		await writeInstallMarker(kc, resolvedConfig, cliVersion, channel, platform);
 
-	p.log.success(`kubwave v${cliVersion} (${channel} channel) installed successfully on ${platform.label}!`);
-	p.log.info(`Open https://${resolvedConfig.domain} to create the first admin account.`);
-	p.outro('Installation complete');
+		p.log.success(`kubwave v${cliVersion} (${channel} channel) installed successfully on ${platform.label}!`);
+		p.log.info(`Open https://${resolvedConfig.domain} to create the first admin account.`);
+		p.outro('Installation complete');
+	} finally {
+		await warmup.cleanup();
+	}
 }
 
 async function loadAndCheckCluster(inCluster: boolean): Promise<KubeConfig> {
@@ -256,6 +269,13 @@ async function writeInstallMarker(kc: KubeConfig, config: InstallConfig, cliVers
 	spinner.start('Setting version marker...');
 	await writeVersionMarker(kc, `v${cliVersion}`, 'cli', channel, buildInstallState(config, platform.id));
 	spinner.stop('Version marker set');
+}
+
+// Deficit left unprovisioned: the cluster scales up during install, so give helm --wait more room (unless pinned).
+function raiseInstallTimeoutForColdStart(): void {
+	if (process.env.KUBWAVE_INSTALL_TIMEOUT?.trim()) return;
+	process.env.KUBWAVE_INSTALL_TIMEOUT = '25m';
+	p.log.info('Cluster is scaling up: raised the install timeout to 25m (override with KUBWAVE_INSTALL_TIMEOUT).');
 }
 
 function parseStorageMode(value: string): 'auto' | 'skip' {
