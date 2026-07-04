@@ -22,7 +22,7 @@ export function useAppForm<TValues extends Record<string, unknown>>(
 	// zod 3.25 is a Standard Schema (pass straight to TanStack); onSubmit re-parses so zod transforms (e.g. .trim()) reach the payload.
 	const formApi = useForm({
 		defaultValues: opts.defaultValues,
-		validators: { onBlur: opts.schema as never, onSubmit: opts.schema as never },
+		validators: { onSubmit: opts.schema as never },
 		onSubmit: ({ value }) => opts.onSubmit({ value: opts.schema.parse(value) as TValues })
 	});
 
