@@ -3,6 +3,7 @@ import type {
 	DatabaseServiceConfig,
 	DockerfileServiceConfig,
 	DockerImageServiceConfig,
+	GithubRepoServiceConfig,
 	PrivateRepoServiceConfig,
 	PublicRepoServiceConfig,
 	RuntimeConfig,
@@ -15,6 +16,7 @@ import type {
 	DatabaseUpdateConfigInput,
 	DockerfileConfigInput,
 	DockerImageConfigInput,
+	GithubRepoConfigInput,
 	PrivateRepoConfigInput,
 	PublicRepoConfigInput
 } from './services.dto.js';
@@ -142,6 +144,11 @@ export function normalizePrivateRepoConfig(config: PrivateRepoServiceConfig): Pr
 	return { ...normalizePublicRepoConfig(rest as PublicRepoServiceConfig), sshKeyId: sshKeyId.trim() };
 }
 
+export function normalizeGithubRepoConfig(config: GithubRepoServiceConfig): GithubRepoServiceConfig {
+	const { installationId, repoFullName, ...rest } = config;
+	return { ...normalizePublicRepoConfig(rest as PublicRepoServiceConfig), installationId: installationId.trim(), repoFullName: repoFullName.trim() };
+}
+
 export function resolveSecrets(
 	incoming: DockerImageConfigInput['secrets'],
 	existing: RuntimeConfig['secrets']
@@ -193,6 +200,17 @@ export function buildStoredPublicRepoConfig(input: PublicRepoConfigInput, existi
 
 export function buildStoredPrivateRepoConfig(input: PrivateRepoConfigInput, existingSecrets: RuntimeConfig['secrets']): PrivateRepoServiceConfig {
 	return normalizePrivateRepoConfig({ ...input, secrets: resolveSecrets(input.secrets, existingSecrets) });
+}
+
+// repoUrl isn't client-supplied for github-repo — it's derived from repoFullName so the stored clone URL is always canonical.
+export function buildStoredGithubRepoConfig(input: GithubRepoConfigInput, existingSecrets: RuntimeConfig['secrets']): GithubRepoServiceConfig {
+	const repoFullName = input.repoFullName.trim();
+	const repoUrl = `https://github.com/${repoFullName}.git`;
+	return normalizeGithubRepoConfig({
+		...input,
+		repoUrl,
+		secrets: resolveSecrets(input.secrets, existingSecrets)
+	} as unknown as GithubRepoServiceConfig);
 }
 
 function normalizeDatabaseConfig(

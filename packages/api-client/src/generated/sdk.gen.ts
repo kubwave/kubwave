@@ -43,6 +43,12 @@ import type {
 	EnvironmentServiceStatusListResponses,
 	EnvironmentsUpdateData,
 	EnvironmentsUpdateResponses,
+	GitGithubConnectionGetData,
+	GitGithubConnectionGetResponses,
+	GitGithubCreateManifestData,
+	GitGithubCreateManifestResponses,
+	GitGithubDisconnectData,
+	GitGithubDisconnectResponses,
 	HealthGetData,
 	HealthGetResponses,
 	InvitationsAcceptData,
@@ -143,6 +149,18 @@ import type {
 	SetupInitializeResponses,
 	SetupStatusData,
 	SetupStatusResponses,
+	TeamGitConnectionGetData,
+	TeamGitConnectionGetResponses,
+	TeamGitInstallationReposListData,
+	TeamGitInstallationReposListResponses,
+	TeamGitInstallationReposSyncData,
+	TeamGitInstallationReposSyncResponses,
+	TeamGitInstallationsBindData,
+	TeamGitInstallationsBindResponses,
+	TeamGitInstallationsListData,
+	TeamGitInstallationsListResponses,
+	TeamGitInstallationsUnbindData,
+	TeamGitInstallationsUnbindResponses,
 	TeamMembersAddData,
 	TeamMembersAddResponses,
 	TeamMembersListData,
@@ -1333,4 +1351,116 @@ export const environmentServicesCreateFromTemplate = <ThrowOnError extends boole
 			'Content-Type': 'application/json',
 			...options.headers
 		}
+	});
+
+/**
+ * Build a GitHub App manifest and signed state
+ */
+export const gitGithubCreateManifest = <ThrowOnError extends boolean = false>(
+	options?: Options<GitGithubCreateManifestData, ThrowOnError>
+): RequestResult<GitGithubCreateManifestResponses, unknown, ThrowOnError> =>
+	(options?.client ?? client).post<GitGithubCreateManifestResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/git/github/manifest',
+		...options
+	});
+
+/**
+ * Disconnect the GitHub App
+ */
+export const gitGithubDisconnect = <ThrowOnError extends boolean = false>(
+	options?: Options<GitGithubDisconnectData, ThrowOnError>
+): RequestResult<GitGithubDisconnectResponses, unknown, ThrowOnError> =>
+	(options?.client ?? client).delete<GitGithubDisconnectResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/git/github',
+		...options
+	});
+
+/**
+ * Get the connected GitHub App
+ */
+export const gitGithubConnectionGet = <ThrowOnError extends boolean = false>(
+	options?: Options<GitGithubConnectionGetData, ThrowOnError>
+): RequestResult<GitGithubConnectionGetResponses, unknown, ThrowOnError> =>
+	(options?.client ?? client).get<GitGithubConnectionGetResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/git/github',
+		...options
+	});
+
+/**
+ * List the team’s GitHub installations
+ */
+export const teamGitInstallationsList = <ThrowOnError extends boolean = false>(
+	options: Options<TeamGitInstallationsListData, ThrowOnError>
+): RequestResult<TeamGitInstallationsListResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).get<TeamGitInstallationsListResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/teams/{teamId}/git/installations',
+		...options
+	});
+
+/**
+ * Bind a GitHub App installation to the team
+ */
+export const teamGitInstallationsBind = <ThrowOnError extends boolean = false>(
+	options: Options<TeamGitInstallationsBindData, ThrowOnError>
+): RequestResult<TeamGitInstallationsBindResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<TeamGitInstallationsBindResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/teams/{teamId}/git/installations',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
+
+/**
+ * Whether a GitHub App is connected, plus the install URL
+ */
+export const teamGitConnectionGet = <ThrowOnError extends boolean = false>(
+	options: Options<TeamGitConnectionGetData, ThrowOnError>
+): RequestResult<TeamGitConnectionGetResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).get<TeamGitConnectionGetResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/teams/{teamId}/git/connection',
+		...options
+	});
+
+/**
+ * List repositories available to an installation
+ */
+export const teamGitInstallationReposList = <ThrowOnError extends boolean = false>(
+	options: Options<TeamGitInstallationReposListData, ThrowOnError>
+): RequestResult<TeamGitInstallationReposListResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).get<TeamGitInstallationReposListResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/teams/{teamId}/git/installations/{installationId}/repos',
+		...options
+	});
+
+/**
+ * Re-sync an installation’s repositories from GitHub
+ */
+export const teamGitInstallationReposSync = <ThrowOnError extends boolean = false>(
+	options: Options<TeamGitInstallationReposSyncData, ThrowOnError>
+): RequestResult<TeamGitInstallationReposSyncResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<TeamGitInstallationReposSyncResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/teams/{teamId}/git/installations/{installationId}/repos/sync',
+		...options
+	});
+
+/**
+ * Unbind a GitHub installation from the team
+ */
+export const teamGitInstallationsUnbind = <ThrowOnError extends boolean = false>(
+	options: Options<TeamGitInstallationsUnbindData, ThrowOnError>
+): RequestResult<TeamGitInstallationsUnbindResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).delete<TeamGitInstallationsUnbindResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/teams/{teamId}/git/installations/{installationId}',
+		...options
 	});

@@ -47,7 +47,7 @@ export const teams = pgTable(
 export type Team = typeof teams.$inferSelect;
 export type NewTeam = typeof teams.$inferInsert;
 
-export type ServiceType = 'docker-image' | 'dockerfile' | 'public-repo' | 'private-repo' | DatabaseEngine;
+export type ServiceType = 'docker-image' | 'dockerfile' | 'public-repo' | 'private-repo' | 'github-repo' | DatabaseEngine;
 
 // Single-instance managed-database engines; each is its own service type but shares one config shape (DatabaseServiceConfig) and one worker deployer.
 export type DatabaseEngine = 'postgres' | 'mysql' | 'mariadb' | 'mongodb';
@@ -140,6 +140,22 @@ export interface PrivateRepoServiceConfig extends RuntimeConfig {
 	dockerfilePath?: string;
 }
 
+// Same shape as PublicRepoServiceConfig but authenticated via a GitHub App installation instead of a deploy key; clone/poll mint a short-lived token from it.
+export interface GithubRepoServiceConfig extends RuntimeConfig {
+	repoUrl: string;
+	branch: string;
+	commit?: string;
+	rootDirectory?: string;
+	buildCommand?: string;
+	startCommand?: string;
+	// FK → git_installations.id. The API validates it belongs to the service's team.
+	installationId: string;
+	// owner/repo, cached so webhook routing and clone-URL derivation don't re-parse repoUrl.
+	repoFullName: string;
+	builder: 'nixpacks' | 'dockerfile';
+	dockerfilePath?: string;
+}
+
 // Single-instance managed database; reuses RuntimeConfig but the worker derives image/port/init-env/volume/probe from the engine catalog.
 export interface DatabaseServiceConfig extends RuntimeConfig {
 	version: string; // engine major, validated against the engine catalog (e.g. "16", "8.4")
@@ -168,6 +184,7 @@ export type ServiceConfig =
 	| DockerfileServiceConfig
 	| PublicRepoServiceConfig
 	| PrivateRepoServiceConfig
+	| GithubRepoServiceConfig
 	| DatabaseServiceConfig;
 
 export const teamMembers = pgTable(
@@ -223,6 +240,76 @@ export const sshKeys = pgTable(
 
 export type SshKey = typeof sshKeys.$inferSelect;
 export type NewSshKey = typeof sshKeys.$inferInsert;
+
+export const gitProvider = pgEnum('git_provider', ['github']);
+
+export const gitAppConnections = pgTable(
+	'git_app_connections',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		provider: gitProvider('provider').notNull().default('github'),
+		// GitHub App numeric id, as text; its URL slug is display-only.
+		appId: text('app_id').notNull(),
+		appSlug: text('app_slug').notNull(),
+		// clientId isn't secret; the client secret and RSA private key are encryptSecret() ciphertext, never returned to clients.
+		clientId: text('client_id'),
+		clientSecretCiphertext: text('client_secret_ciphertext'),
+		privateKeyCiphertext: text('private_key_ciphertext').notNull(),
+		webhookSecretCiphertext: text('webhook_secret_ciphertext').notNull(),
+		createdByUserId: uuid('created_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+	},
+	table => [uniqueIndex('git_app_connections_provider_app_id_unique').on(table.provider, table.appId)]
+);
+
+export type GitAppConnection = typeof gitAppConnections.$inferSelect;
+export type NewGitAppConnection = typeof gitAppConnections.$inferInsert;
+
+export const gitInstallations = pgTable(
+	'git_installations',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		connectionId: uuid('connection_id')
+			.notNull()
+			.references(() => gitAppConnections.id, { onDelete: 'cascade' }),
+		// GitHub numeric installation id, as text; used to mint installation tokens.
+		githubInstallationId: text('github_installation_id').notNull(),
+		accountLogin: text('account_login').notNull(),
+		accountType: text('account_type').notNull(),
+		teamId: uuid('team_id')
+			.notNull()
+			.references(() => teams.id, { onDelete: 'cascade' }),
+		suspendedAt: timestamp('suspended_at', { withTimezone: true }),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+	},
+	table => [
+		uniqueIndex('git_installations_connection_github_id_unique').on(table.connectionId, table.githubInstallationId),
+		index('git_installations_team_id_idx').on(table.teamId)
+	]
+);
+
+export type GitInstallation = typeof gitInstallations.$inferSelect;
+export type NewGitInstallation = typeof gitInstallations.$inferInsert;
+
+export const gitRepositories = pgTable(
+	'git_repositories',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		installationId: uuid('installation_id')
+			.notNull()
+			.references(() => gitInstallations.id, { onDelete: 'cascade' }),
+		repoFullName: text('repo_full_name').notNull(),
+		defaultBranch: text('default_branch').notNull().default('main'),
+		isPrivate: boolean('is_private').notNull().default(true),
+		lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }).notNull().defaultNow()
+	},
+	table => [uniqueIndex('git_repositories_installation_full_name_unique').on(table.installationId, table.repoFullName)]
+);
+
+export type GitRepository = typeof gitRepositories.$inferSelect;
+export type NewGitRepository = typeof gitRepositories.$inferInsert;
 
 export const projects = pgTable(
 	'projects',
@@ -288,6 +375,7 @@ export const serviceType = pgEnum('service_type', [
 	'dockerfile',
 	'public-repo',
 	'private-repo',
+	'github-repo',
 	'postgres',
 	'mysql',
 	'mariadb',

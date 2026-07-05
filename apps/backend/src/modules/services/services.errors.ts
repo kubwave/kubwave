@@ -30,6 +30,12 @@ export class SshKeyNotAvailableError extends ApiError {
 	}
 }
 
+export class GitInstallationNotAvailableError extends ApiError {
+	constructor() {
+		super(400, 'git_installation_not_available', { message: 'Select a connected repository that belongs to this team.' });
+	}
+}
+
 export class InvalidDatabaseVersionError extends ApiError {
 	constructor(version: string) {
 		super(400, 'invalid_database_version', { message: `Version "${version}" is not available for this database engine.` });

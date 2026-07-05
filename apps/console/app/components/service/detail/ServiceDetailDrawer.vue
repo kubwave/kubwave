@@ -55,7 +55,11 @@ function onDeleted() {
 const imageLabel = computed(() => {
 	const config = props.service?.config;
 	if (!config) return '';
-	return 'image' in config ? `${config.image}:${config.tag}` : 'Built from Dockerfile';
+	if ('image' in config) return `${config.image}:${config.tag}`;
+	if ('repoFullName' in config) return config.repoFullName;
+	if ('repoUrl' in config) return config.repoUrl;
+	if ('dockerfile' in config) return 'Built from Dockerfile';
+	return '';
 });
 </script>
 

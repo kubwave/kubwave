@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { DeploymentsModule } from './modules/deployments/deployments.module.js';
 import { EnvironmentsModule } from './modules/environments/environments.module.js';
+import { GitModule } from './modules/git/git.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { InvitationsModule } from './modules/invitations/invitations.module.js';
 import { PlatformModule } from './modules/platform/platform.module.js';
@@ -25,7 +26,8 @@ import { TemplatesModule } from './modules/templates/templates.module.js';
 		DeploymentsModule,
 		InvitationsModule,
 		PlatformModule,
-		TemplatesModule
+		TemplatesModule,
+		GitModule
 	]
 })
 export class ApiModule {}

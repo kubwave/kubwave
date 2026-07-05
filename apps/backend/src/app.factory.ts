@@ -9,7 +9,9 @@ import { ApiExceptionFilter } from './shared/errors/api-exception.filter.js';
 
 export async function createApiApp(): Promise<NestFastifyApplication> {
 	const app = await NestFactory.create<NestFastifyApplication>(ApiModule, new FastifyAdapter({ logger: false, trustProxy: true }), {
-		bufferLogs: true
+		bufferLogs: true,
+		// Keep the untouched request bytes so the GitHub webhook can verify its HMAC signature over the exact payload.
+		rawBody: true
 	});
 
 	await app.register(cookie);

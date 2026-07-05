@@ -20,6 +20,8 @@ defineProps<{
 
 		<ServiceSettingsSourcePrivateRepo v-if="service.type === 'private-repo'" :state :saving :service />
 
+		<ServiceSettingsSourceGithub v-if="service.type === 'github-repo'" :state :saving :service />
+
 		<ServiceSettingsSourceDatabase v-if="isDatabaseEngine(service.type)" :state :saving :service />
 	</div>
 </template>

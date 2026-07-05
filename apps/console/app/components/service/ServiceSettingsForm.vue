@@ -141,7 +141,9 @@ watch(
 	}
 );
 
-const isRepoType = computed(() => props.service.type === 'public-repo' || props.service.type === 'private-repo');
+const isRepoType = computed(
+	() => props.service.type === 'public-repo' || props.service.type === 'private-repo' || props.service.type === 'github-repo'
+);
 
 function addEnv() {
 	state.env.push({ _id: crypto.randomUUID(), key: '', value: '' });
@@ -298,6 +300,20 @@ function buildConfig(values: ServiceSettingsValues) {
 			repoUrl: values.repoUrl.trim(),
 			branch: values.branch.trim(),
 			sshKeyId: values.sshKeyId.trim(),
+			builder: values.builder,
+			...(values.builder === 'dockerfile' && values.dockerfilePath.trim() ? { dockerfilePath: values.dockerfilePath.trim() } : {}),
+			...(values.commit.trim() ? { commit: values.commit.trim() } : {}),
+			...(values.rootDirectory.trim() ? { rootDirectory: values.rootDirectory.trim() } : {}),
+			...(values.builder !== 'dockerfile' && values.buildCommand.trim() ? { buildCommand: values.buildCommand.trim() } : {}),
+			...(values.builder !== 'dockerfile' && values.startCommand.trim() ? { startCommand: values.startCommand.trim() } : {}),
+			...sharedConfig
+		};
+	}
+	if (props.service.type === 'github-repo') {
+		return {
+			installationId: values.installationId.trim(),
+			repoFullName: values.repoFullName.trim(),
+			branch: values.branch.trim(),
 			builder: values.builder,
 			...(values.builder === 'dockerfile' && values.dockerfilePath.trim() ? { dockerfilePath: values.dockerfilePath.trim() } : {}),
 			...(values.commit.trim() ? { commit: values.commit.trim() } : {}),

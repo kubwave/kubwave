@@ -4,6 +4,7 @@ import type {
 	DefaultDomainSettings,
 	DockerfileServiceConfig,
 	DockerImageServiceConfig,
+	GithubRepoServiceConfig,
 	PrivateRepoServiceConfig,
 	PublicRepoServiceConfig,
 	ServiceConfig,
@@ -17,8 +18,15 @@ export type DockerImageConfigView = Omit<DockerImageServiceConfig, 'secrets'> & 
 export type DockerfileConfigView = Omit<DockerfileServiceConfig, 'secrets'> & { secrets: SecretsView };
 export type PublicRepoConfigView = Omit<PublicRepoServiceConfig, 'secrets'> & { secrets: SecretsView };
 export type PrivateRepoConfigView = Omit<PrivateRepoServiceConfig, 'secrets'> & { secrets: SecretsView };
+export type GithubRepoConfigView = Omit<GithubRepoServiceConfig, 'secrets'> & { secrets: SecretsView };
 export type DatabaseConfigView = Omit<DatabaseServiceConfig, 'secrets' | 'password'> & { secrets: SecretsView };
-export type ServiceConfigView = DockerImageConfigView | DockerfileConfigView | PublicRepoConfigView | PrivateRepoConfigView | DatabaseConfigView;
+export type ServiceConfigView =
+	| DockerImageConfigView
+	| DockerfileConfigView
+	| PublicRepoConfigView
+	| PrivateRepoConfigView
+	| GithubRepoConfigView
+	| DatabaseConfigView;
 
 export interface ServiceConnectionView {
 	engine: ServiceType;

@@ -127,15 +127,60 @@ export function jobStatus(job: V1Job): 'running' | 'succeeded' | 'failed' {
 	return 'running';
 }
 
-// Collapse CLI error output: prefer the `Error:`/`error ` line, else drop a trailing cobra `Usage:` block, else tail. Capped to 2000 chars.
+// BuildKit's terminal `error: failed to solve … exit code: 1` hides the real cause; the actual command output is what we want, not the wrapper.
+function isGenericBuildkitError(line: string): boolean {
+	return /failed to solve|did not complete successfully/i.test(line);
+}
+
+// Strip a leading BuildKit step prefix (`#12 ` progress marker or the in-block `12.34 ` elapsed-seconds stamp) so the raw command output reads cleanly.
+function stripStepPrefix(line: string): string {
+	return line.replace(/^#\d+\s+/, '').replace(/^\d+(?:\.\d+)?\s/, '');
+}
+
+// On a failed RUN, BuildKit echoes the step's tail output between `------` fences under a `> [stage] RUN …:` header. That block is the real error; return it if present.
+function extractBuildkitFailureBlock(lines: string[]): string | null {
+	const fences = lines.reduce<number[]>((acc, l, i) => (/^-{6,}$/.test(l.trim()) ? [...acc, i] : acc), []);
+
+	for (let f = fences.length - 1; f >= 1; f--) {
+		const start = fences[f - 1];
+		const end = fences[f];
+		if (start === undefined || end === undefined) continue;
+		const header = lines[start + 1]?.trim() ?? '';
+		if (!/^>\s/.test(header)) continue;
+
+		const body = lines
+			.slice(start + 2, end)
+			.map(stripStepPrefix)
+			.map(l => l.trimEnd())
+			.filter(Boolean);
+		if (body.length === 0) continue;
+
+		const step = header
+			.replace(/^>\s*/, '')
+			.replace(/:\s*$/, '')
+			.replace(/^\[[^\]]*\]\s*/, '');
+
+		return [step, ...body.slice(-12)].join('\n').slice(0, 2000);
+	}
+
+	return null;
+}
+
+// Collapse build output to the real cause: prefer BuildKit's failing-step block, then a non-generic `Error:` line, else drop a trailing cobra `Usage:` block, else tail. Capped to 2000 chars.
 export function summarizeBuildLog(raw: string): string {
 	const lines = raw.split('\n');
-	const errLine = lines.find(l => /^\s*(error[:\s]|fatal[:\s])/i.test(l));
 
+	const fenced = extractBuildkitFailureBlock(lines);
+	if (fenced) return fenced;
+
+	const errLine = lines.find(l => /^\s*(error[:\s]|fatal[:\s])/i.test(l) && !isGenericBuildkitError(l));
 	if (errLine) return errLine.trim();
 
 	const usageAt = lines.findIndex(l => l.trim() === 'Usage:');
-	const kept = (usageAt >= 0 ? lines.slice(0, usageAt) : lines).map(l => l.trimEnd()).filter(Boolean);
+	const kept = (usageAt >= 0 ? lines.slice(0, usageAt) : lines)
+		.map(stripStepPrefix)
+		.map(l => l.trimEnd())
+		.filter(l => l && !isGenericBuildkitError(l));
 
 	return kept.slice(-12).join('\n').slice(0, 2000);
 }

@@ -71,6 +71,9 @@ export const serviceSettingsSchema = z
 		startCommand: z.string(),
 		// private-repo only: the team deploy key id. Empty for every other type.
 		sshKeyId: z.string(),
+		// github-repo only: the installation row id + owner/repo. Empty for every other type.
+		installationId: z.string(),
+		repoFullName: z.string(),
 		// public/private-repo only: build method + (dockerfile mode) the Dockerfile path. Empty otherwise.
 		builder: z.string(),
 		dockerfilePath: z.string(),
@@ -247,6 +250,15 @@ export function makeServiceSettingsSchema(type: Service['type'], originalVolumeS
 			if (val.commit.trim() && !/^[0-9a-fA-F]{7,64}$/.test(val.commit.trim())) {
 				ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a valid commit SHA.', path: ['commit'] });
 			}
+		} else if (type === 'github-repo') {
+			if (!val.branch.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a branch.', path: ['branch'] });
+			// repoFullName + installationId are fixed at creation and read-only here; flag defensively if the link is somehow missing.
+			if (!val.installationId.trim() || !val.repoFullName.trim()) {
+				ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'This service is missing its GitHub repository link.', path: ['repoFullName'] });
+			}
+			if (val.commit.trim() && !/^[0-9a-fA-F]{7,64}$/.test(val.commit.trim())) {
+				ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a valid commit SHA.', path: ['commit'] });
+			}
 		} else if (isDatabaseEngine(type)) {
 			if (!val.version.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Pick a version.', path: ['version'] });
 			// Storage is grow-only; the API enforces the no-shrink rule, here we only validate the quantity.
@@ -287,6 +299,8 @@ export function snapshot(service: Service): ServiceSettingsValues {
 		buildCommand: 'buildCommand' in service.config ? (service.config.buildCommand ?? '') : '',
 		startCommand: 'startCommand' in service.config ? (service.config.startCommand ?? '') : '',
 		sshKeyId: 'sshKeyId' in service.config ? service.config.sshKeyId : '',
+		installationId: 'installationId' in service.config ? service.config.installationId : '',
+		repoFullName: 'repoFullName' in service.config ? service.config.repoFullName : '',
 		builder: 'builder' in service.config ? service.config.builder : 'nixpacks',
 		dockerfilePath: 'dockerfilePath' in service.config ? (service.config.dockerfilePath ?? '') : '',
 		version: 'version' in service.config ? service.config.version : '',

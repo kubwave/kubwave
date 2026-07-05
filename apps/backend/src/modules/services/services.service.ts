@@ -11,6 +11,7 @@ import {
 	databaseConnectionUri,
 	db,
 	environments,
+	gitInstallations,
 	isAllowedDatabaseVersion,
 	isDatabaseEngine,
 	projects,
@@ -29,6 +30,7 @@ import {
 	buildStoredConfig,
 	buildStoredDatabaseConfig,
 	buildStoredDockerfileConfig,
+	buildStoredGithubRepoConfig,
 	buildStoredPrivateRepoConfig,
 	buildStoredPublicRepoConfig,
 	normalizeDockerConfig,
@@ -40,6 +42,7 @@ import { parseComposeServices } from './compose/compose.parser.js';
 import { composeReferenceIssues, rewriteComposeServiceReferences } from './compose/compose.references.js';
 import {
 	ComposeImportError,
+	GitInstallationNotAvailableError,
 	InvalidDatabaseVersionError,
 	NotADatabaseServiceError,
 	ServiceConfigTypeMismatchError,
@@ -51,7 +54,7 @@ import {
 import type { DefaultDomainContext, ServiceConnectionView, ServiceRow, ServiceView } from './services.types.js';
 
 function isRepoType(type: ServiceType): boolean {
-	return type === 'public-repo' || type === 'private-repo';
+	return type === 'public-repo' || type === 'private-repo' || type === 'github-repo';
 }
 
 function autoDeployColumns(
@@ -134,6 +137,9 @@ export class ServicesService {
 		if (input.type === 'private-repo') {
 			await this.assertSshKeyForTeam(environment.teamId, input.config.sshKeyId);
 		}
+		if (input.type === 'github-repo') {
+			await this.assertInstallationForTeam(environment.teamId, input.config.installationId);
+		}
 
 		const config: ServiceConfig = (() => {
 			switch (input.type) {
@@ -143,6 +149,8 @@ export class ServicesService {
 					return buildStoredPublicRepoConfig(input.config, []);
 				case 'private-repo':
 					return buildStoredPrivateRepoConfig(input.config, []);
+				case 'github-repo':
+					return buildStoredGithubRepoConfig(input.config, []);
 				case 'postgres':
 				case 'mysql':
 				case 'mariadb':
@@ -298,6 +306,10 @@ export class ServicesService {
 			} else if (service.type === 'public-repo') {
 				if (!('repoUrl' in incoming) || 'sshKeyId' in incoming) throw new ServiceConfigTypeMismatchError();
 				values.config = buildStoredPublicRepoConfig(incoming, service.config.secrets);
+			} else if (service.type === 'github-repo') {
+				if (!('installationId' in incoming) || !('repoFullName' in incoming)) throw new ServiceConfigTypeMismatchError();
+				await this.assertInstallationForTeam(service.teamId, incoming.installationId);
+				values.config = buildStoredGithubRepoConfig(incoming, service.config.secrets);
 			} else if (isDatabaseEngine(service.type)) {
 				if (!('version' in incoming) || !('storage' in incoming)) throw new ServiceConfigTypeMismatchError();
 				if (!isAllowedDatabaseVersion(service.type, incoming.version)) throw new InvalidDatabaseVersionError(incoming.version);
@@ -377,6 +389,16 @@ export class ServicesService {
 			.limit(1);
 
 		if (!row) throw new SshKeyNotAvailableError();
+	}
+
+	private async assertInstallationForTeam(teamId: string, installationId: string): Promise<void> {
+		const [row] = await db
+			.select({ id: gitInstallations.id })
+			.from(gitInstallations)
+			.where(and(eq(gitInstallations.id, installationId), eq(gitInstallations.teamId, teamId)))
+			.limit(1);
+
+		if (!row) throw new GitInstallationNotAvailableError();
 	}
 
 	private async loadDefaultDomainContext(): Promise<DefaultDomainContext> {
