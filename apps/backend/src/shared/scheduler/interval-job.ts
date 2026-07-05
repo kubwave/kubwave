@@ -24,8 +24,8 @@ export function createIntervalJob(opts: IntervalJobOptions): IntervalJob {
 		enabled = true,
 		runImmediately = false,
 		unref = true,
-		setIntervalFn = setInterval,
-		clearIntervalFn = clearInterval
+		setIntervalFn = setInterval as SetIntervalFn,
+		clearIntervalFn = clearInterval as ClearIntervalFn
 	} = opts;
 	if (!enabled) return { stop() {} };
 
