@@ -5,14 +5,14 @@ import { CurrentUserId } from '../../shared/auth/current-user.decorator.js';
 import { ZodValidationPipe } from '../../shared/validation/zod-validation.pipe.js';
 import { GitInstallationsService } from './git-installations.service.js';
 import {
-	BindInstallationDto,
-	bindInstallationSchema,
+	claimInstallationSchema,
 	gitInstallationParamSchema,
 	gitTeamParamSchema,
+	ClaimInstallationDto,
 	GitInstallationDto,
 	GitRepositoryDto,
 	TeamGitConnectionDto,
-	type BindInstallationInput,
+	type ClaimInstallationInput,
 	type GitInstallationParam,
 	type GitTeamParam
 } from './git-repos.dto.js';
@@ -24,17 +24,17 @@ import {
 export class GitReposController {
 	constructor(private readonly installations: GitInstallationsService) {}
 
-	@Post('teams/:teamId/git/installations')
+	@Post('teams/:teamId/git/installations/claim')
 	@HttpCode(200)
-	@ApiOperation({ operationId: 'teamGitInstallationsBind', summary: 'Bind a GitHub App installation to the team' })
-	@ApiBody({ type: BindInstallationDto })
+	@ApiOperation({ operationId: 'teamGitInstallationsClaim', summary: 'Redeem an ownership-verified install grant to bind it to the team' })
+	@ApiBody({ type: ClaimInstallationDto })
 	@ApiOkResponse({ type: GitInstallationDto })
-	bind(
+	claim(
 		@CurrentUserId() userId: string,
 		@Param(new ZodValidationPipe(gitTeamParamSchema)) params: GitTeamParam,
-		@Body(new ZodValidationPipe(bindInstallationSchema)) body: BindInstallationInput
+		@Body(new ZodValidationPipe(claimInstallationSchema)) body: ClaimInstallationInput
 	): Promise<GitInstallationDto> {
-		return this.installations.bindInstallation(userId, params.teamId, body.githubInstallationId);
+		return this.installations.claimInstallation(userId, params.teamId, body.grant);
 	}
 
 	@Get('teams/:teamId/git/connection')

@@ -11,6 +11,8 @@ import { appsNewUrl, buildAppManifest, installUrl, parseManifestConversion } fro
 import type { GithubConnectionDto, GithubManifestDto } from './git-connection.dto.js';
 
 const STATE_PURPOSE = 'github-app-manifest';
+const INSTALL_STATE_PURPOSE = 'github-app-install';
+const INSTALL_GRANT_PURPOSE = 'github-install-grant';
 const GITHUB_API = 'https://api.github.com';
 
 @Injectable()
@@ -102,6 +104,60 @@ export class GitConnectionService {
 		return { connectionId: row.id, appJwt: jwt };
 	}
 
+	// State binds the install to the authenticated caller (uid+teamId); the callback trusts it because only this authed path mints it.
+	async teamInstallUrl(uid: string, teamId: string): Promise<string | null> {
+		const conn = await this.getConnection();
+		if (!conn.connected || !conn.appSlug) return null;
+		const state = await new SignJWT({ purpose: INSTALL_STATE_PURPOSE, uid, teamId })
+			.setProtectedHeader({ alg: 'HS256' })
+			.setIssuedAt()
+			.setExpirationTime('30m')
+			.sign(this.stateSecret());
+		return `${installUrl(conn.appSlug)}?state=${encodeURIComponent(state)}`;
+	}
+
+	async verifyInstallState(state: string): Promise<{ uid: string; teamId: string }> {
+		try {
+			const { payload } = await jwtVerify(state, this.stateSecret());
+			if (payload.purpose !== INSTALL_STATE_PURPOSE) throw new Error('bad purpose');
+			if (typeof payload.uid !== 'string' || typeof payload.teamId !== 'string') throw new Error('missing claims');
+			return { uid: payload.uid, teamId: payload.teamId };
+		} catch {
+			throw new ApiError(400, 'invalid_state');
+		}
+	}
+
+	// Bearer of a valid grant still can't bind for someone else: the console redeems it authenticated and uid must match the claimer.
+	signInstallGrant(uid: string, teamId: string, githubInstallationId: string): Promise<string> {
+		return new SignJWT({ purpose: INSTALL_GRANT_PURPOSE, uid, teamId, gid: githubInstallationId })
+			.setProtectedHeader({ alg: 'HS256' })
+			.setIssuedAt()
+			.setExpirationTime('5m')
+			.sign(this.stateSecret());
+	}
+
+	async verifyInstallGrant(grant: string): Promise<{ uid: string; teamId: string; githubInstallationId: string }> {
+		try {
+			const { payload } = await jwtVerify(grant, this.stateSecret());
+			if (payload.purpose !== INSTALL_GRANT_PURPOSE) throw new Error('bad purpose');
+			if (typeof payload.uid !== 'string' || typeof payload.teamId !== 'string' || typeof payload.gid !== 'string') throw new Error('missing claims');
+			return { uid: payload.uid, teamId: payload.teamId, githubInstallationId: payload.gid };
+		} catch {
+			throw new ApiError(400, 'invalid_grant');
+		}
+	}
+
+	async getOAuthCredentials(): Promise<{ clientId: string; clientSecret: string }> {
+		const [row] = await db
+			.select({ clientId: gitAppConnections.clientId, ct: gitAppConnections.clientSecretCiphertext })
+			.from(gitAppConnections)
+			.where(eq(gitAppConnections.provider, 'github'))
+			.orderBy(desc(gitAppConnections.createdAt))
+			.limit(1);
+		if (!row?.clientId || !row.ct) throw new ApiError(400, 'github_oauth_not_configured');
+		return { clientId: row.clientId, clientSecret: decryptSecret(row.ct) };
+	}
+
 	async getWebhookSecret(): Promise<string | null> {
 		const [row] = await db
 			.select({ ct: gitAppConnections.webhookSecretCiphertext })
@@ -119,5 +175,9 @@ export class GitConnectionService {
 
 	consoleRedirect(query: Record<string, string>): string {
 		return `${this.config.api.appBaseUrl.replace(/\/+$/, '')}/admin/settings?${new URLSearchParams(query).toString()}`;
+	}
+
+	teamSetupRedirect(query: Record<string, string>): string {
+		return `${this.config.api.appBaseUrl.replace(/\/+$/, '')}/team/settings?${new URLSearchParams({ tab: 'github', ...query }).toString()}`;
 	}
 }

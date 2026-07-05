@@ -690,11 +690,11 @@ export type GithubConnectionDto = {
 	connectedAt: string | null;
 };
 
-export type BindInstallationDto = {
+export type ClaimInstallationDto = {
 	/**
-	 * GitHub numeric installation id returned to the setup redirect.
+	 * Signed grant from the install callback redirect (git_grant query param).
 	 */
-	githubInstallationId: string;
+	grant: string;
 };
 
 export type GitInstallationDto = {
@@ -2031,35 +2031,20 @@ export type GitGithubConnectionGetResponses = {
 
 export type GitGithubConnectionGetResponse = GitGithubConnectionGetResponses[keyof GitGithubConnectionGetResponses];
 
-export type TeamGitInstallationsListData = {
-	body?: never;
+export type TeamGitInstallationsClaimData = {
+	body: ClaimInstallationDto;
 	path: {
 		teamId: string;
 	};
 	query?: never;
-	url: '/api/teams/{teamId}/git/installations';
+	url: '/api/teams/{teamId}/git/installations/claim';
 };
 
-export type TeamGitInstallationsListResponses = {
-	200: Array<GitInstallationDto>;
-};
-
-export type TeamGitInstallationsListResponse = TeamGitInstallationsListResponses[keyof TeamGitInstallationsListResponses];
-
-export type TeamGitInstallationsBindData = {
-	body: BindInstallationDto;
-	path: {
-		teamId: string;
-	};
-	query?: never;
-	url: '/api/teams/{teamId}/git/installations';
-};
-
-export type TeamGitInstallationsBindResponses = {
+export type TeamGitInstallationsClaimResponses = {
 	200: GitInstallationDto;
 };
 
-export type TeamGitInstallationsBindResponse = TeamGitInstallationsBindResponses[keyof TeamGitInstallationsBindResponses];
+export type TeamGitInstallationsClaimResponse = TeamGitInstallationsClaimResponses[keyof TeamGitInstallationsClaimResponses];
 
 export type TeamGitConnectionGetData = {
 	body?: never;
@@ -2075,6 +2060,21 @@ export type TeamGitConnectionGetResponses = {
 };
 
 export type TeamGitConnectionGetResponse = TeamGitConnectionGetResponses[keyof TeamGitConnectionGetResponses];
+
+export type TeamGitInstallationsListData = {
+	body?: never;
+	path: {
+		teamId: string;
+	};
+	query?: never;
+	url: '/api/teams/{teamId}/git/installations';
+};
+
+export type TeamGitInstallationsListResponses = {
+	200: Array<GitInstallationDto>;
+};
+
+export type TeamGitInstallationsListResponse = TeamGitInstallationsListResponses[keyof TeamGitInstallationsListResponses];
 
 export type TeamGitInstallationReposListData = {
 	body?: never;

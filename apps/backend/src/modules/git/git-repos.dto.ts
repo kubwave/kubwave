@@ -7,12 +7,12 @@ export type GitTeamParam = z.infer<typeof gitTeamParamSchema>;
 export const gitInstallationParamSchema = z.object({ teamId: z.string().uuid(), installationId: z.string().uuid() });
 export type GitInstallationParam = z.infer<typeof gitInstallationParamSchema>;
 
-export const bindInstallationSchema = z.object({ githubInstallationId: z.string().trim().min(1).max(40) });
-export type BindInstallationInput = z.infer<typeof bindInstallationSchema>;
+export const claimInstallationSchema = z.object({ grant: z.string().trim().min(1).max(2048) });
+export type ClaimInstallationInput = z.infer<typeof claimInstallationSchema>;
 
-export class BindInstallationDto {
-	@ApiProperty({ type: String, description: 'GitHub numeric installation id returned to the setup redirect.' })
-	githubInstallationId!: string;
+export class ClaimInstallationDto {
+	@ApiProperty({ type: String, description: 'Signed grant from the install callback redirect (git_grant query param).' })
+	grant!: string;
 }
 
 export class GitInstallationDto {

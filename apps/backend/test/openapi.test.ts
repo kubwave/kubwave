@@ -120,8 +120,10 @@ describe('Nest OpenAPI contract', () => {
 		expect(operation('/api/git/github', 'get').operationId).toBe('gitGithubConnectionGet');
 		expect(operation('/api/git/github', 'delete').operationId).toBe('gitGithubDisconnect');
 		expect(operation('/api/teams/{teamId}/git/connection', 'get').operationId).toBe('teamGitConnectionGet');
-		expect(operation('/api/teams/{teamId}/git/installations', 'post').operationId).toBe('teamGitInstallationsBind');
 		expect(operation('/api/teams/{teamId}/git/installations', 'get').operationId).toBe('teamGitInstallationsList');
+		expect(operation('/api/teams/{teamId}/git/installations/claim', 'post').operationId).toBe('teamGitInstallationsClaim');
+		// Binding takes no caller-supplied installation id: the only write path redeems an ownership-verified grant from the install callback.
+		expect(spec.paths['/api/teams/{teamId}/git/installations']?.post).toBeUndefined();
 		expect(operation('/api/teams/{teamId}/git/installations/{installationId}/repos', 'get').operationId).toBe('teamGitInstallationReposList');
 		expect(spec.paths['/api/environments/{environmentId}/flow-layout/ws']).toBeUndefined();
 		// The manifest-flow callback is a browser-only redirect (ApiExcludeEndpoint) — never part of the generated client.

@@ -155,8 +155,8 @@ import type {
 	TeamGitInstallationReposListResponses,
 	TeamGitInstallationReposSyncData,
 	TeamGitInstallationReposSyncResponses,
-	TeamGitInstallationsBindData,
-	TeamGitInstallationsBindResponses,
+	TeamGitInstallationsClaimData,
+	TeamGitInstallationsClaimResponses,
 	TeamGitInstallationsListData,
 	TeamGitInstallationsListResponses,
 	TeamGitInstallationsUnbindData,
@@ -1390,26 +1390,14 @@ export const gitGithubConnectionGet = <ThrowOnError extends boolean = false>(
 	});
 
 /**
- * List the team’s GitHub installations
+ * Redeem an ownership-verified install grant to bind it to the team
  */
-export const teamGitInstallationsList = <ThrowOnError extends boolean = false>(
-	options: Options<TeamGitInstallationsListData, ThrowOnError>
-): RequestResult<TeamGitInstallationsListResponses, unknown, ThrowOnError> =>
-	(options.client ?? client).get<TeamGitInstallationsListResponses, unknown, ThrowOnError>({
+export const teamGitInstallationsClaim = <ThrowOnError extends boolean = false>(
+	options: Options<TeamGitInstallationsClaimData, ThrowOnError>
+): RequestResult<TeamGitInstallationsClaimResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<TeamGitInstallationsClaimResponses, unknown, ThrowOnError>({
 		security: [{ scheme: 'bearer', type: 'http' }],
-		url: '/api/teams/{teamId}/git/installations',
-		...options
-	});
-
-/**
- * Bind a GitHub App installation to the team
- */
-export const teamGitInstallationsBind = <ThrowOnError extends boolean = false>(
-	options: Options<TeamGitInstallationsBindData, ThrowOnError>
-): RequestResult<TeamGitInstallationsBindResponses, unknown, ThrowOnError> =>
-	(options.client ?? client).post<TeamGitInstallationsBindResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
-		url: '/api/teams/{teamId}/git/installations',
+		url: '/api/teams/{teamId}/git/installations/claim',
 		...options,
 		headers: {
 			'Content-Type': 'application/json',
@@ -1426,6 +1414,18 @@ export const teamGitConnectionGet = <ThrowOnError extends boolean = false>(
 	(options.client ?? client).get<TeamGitConnectionGetResponses, unknown, ThrowOnError>({
 		security: [{ scheme: 'bearer', type: 'http' }],
 		url: '/api/teams/{teamId}/git/connection',
+		...options
+	});
+
+/**
+ * List the team’s GitHub installations
+ */
+export const teamGitInstallationsList = <ThrowOnError extends boolean = false>(
+	options: Options<TeamGitInstallationsListData, ThrowOnError>
+): RequestResult<TeamGitInstallationsListResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).get<TeamGitInstallationsListResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/teams/{teamId}/git/installations',
 		...options
 	});
 

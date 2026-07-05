@@ -4,33 +4,39 @@ import { Github } from 'lucide-vue-next';
 const { activeTeam, activeTeamId } = useTeamContext();
 const route = useRoute();
 const router = useRouter();
+const toast = useToast();
 
 const isOwner = computed(() => activeTeam.value?.role === 'owner');
 
 const { data: connection } = useTeamGitConnection(activeTeamId);
 const { data: installations } = useGitInstallations(activeTeamId);
-const bind = useBindGitInstallation(activeTeamId);
+const claim = useClaimGitInstallation(activeTeamId);
 
 const connected = computed(() => connection.value?.connected ?? false);
 
+// Full-page navigation (not a popup): GitHub runs the OAuth-on-install step and redirects back to our callback, then here with a grant.
 function openInstall() {
-	if (connection.value?.installUrl) window.open(connection.value.installUrl, '_blank', 'noopener');
+	if (connection.value?.installUrl) window.location.href = connection.value.installUrl;
 }
 
-// Bind the installation GitHub sends back to on the setup redirect, once the active team is known.
-const bound = ref(false);
+// Redeem the callback's grant. A bare installation_id means an older App without OAuth-on-install — binding is refused, so guide a reconnect.
+const handled = ref(false);
 watch(
-	activeTeamId,
-	id => {
-		if (bound.value || !id) return;
-		const installationId = typeof route.query.installation_id === 'string' ? route.query.installation_id : null;
-		if (installationId && route.query.setup_action === 'install') {
-			bound.value = true;
-			bind
-				.mutateAsync(installationId)
-				.catch(() => {})
-				.finally(() => router.replace({ query: { tab: 'github' } }));
+	[activeTeamId, () => route.query],
+	() => {
+		const id = activeTeamId.value;
+		if (handled.value || !id) return;
+		const q = route.query;
+		if (!q.git_grant && !q.git_error && !q.installation_id) return;
+		handled.value = true;
+		if (typeof q.git_grant === 'string') {
+			claim.mutateAsync(q.git_grant).catch(() => {});
+		} else if (q.installation_id && !q.git_error) {
+			toast.error('This GitHub App must be reconnected by an administrator before repositories can be installed');
+		} else {
+			toast.error('Could not install repository access');
 		}
+		router.replace({ query: { tab: 'github' } });
 	},
 	{ immediate: true }
 );
@@ -75,7 +81,7 @@ watch(
 				</p>
 
 				<div v-if="isOwner">
-					<Button variant="outline" :disabled="bind.isPending.value" @click="openInstall">Install / manage repositories</Button>
+					<Button variant="outline" @click="openInstall">Install / manage repositories</Button>
 				</div>
 				<p v-else class="text-xs text-muted-foreground">Only team owners can install or change repository access.</p>
 			</template>

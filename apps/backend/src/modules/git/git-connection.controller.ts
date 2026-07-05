@@ -4,12 +4,16 @@ import { AdminGuard } from '../../shared/auth/auth.guard.js';
 import { CurrentUserId } from '../../shared/auth/current-user.decorator.js';
 import { errorMessage } from '../../shared/worker-common/errors.js';
 import { GitConnectionService } from './git-connection.service.js';
+import { GitInstallationsService } from './git-installations.service.js';
 import { GithubConnectionDto, GithubManifestDto } from './git-connection.dto.js';
 
 @ApiTags('git')
 @Controller('git/github')
 export class GitConnectionController {
-	constructor(private readonly connections: GitConnectionService) {}
+	constructor(
+		private readonly connections: GitConnectionService,
+		private readonly installations: GitInstallationsService
+	) {}
 
 	// `organization` is a query param (not a JSON body) so the console can POST with no body — an empty JSON body otherwise trips validation.
 	@Post('manifest')
@@ -23,11 +27,25 @@ export class GitConnectionController {
 		return this.connections.createManifest(organization?.trim() || undefined, userId);
 	}
 
-	// Browser redirect target for the manifest flow: public (no bearer survives a top-level GitHub redirect); the signed `state` is the auth.
+	// Browser redirect target for both GitHub flows: public (no bearer survives a top-level GitHub redirect); the signed `state` is the auth.
+	// GitHub sends installation_id only on the OAuth-on-install redirect; the manifest-creation callback carries code+state alone.
 	@Get('callback')
 	@Redirect()
 	@ApiExcludeEndpoint()
-	async callback(@Query('code') code?: string, @Query('state') state?: string): Promise<{ url: string }> {
+	async callback(
+		@Query('code') code?: string,
+		@Query('state') state?: string,
+		@Query('installation_id') installationId?: string
+	): Promise<{ url: string }> {
+		if (installationId) {
+			if (!code || !state) return { url: this.connections.teamSetupRedirect({ git_error: 'missing_code' }) };
+			try {
+				const grant = await this.installations.completeInstall(installationId, code, state);
+				return { url: this.connections.teamSetupRedirect({ git_grant: grant }) };
+			} catch (err) {
+				return { url: this.connections.teamSetupRedirect({ git_error: errorMessage(err) }) };
+			}
+		}
 		if (!code || !state) return { url: this.connections.consoleRedirect({ git_error: 'missing_code' }) };
 		try {
 			await this.connections.completeManifest(code, state);

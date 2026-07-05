@@ -109,8 +109,8 @@ import type {
 	TeamGitConnectionGetResponses,
 	TeamGitInstallationReposListResponses,
 	TeamGitInstallationReposSyncResponses,
-	TeamGitInstallationsBindData,
-	TeamGitInstallationsBindResponses,
+	TeamGitInstallationsClaimData,
+	TeamGitInstallationsClaimResponses,
 	TeamGitInstallationsListResponses,
 	TeamGitInstallationsUnbindResponses,
 	TeamMembersAddData,
@@ -530,7 +530,7 @@ export type KubwaveTeamsTeamIdGitConnectionResource = {
 export type KubwaveTeamsTeamIdGitInstallationsResource = {
 	(installationId: string): KubwaveTeamsTeamIdGitInstallationsInstallationIdResource;
 	get(): OperationResult<TeamGitInstallationsListResponses>;
-	post(body: TeamGitInstallationsBindData['body']): OperationResult<TeamGitInstallationsBindResponses>;
+	claim: KubwaveTeamsTeamIdGitInstallationsClaimResource;
 };
 
 export type KubwaveTeamsTeamIdGitInstallationsInstallationIdResource = {
@@ -545,6 +545,10 @@ export type KubwaveTeamsTeamIdGitInstallationsInstallationIdReposResource = {
 
 export type KubwaveTeamsTeamIdGitInstallationsInstallationIdReposSyncResource = {
 	post(): OperationResult<TeamGitInstallationReposSyncResponses>;
+};
+
+export type KubwaveTeamsTeamIdGitInstallationsClaimResource = {
+	post(body: TeamGitInstallationsClaimData['body']): OperationResult<TeamGitInstallationsClaimResponses>;
 };
 
 export type KubwaveTeamsTeamIdMembersResource = {
@@ -834,7 +838,9 @@ export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClie
 						}),
 						{
 							get: () => apiResult(raw.teamGitInstallationsList({ path: { teamId: teamId } })),
-							post: (body: TeamGitInstallationsBindData['body']) => apiResult(raw.teamGitInstallationsBind({ path: { teamId: teamId }, body }))
+							claim: {
+								post: (body: TeamGitInstallationsClaimData['body']) => apiResult(raw.teamGitInstallationsClaim({ path: { teamId: teamId }, body }))
+							}
 						}
 					)
 				},

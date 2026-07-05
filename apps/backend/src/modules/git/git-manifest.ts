@@ -7,6 +7,8 @@ export interface GithubManifest {
 	callback_urls: string[];
 	setup_url: string;
 	public: boolean;
+	// Set so the install redirect carries an OAuth code, which the callback trades for a token to prove the installer owns the install.
+	request_oauth_on_install: boolean;
 	default_permissions: Record<string, string>;
 	default_events?: string[];
 }
@@ -76,6 +78,7 @@ export function buildAppManifest(appBaseUrl: string, opts?: { name?: string }): 
 		callback_urls: [githubCallbackUrl(appBaseUrl)],
 		setup_url: githubSetupUrl(appBaseUrl),
 		public: false,
+		request_oauth_on_install: true,
 		default_permissions: { contents: 'read', metadata: 'read', pull_requests: 'write', statuses: 'write' },
 		// Events need a hook; both are omitted together when GitHub couldn't reach the webhook anyway.
 		...(reachable ? { hook_attributes: { url: githubWebhookUrl(appBaseUrl), active: true }, default_events: ['push', 'pull_request'] } : {})

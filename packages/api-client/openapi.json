@@ -3007,9 +3007,9 @@
 				"tags": ["git"]
 			}
 		},
-		"/api/teams/{teamId}/git/installations": {
+		"/api/teams/{teamId}/git/installations/claim": {
 			"post": {
-				"operationId": "teamGitInstallationsBind",
+				"operationId": "teamGitInstallationsClaim",
 				"parameters": [
 					{
 						"name": "teamId",
@@ -3025,7 +3025,7 @@
 					"content": {
 						"application/json": {
 							"schema": {
-								"$ref": "#/components/schemas/BindInstallationDto"
+								"$ref": "#/components/schemas/ClaimInstallationDto"
 							}
 						}
 					}
@@ -3047,42 +3047,7 @@
 						"bearerAuth": []
 					}
 				],
-				"summary": "Bind a GitHub App installation to the team",
-				"tags": ["git"]
-			},
-			"get": {
-				"operationId": "teamGitInstallationsList",
-				"parameters": [
-					{
-						"name": "teamId",
-						"in": "path",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "",
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "array",
-									"items": {
-										"$ref": "#/components/schemas/GitInstallationDto"
-									}
-								}
-							}
-						}
-					}
-				},
-				"security": [
-					{
-						"bearerAuth": []
-					}
-				],
-				"summary": "List the team’s GitHub installations",
+				"summary": "Redeem an ownership-verified install grant to bind it to the team",
 				"tags": ["git"]
 			}
 		},
@@ -3117,6 +3082,43 @@
 					}
 				],
 				"summary": "Whether a GitHub App is connected, plus the install URL",
+				"tags": ["git"]
+			}
+		},
+		"/api/teams/{teamId}/git/installations": {
+			"get": {
+				"operationId": "teamGitInstallationsList",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/GitInstallationDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "List the team’s GitHub installations",
 				"tags": ["git"]
 			}
 		},
@@ -5253,15 +5255,15 @@
 				},
 				"required": ["connected", "appSlug", "appId", "installUrl", "connectedAt"]
 			},
-			"BindInstallationDto": {
+			"ClaimInstallationDto": {
 				"type": "object",
 				"properties": {
-					"githubInstallationId": {
+					"grant": {
 						"type": "string",
-						"description": "GitHub numeric installation id returned to the setup redirect."
+						"description": "Signed grant from the install callback redirect (git_grant query param)."
 					}
 				},
-				"required": ["githubInstallationId"]
+				"required": ["grant"]
 			},
 			"GitInstallationDto": {
 				"type": "object",

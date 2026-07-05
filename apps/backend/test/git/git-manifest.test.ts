@@ -18,6 +18,7 @@ describe('buildAppManifest', () => {
 		expect(m.hook_attributes?.url).toBe('https://console.example.com/api/git/github/webhook');
 		expect(m.setup_url).toBe('https://console.example.com/team/settings?tab=github');
 		expect(m.public).toBe(false);
+		expect(m.request_oauth_on_install).toBe(true);
 		expect(m.default_events).toEqual(['push', 'pull_request']);
 		expect(m.default_permissions).toMatchObject({ contents: 'read', pull_requests: 'write', statuses: 'write' });
 	});

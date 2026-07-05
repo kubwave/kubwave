@@ -15,13 +15,14 @@ export function useTeamGitConnection(teamId: MaybeRefOrGetter<string | null>) {
 	return useQuery(teamGitConnectionQuery(api, teamId));
 }
 
-export function useBindGitInstallation(teamId: MaybeRefOrGetter<string | null>) {
+// Backend binds only if the signed-in user matches the grant, so a phished victim can't bind their install to someone else's team.
+export function useClaimGitInstallation(teamId: MaybeRefOrGetter<string | null>) {
 	const api = useApi();
 	const queryClient = useQueryClient();
 	const toast = useToast();
 
 	return useMutation({
-		mutationFn: (githubInstallationId: string) => apiData(api.teams(toValue(teamId) as string).git.installations.post({ githubInstallationId })),
+		mutationFn: (grant: string) => apiData(api.teams(toValue(teamId) as string).git.installations.claim.post({ grant })),
 		onSuccess: () => {
 			const id = toValue(teamId);
 			if (id) {
@@ -30,6 +31,6 @@ export function useBindGitInstallation(teamId: MaybeRefOrGetter<string | null>) 
 			}
 			toast.success('Repository access installed');
 		},
-		onError: () => toast.error('Could not link the installation to your team')
+		onError: () => toast.error('Could not finish installing repository access')
 	});
 }

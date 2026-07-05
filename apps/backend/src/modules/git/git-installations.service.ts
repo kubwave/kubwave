@@ -4,7 +4,7 @@ import { db, gitInstallations, gitRepositories, services, type GitInstallation }
 import { ApiError } from '../../shared/errors/api-error.js';
 import { TeamsService } from '../teams/teams.service.js';
 import { GitConnectionService } from './git-connection.service.js';
-import { getAppInstallation, listInstallationRepos } from './github-api.js';
+import { exchangeOAuthCode, getAppInstallation, listInstallationRepos, listUserInstallationIds } from './github-api.js';
 import { clearInstallationTokenCache, getInstallationToken } from './installation-token.js';
 import type { GitInstallationDto, GitRepositoryDto } from './git-repos.dto.js';
 import type { WebhookAction, WebhookRepo } from './github-webhook.js';
@@ -69,7 +69,25 @@ export class GitInstallationsService {
 	async teamConnection(userId: string, teamId: string): Promise<{ connected: boolean; installUrl: string | null }> {
 		await this.teams.requireTeamRole(userId, teamId, 'member');
 		const conn = await this.connections.getConnection();
-		return { connected: conn.connected, installUrl: conn.installUrl };
+		if (!conn.connected) return { connected: false, installUrl: null };
+		return { connected: true, installUrl: await this.connections.teamInstallUrl(userId, teamId) };
+	}
+
+	// Prove the code-derived user owns the install, then hand back a grant. Binding waits for the console to redeem it authenticated, so a
+	// phished victim who merely completes the install can't have it bound to the attacker's team (the redeem step re-checks the claimer's uid).
+	async completeInstall(githubInstallationId: string, code: string, state: string): Promise<string> {
+		const { uid, teamId } = await this.connections.verifyInstallState(state);
+		const creds = await this.connections.getOAuthCredentials();
+		const userToken = await exchangeOAuthCode(creds.clientId, creds.clientSecret, code);
+		const owned = await listUserInstallationIds(userToken);
+		if (!owned.has(githubInstallationId)) throw new ApiError(403, 'installation_not_owned');
+		return this.connections.signInstallGrant(uid, teamId, githubInstallationId);
+	}
+
+	async claimInstallation(userId: string, teamId: string, grant: string): Promise<GitInstallationDto> {
+		const g = await this.connections.verifyInstallGrant(grant);
+		if (g.uid !== userId || g.teamId !== teamId) throw new ApiError(403, 'grant_mismatch');
+		return this.bindInstallation(g.uid, g.teamId, g.githubInstallationId);
 	}
 
 	async listRepos(userId: string, teamId: string, installationRowId: string): Promise<GitRepositoryDto[]> {
