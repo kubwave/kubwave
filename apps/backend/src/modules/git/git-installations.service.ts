@@ -7,7 +7,7 @@ import { GitConnectionService } from './git-connection.service.js';
 import { exchangeOAuthCode, getAppInstallation, listInstallationRepos, listUserInstallationIds } from './github-api.js';
 import { clearInstallationTokenCache, getInstallationToken } from './installation-token.js';
 import type { GitInstallationDto, GitRepositoryDto } from './git-repos.dto.js';
-import type { WebhookAction, WebhookRepo } from './github-webhook.js';
+import type { WebhookAction } from './github-webhook.js';
 
 function toInstallationView(row: GitInstallation): GitInstallationDto {
 	return {
@@ -159,17 +159,6 @@ export class GitInstallationsService {
 			.then(rows => rows[0]);
 	}
 
-	async upsertRepos(installationRowId: string, repos: WebhookRepo[]): Promise<void> {
-		if (repos.length === 0) return;
-		await db
-			.insert(gitRepositories)
-			.values(repos.map(r => ({ installationId: installationRowId, repoFullName: r.fullName, isPrivate: r.isPrivate, lastSyncedAt: new Date() })))
-			.onConflictDoUpdate({
-				target: [gitRepositories.installationId, gitRepositories.repoFullName],
-				set: { isPrivate: sql`excluded.is_private`, lastSyncedAt: new Date() }
-			});
-	}
-
 	// Apply a parsed webhook to the mirror. Events for an installation we haven't bound to a team yet are no-ops — the setup redirect creates and syncs it.
 	async applyWebhookAction(action: WebhookAction): Promise<void> {
 		switch (action.kind) {
@@ -193,7 +182,8 @@ export class GitInstallationsService {
 			}
 			case 'repos-added': {
 				const row = await this.findByGithubId(action.githubInstallationId);
-				if (row) await this.upsertRepos(row.id, action.repos);
+				// The webhook's repo objects omit default_branch, so re-sync from the API to keep the mirror's branch + privacy accurate rather than guessing 'main'.
+				if (row) await this.syncRepos(row.id);
 				return;
 			}
 			case 'repos-removed': {
