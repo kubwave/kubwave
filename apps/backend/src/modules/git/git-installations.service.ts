@@ -183,10 +183,12 @@ export class GitInstallationsService {
 				return;
 			}
 			case 'installation-suspended': {
+				const row = await this.findByGithubId(action.githubInstallationId);
 				await db
 					.update(gitInstallations)
 					.set({ suspendedAt: action.suspended ? new Date() : null, updatedAt: new Date() })
 					.where(eq(gitInstallations.githubInstallationId, action.githubInstallationId));
+				if (row) clearInstallationTokenCache(row.id);
 				return;
 			}
 			case 'repos-added': {
