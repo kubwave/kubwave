@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { CalendarDays, Hash, KeyRound, Settings2, Shield, ShieldAlert, Star, Trash2, Users } from 'lucide-vue-next';
+import { CalendarDays, Github, Hash, KeyRound, Settings2, Shield, ShieldAlert, Star, Trash2, Users } from 'lucide-vue-next';
 
-type SettingsTab = 'general' | 'members' | 'ssh-keys';
+type SettingsTab = 'general' | 'members' | 'ssh-keys' | 'github';
 
 const props = withDefaults(defineProps<{ initialTab?: SettingsTab }>(), { initialTab: 'general' });
 
@@ -72,6 +72,10 @@ const memberSince = computed(() =>
 				<TabsTrigger value="ssh-keys">
 					<KeyRound />
 					SSH keys
+				</TabsTrigger>
+				<TabsTrigger value="github">
+					<Github />
+					GitHub
 				</TabsTrigger>
 			</TabsList>
 		</Tabs>
@@ -194,6 +198,10 @@ const memberSince = computed(() =>
 					<SshKeysAddButton :active-team-id="activeTeamId" :is-owner="isOwner" />
 				</template>
 			</SshKeysList>
+		</div>
+
+		<div v-else-if="tab === 'github'">
+			<TeamGithubCard />
 		</div>
 	</div>
 </template>

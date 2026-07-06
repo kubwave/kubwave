@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Component } from 'vue';
-import { ChevronDown, ChevronRight, Container, FileCode2, FileStack, GitBranch, Lock, Sparkles } from 'lucide-vue-next';
+import { ChevronDown, ChevronRight, Container, FileCode2, FileStack, Github, GitBranch, Lock, Sparkles } from 'lucide-vue-next';
 import type { Service } from '~/utils/types';
 import { DATABASE_ENGINES, DATABASE_ENGINE_UI, isDatabaseEngine, type DatabaseEngine } from '~/utils/database-engines';
 import type { TemplateListItem } from '~/composables/use-templates';
@@ -14,7 +14,7 @@ const emit = defineEmits<{ createdMany: [Service[]] }>();
 
 const open = defineModel<boolean>('open', { default: false });
 
-type AvailableServiceType = 'docker-image' | 'docker-compose' | 'dockerfile' | 'public-repo' | 'private-repo' | DatabaseEngine;
+type AvailableServiceType = 'docker-image' | 'docker-compose' | 'dockerfile' | 'public-repo' | 'private-repo' | 'github-repo' | DatabaseEngine;
 
 type TypeOption = {
 	id: string;
@@ -42,6 +42,13 @@ const TYPE_GROUPS: TypeGroup[] = [
 		id: 'from-source',
 		label: 'From source',
 		options: [
+			{
+				id: 'github-repo',
+				name: 'GitHub repository',
+				description: 'Build & deploy a repo from a connected GitHub App — private repos without a deploy key.',
+				icon: Github,
+				available: true
+			},
 			{
 				id: 'private-repo',
 				name: 'Private repository',
@@ -115,7 +122,13 @@ function selectOption(option: TypeOption) {
 
 	const id = option.id;
 	const allowed =
-		id === 'docker-image' || id === 'docker-compose' || id === 'dockerfile' || id === 'public-repo' || id === 'private-repo' || isDatabaseEngine(id);
+		id === 'docker-image' ||
+		id === 'docker-compose' ||
+		id === 'dockerfile' ||
+		id === 'public-repo' ||
+		id === 'private-repo' ||
+		id === 'github-repo' ||
+		isDatabaseEngine(id);
 	if (!allowed) return;
 
 	selectedType.value = id as AvailableServiceType;
@@ -264,6 +277,13 @@ function onCreatedMany(services: Service[]) {
 				/>
 				<ServicePrivateRepoCreateForm
 					v-else-if="selectedType === 'private-repo'"
+					:environment-id="props.environmentId"
+					@created="service => onCreatedMany([service])"
+					@back="step = 'select'"
+					@done="open = false"
+				/>
+				<ServiceGithubRepoCreateForm
+					v-else-if="selectedType === 'github-repo'"
 					:environment-id="props.environmentId"
 					@created="service => onCreatedMany([service])"
 					@back="step = 'select'"

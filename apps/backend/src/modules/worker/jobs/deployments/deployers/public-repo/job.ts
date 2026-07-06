@@ -10,11 +10,13 @@ export { BUILDER_CONTAINER };
 const WORKSPACE = '/workspace';
 const SRC_DIR = `${WORKSPACE}/src`;
 const SSH_KEY_MOUNT = '/ssh-key';
+const GIT_TOKEN_MOUNT = '/git-token';
 const SSH_DIR = `${WORKSPACE}/.ssh`;
 const SSH_KEY_FILE = `${SSH_DIR}/id`;
 const KNOWN_HOSTS_FILE = `${SSH_DIR}/known_hosts`;
 
-// Clone + SSH setup: a pinned commit needs full history (shallow can't resolve an arbitrary SHA), so it full-clones then detaches; branch-HEAD stays shallow.
+// Clone + auth setup: a pinned commit needs full history (shallow can't resolve an arbitrary SHA), so it full-clones then detaches; branch-HEAD stays shallow.
+// The GitHub token auth goes through http.<origin>.extraheader (never the URL), so it can't leak into git's stderr or these build logs.
 const CLONE_SCRIPT = `set -e
 if ! command -v git >/dev/null 2>&1; then
   echo "build tools image is missing required command: git" >&2
@@ -30,6 +32,11 @@ if [ -f "${SSH_KEY_MOUNT}/id" ]; then
   cp "${SSH_KEY_MOUNT}/id" "${SSH_KEY_FILE}"
   chmod 600 "${SSH_KEY_FILE}"
   export GIT_SSH_COMMAND="ssh -i ${SSH_KEY_FILE} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=${KNOWN_HOSTS_FILE}"
+fi
+if [ -f "${GIT_TOKEN_MOUNT}/extraheader" ]; then
+  export GIT_CONFIG_COUNT=1
+  export GIT_CONFIG_KEY_0="$GIT_TOKEN_CONFIG_KEY"
+  export GIT_CONFIG_VALUE_0="$(cat "${GIT_TOKEN_MOUNT}/extraheader")"
 fi
 if [ -n "$SOURCE_COMMIT" ]; then
   git clone --no-checkout "$SOURCE_REPO_URL" "${SRC_DIR}"
@@ -77,6 +84,8 @@ export interface SourceJobOptions {
 	memoryLimit: string;
 	pushConfigSecretName?: string;
 	sshKeySecretName?: string;
+	gitTokenSecretName?: string;
+	gitTokenConfigKey?: string;
 	jobNamePrefix?: string;
 }
 
@@ -108,9 +117,11 @@ export function buildSourceJob(opts: SourceJobOptions): V1Job {
 
 	const usesPushSecret = Boolean(opts.pushConfigSecretName);
 	const usesSshKey = Boolean(opts.sshKeySecretName);
+	const usesGitToken = Boolean(opts.gitTokenSecretName);
 	const workspaceMount = { name: 'workspace', mountPath: WORKSPACE };
 	// Deploy key mounted read-only on the prepare container only (the one that clones); nixpacks/builder never see it. Mode 0400.
 	const sshKeyMount = { name: 'ssh-key', mountPath: SSH_KEY_MOUNT, readOnly: true };
+	const gitTokenMount = { name: 'git-token', mountPath: GIT_TOKEN_MOUNT, readOnly: true };
 
 	return {
 		apiVersion: 'batch/v1',
@@ -137,9 +148,10 @@ export function buildSourceJob(opts: SourceJobOptions): V1Job {
 							env: [
 								{ name: 'SOURCE_REPO_URL', value: opts.repoUrl },
 								{ name: 'SOURCE_BRANCH', value: opts.branch },
-								...(opts.commit ? [{ name: 'SOURCE_COMMIT', value: opts.commit }] : [])
+								...(opts.commit ? [{ name: 'SOURCE_COMMIT', value: opts.commit }] : []),
+								...(usesGitToken ? [{ name: 'GIT_TOKEN_CONFIG_KEY', value: opts.gitTokenConfigKey ?? '' }] : [])
 							],
-							volumeMounts: [workspaceMount, ...(usesSshKey ? [sshKeyMount] : [])]
+							volumeMounts: [workspaceMount, ...(usesSshKey ? [sshKeyMount] : []), ...(usesGitToken ? [gitTokenMount] : [])]
 						},
 						// The nixpacks generate step exists only for the nixpacks builder; dockerfile goes clone -> builder.
 						...(isDockerfile
@@ -175,6 +187,14 @@ export function buildSourceJob(opts: SourceJobOptions): V1Job {
 									{
 										name: 'ssh-key',
 										secret: { secretName: opts.sshKeySecretName, items: [{ key: 'id', path: 'id' }], defaultMode: 0o400 }
+									}
+								]
+							: []),
+						...(usesGitToken
+							? [
+									{
+										name: 'git-token',
+										secret: { secretName: opts.gitTokenSecretName, items: [{ key: 'extraheader', path: 'extraheader' }], defaultMode: 0o400 }
 									}
 								]
 							: [])

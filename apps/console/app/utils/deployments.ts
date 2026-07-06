@@ -25,7 +25,12 @@ export function shouldPollDeploymentLogs(deployment: Deployment | null | undefin
 }
 
 export function hasBuildStep(deployment: Deployment | null | undefined): boolean {
-	return deployment?.type === 'dockerfile' || deployment?.type === 'public-repo' || deployment?.type === 'private-repo';
+	return (
+		deployment?.type === 'dockerfile' ||
+		deployment?.type === 'public-repo' ||
+		deployment?.type === 'private-repo' ||
+		deployment?.type === 'github-repo'
+	);
 }
 
 export function isDeploymentBuilding(deployment: Deployment): boolean {

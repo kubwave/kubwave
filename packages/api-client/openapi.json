@@ -2931,6 +2931,321 @@
 				"summary": "Create services from a template",
 				"tags": ["templates"]
 			}
+		},
+		"/api/git/github/manifest": {
+			"post": {
+				"operationId": "gitGithubCreateManifest",
+				"parameters": [
+					{
+						"name": "organization",
+						"required": false,
+						"in": "query",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/GithubManifestDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Build a GitHub App manifest and signed state",
+				"tags": ["git"]
+			}
+		},
+		"/api/git/github": {
+			"get": {
+				"operationId": "gitGithubConnectionGet",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/GithubConnectionDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get the connected GitHub App",
+				"tags": ["git"]
+			},
+			"delete": {
+				"operationId": "gitGithubDisconnect",
+				"parameters": [],
+				"responses": {
+					"204": {
+						"description": ""
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Disconnect the GitHub App",
+				"tags": ["git"]
+			}
+		},
+		"/api/teams/{teamId}/git/installations/claim": {
+			"post": {
+				"operationId": "teamGitInstallationsClaim",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ClaimInstallationDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/GitInstallationDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Redeem an ownership-verified install grant to bind it to the team",
+				"tags": ["git"]
+			}
+		},
+		"/api/teams/{teamId}/git/connection": {
+			"get": {
+				"operationId": "teamGitConnectionGet",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/TeamGitConnectionDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Whether a GitHub App is connected, plus the install URL",
+				"tags": ["git"]
+			}
+		},
+		"/api/teams/{teamId}/git/installations": {
+			"get": {
+				"operationId": "teamGitInstallationsList",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/GitInstallationDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "List the team’s GitHub installations",
+				"tags": ["git"]
+			}
+		},
+		"/api/teams/{teamId}/git/installations/{installationId}/repos": {
+			"get": {
+				"operationId": "teamGitInstallationReposList",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "installationId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/GitRepositoryDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "List repositories available to an installation",
+				"tags": ["git"]
+			}
+		},
+		"/api/teams/{teamId}/git/installations/{installationId}/repos/sync": {
+			"post": {
+				"operationId": "teamGitInstallationReposSync",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "installationId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/GitRepositoryDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Re-sync an installation’s repositories from GitHub",
+				"tags": ["git"]
+			}
+		},
+		"/api/teams/{teamId}/git/installations/{installationId}": {
+			"delete": {
+				"operationId": "teamGitInstallationsUnbind",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "installationId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"204": {
+						"description": ""
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Unbind a GitHub installation from the team",
+				"tags": ["git"]
+			}
 		}
 	},
 	"info": {
@@ -3651,7 +3966,7 @@
 					},
 					"type": {
 						"type": "string",
-						"enum": ["docker-image", "dockerfile", "public-repo", "private-repo", "postgres", "mysql", "mariadb", "mongodb"]
+						"enum": ["docker-image", "dockerfile", "public-repo", "private-repo", "github-repo", "postgres", "mysql", "mariadb", "mongodb"]
 					},
 					"config": {
 						"type": "object",
@@ -3713,7 +4028,7 @@
 					},
 					"type": {
 						"type": "string",
-						"enum": ["docker-image", "dockerfile", "public-repo", "private-repo", "postgres", "mysql", "mariadb", "mongodb"]
+						"enum": ["docker-image", "dockerfile", "public-repo", "private-repo", "github-repo", "postgres", "mysql", "mariadb", "mongodb"]
 					},
 					"config": {
 						"type": "object",
@@ -4023,7 +4338,7 @@
 					},
 					"type": {
 						"type": "string",
-						"enum": ["docker-image", "dockerfile", "public-repo", "private-repo", "postgres", "mysql", "mariadb", "mongodb"]
+						"enum": ["docker-image", "dockerfile", "public-repo", "private-repo", "github-repo", "postgres", "mysql", "mariadb", "mongodb"]
 					},
 					"status": {
 						"type": "string",
@@ -4898,6 +5213,112 @@
 					}
 				},
 				"required": ["templateId"]
+			},
+			"GithubManifestDto": {
+				"type": "object",
+				"properties": {
+					"postUrl": {
+						"type": "string",
+						"description": "POST the form here (carries the signed state in its query)."
+					},
+					"manifest": {
+						"type": "string",
+						"description": "JSON string to submit as the `manifest` form field."
+					}
+				},
+				"required": ["postUrl", "manifest"]
+			},
+			"GithubConnectionDto": {
+				"type": "object",
+				"properties": {
+					"connected": {
+						"type": "boolean"
+					},
+					"appSlug": {
+						"type": "string",
+						"nullable": true
+					},
+					"appId": {
+						"type": "string",
+						"nullable": true
+					},
+					"installUrl": {
+						"type": "string",
+						"nullable": true,
+						"description": "Send the admin here to install the App on their repositories."
+					},
+					"connectedAt": {
+						"type": "string",
+						"format": "date-time",
+						"nullable": true
+					}
+				},
+				"required": ["connected", "appSlug", "appId", "installUrl", "connectedAt"]
+			},
+			"ClaimInstallationDto": {
+				"type": "object",
+				"properties": {
+					"grant": {
+						"type": "string",
+						"description": "Signed grant from the install callback redirect (git_grant query param)."
+					}
+				},
+				"required": ["grant"]
+			},
+			"GitInstallationDto": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"githubInstallationId": {
+						"type": "string"
+					},
+					"accountLogin": {
+						"type": "string"
+					},
+					"accountType": {
+						"type": "string"
+					},
+					"suspended": {
+						"type": "boolean"
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time"
+					}
+				},
+				"required": ["id", "githubInstallationId", "accountLogin", "accountType", "suspended", "createdAt"]
+			},
+			"TeamGitConnectionDto": {
+				"type": "object",
+				"properties": {
+					"connected": {
+						"type": "boolean"
+					},
+					"installUrl": {
+						"type": "string",
+						"nullable": true,
+						"description": "Where a team owner installs the App on their repositories."
+					}
+				},
+				"required": ["connected", "installUrl"]
+			},
+			"GitRepositoryDto": {
+				"type": "object",
+				"properties": {
+					"repoFullName": {
+						"type": "string"
+					},
+					"defaultBranch": {
+						"type": "string"
+					},
+					"isPrivate": {
+						"type": "boolean"
+					}
+				},
+				"required": ["repoFullName", "defaultBranch", "isPrivate"]
 			}
 		}
 	}

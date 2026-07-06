@@ -31,6 +31,10 @@ import type {
 	EnvironmentsDeleteResponses,
 	EnvironmentsUpdateData,
 	EnvironmentsUpdateResponses,
+	GitGithubConnectionGetResponses,
+	GitGithubCreateManifestData,
+	GitGithubCreateManifestResponses,
+	GitGithubDisconnectResponses,
 	HealthGetData,
 	HealthGetResponses,
 	InvitationsAcceptData,
@@ -102,6 +106,13 @@ import type {
 	SetupInitializeData,
 	SetupInitializeResponses,
 	SetupStatusResponses,
+	TeamGitConnectionGetResponses,
+	TeamGitInstallationReposListResponses,
+	TeamGitInstallationReposSyncResponses,
+	TeamGitInstallationsClaimData,
+	TeamGitInstallationsClaimResponses,
+	TeamGitInstallationsListResponses,
+	TeamGitInstallationsUnbindResponses,
 	TeamMembersAddData,
 	TeamMembersAddResponses,
 	TeamMembersListResponses,
@@ -157,6 +168,7 @@ export type KubwaveResourceClient = {
 	auth: KubwaveAuthResource;
 	deployments: KubwaveDeploymentsResource;
 	environments: KubwaveEnvironmentsResource;
+	git: KubwaveGitResource;
 	health: KubwaveHealthResource;
 	invitations: KubwaveInvitationsResource;
 	platform: KubwavePlatformResource;
@@ -274,6 +286,20 @@ export type KubwaveEnvironmentsEnvironmentIdServicesFromTemplateResource = {
 
 export type KubwaveEnvironmentsEnvironmentIdServicesStatusResource = {
 	get(): OperationResult<EnvironmentServiceStatusListResponses>;
+};
+
+export type KubwaveGitResource = {
+	github: KubwaveGitGithubResource;
+};
+
+export type KubwaveGitGithubResource = {
+	get(): OperationResult<GitGithubConnectionGetResponses>;
+	delete(): OperationResult<GitGithubDisconnectResponses>;
+	manifest: KubwaveGitGithubManifestResource;
+};
+
+export type KubwaveGitGithubManifestResource = {
+	post(query?: GitGithubCreateManifestData['query']): OperationResult<GitGithubCreateManifestResponses>;
 };
 
 export type KubwaveHealthResource = {
@@ -486,9 +512,43 @@ export type KubwaveTeamsResource = {
 export type KubwaveTeamsTeamIdResource = {
 	patch(body: TeamsRenameData['body']): OperationResult<TeamsRenameResponses>;
 	delete(): OperationResult<TeamsDeleteResponses>;
+	git: KubwaveTeamsTeamIdGitResource;
 	members: KubwaveTeamsTeamIdMembersResource;
 	projects: KubwaveTeamsTeamIdProjectsResource;
 	sshKeys: KubwaveTeamsTeamIdSshKeysResource;
+};
+
+export type KubwaveTeamsTeamIdGitResource = {
+	connection: KubwaveTeamsTeamIdGitConnectionResource;
+	installations: KubwaveTeamsTeamIdGitInstallationsResource;
+};
+
+export type KubwaveTeamsTeamIdGitConnectionResource = {
+	get(): OperationResult<TeamGitConnectionGetResponses>;
+};
+
+export type KubwaveTeamsTeamIdGitInstallationsResource = {
+	(installationId: string): KubwaveTeamsTeamIdGitInstallationsInstallationIdResource;
+	get(): OperationResult<TeamGitInstallationsListResponses>;
+	claim: KubwaveTeamsTeamIdGitInstallationsClaimResource;
+};
+
+export type KubwaveTeamsTeamIdGitInstallationsInstallationIdResource = {
+	delete(): OperationResult<TeamGitInstallationsUnbindResponses>;
+	repos: KubwaveTeamsTeamIdGitInstallationsInstallationIdReposResource;
+};
+
+export type KubwaveTeamsTeamIdGitInstallationsInstallationIdReposResource = {
+	get(): OperationResult<TeamGitInstallationReposListResponses>;
+	sync: KubwaveTeamsTeamIdGitInstallationsInstallationIdReposSyncResource;
+};
+
+export type KubwaveTeamsTeamIdGitInstallationsInstallationIdReposSyncResource = {
+	post(): OperationResult<TeamGitInstallationReposSyncResponses>;
+};
+
+export type KubwaveTeamsTeamIdGitInstallationsClaimResource = {
+	post(body: TeamGitInstallationsClaimData['body']): OperationResult<TeamGitInstallationsClaimResponses>;
 };
 
 export type KubwaveTeamsTeamIdMembersResource = {
@@ -613,6 +673,15 @@ export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClie
 			}),
 			{}
 		),
+		git: {
+			github: {
+				get: () => apiResult(raw.gitGithubConnectionGet({})),
+				delete: () => apiResult(raw.gitGithubDisconnect({})),
+				manifest: {
+					post: (query?: GitGithubCreateManifestData['query']) => apiResult(raw.gitGithubCreateManifest({ query }))
+				}
+			}
+		},
 		health: {
 			get: (query?: HealthGetData['query']) => apiResult(raw.healthGet({ query }))
 		},
@@ -753,6 +822,28 @@ export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClie
 			(teamId: string) => ({
 				patch: (body: TeamsRenameData['body']) => apiResult(raw.teamsRename({ path: { teamId: teamId }, body })),
 				delete: () => apiResult(raw.teamsDelete({ path: { teamId: teamId } })),
+				git: {
+					connection: {
+						get: () => apiResult(raw.teamGitConnectionGet({ path: { teamId: teamId } }))
+					},
+					installations: Object.assign(
+						(installationId: string) => ({
+							delete: () => apiResult(raw.teamGitInstallationsUnbind({ path: { teamId: teamId, installationId: installationId } })),
+							repos: {
+								get: () => apiResult(raw.teamGitInstallationReposList({ path: { teamId: teamId, installationId: installationId } })),
+								sync: {
+									post: () => apiResult(raw.teamGitInstallationReposSync({ path: { teamId: teamId, installationId: installationId } }))
+								}
+							}
+						}),
+						{
+							get: () => apiResult(raw.teamGitInstallationsList({ path: { teamId: teamId } })),
+							claim: {
+								post: (body: TeamGitInstallationsClaimData['body']) => apiResult(raw.teamGitInstallationsClaim({ path: { teamId: teamId }, body }))
+							}
+						}
+					)
+				},
 				members: Object.assign(
 					(userId: string) => ({
 						patch: (body: TeamMembersUpdateRoleData['body']) =>

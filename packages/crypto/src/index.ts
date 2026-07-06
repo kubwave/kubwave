@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, createHmac, createSign, randomBytes, timingSafeEqual } from 'node:crypto';
 
 export {
 	generateSshKeyPair,
@@ -68,4 +68,26 @@ export function signJwtHs256(payload: Record<string, unknown>, secret: string): 
 	const signingInput = `${base64UrlEncode(JSON.stringify(header))}.${base64UrlEncode(JSON.stringify(payload))}`;
 	const signature = base64UrlEncode(createHmac('sha256', secret).update(signingInput).digest());
 	return `${signingInput}.${signature}`;
+}
+
+// GitHub App auth JWT; GitHub caps exp at 10 min and the caller sets iat/exp/iss in `payload`.
+export function signJwtRs256(payload: Record<string, unknown>, privateKeyPem: string): string {
+	const header = { alg: 'RS256', typ: 'JWT' };
+	const signingInput = `${base64UrlEncode(JSON.stringify(header))}.${base64UrlEncode(JSON.stringify(payload))}`;
+	const signature = createSign('RSA-SHA256').update(signingInput).sign(privateKeyPem).toString('base64url');
+	return `${signingInput}.${signature}`;
+}
+
+// Verify a GitHub webhook's X-Hub-Signature-256 header ("sha256=<hex>") against the RAW request body.
+// Constant-time; returns false on any missing/malformed/mismatched input (never throws) so a bad signature is always a clean reject.
+export function verifyWebhookSignature(rawBody: Buffer | string, signatureHeader: string | undefined | null, secret: string): boolean {
+	if (!signatureHeader) return false;
+	const [scheme, provided] = signatureHeader.split('=');
+	if (scheme !== 'sha256' || !provided) return false;
+	const expected = createHmac('sha256', secret).update(rawBody).digest('hex');
+	const providedBuf = Buffer.from(provided, 'utf8');
+	const expectedBuf = Buffer.from(expected, 'utf8');
+	// timingSafeEqual throws on length mismatch — guard first, and an unequal length is already a mismatch.
+	if (providedBuf.length !== expectedBuf.length) return false;
+	return timingSafeEqual(providedBuf, expectedBuf);
 }

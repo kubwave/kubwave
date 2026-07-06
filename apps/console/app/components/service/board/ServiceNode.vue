@@ -23,6 +23,7 @@ const image = computed(() => {
 	const config = service.value.config;
 	if ('version' in config) return `${DATABASE_ENGINE_UI[service.value.type as keyof typeof DATABASE_ENGINE_UI].label} ${config.version}`;
 	if ('image' in config) return `${config.image}:${config.tag}`;
+	if ('repoFullName' in config) return config.repoFullName;
 	if ('repoUrl' in config) return config.repoUrl;
 	return 'Built from Dockerfile';
 });
@@ -31,6 +32,7 @@ const typeLabel = computed(() => {
 	if (service.value.type === 'dockerfile') return 'Dockerfile';
 	if (service.value.type === 'public-repo') return 'Git';
 	if (service.value.type === 'private-repo') return 'Git (SSH)';
+	if (service.value.type === 'github-repo') return 'GitHub';
 	return 'Docker';
 });
 // Datastores use the database icon as a subtle signal rather than a colour change.

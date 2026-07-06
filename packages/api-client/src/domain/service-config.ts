@@ -1,6 +1,15 @@
 import type { ServiceViewDto } from '../generated/types.gen.js';
 
-export type ServiceType = 'docker-image' | 'dockerfile' | 'public-repo' | 'private-repo' | 'postgres' | 'mysql' | 'mariadb' | 'mongodb';
+export type ServiceType =
+	| 'docker-image'
+	| 'dockerfile'
+	| 'public-repo'
+	| 'private-repo'
+	| 'github-repo'
+	| 'postgres'
+	| 'mysql'
+	| 'mariadb'
+	| 'mongodb';
 
 export interface EnvVar {
 	key: string;
@@ -93,6 +102,11 @@ export interface PrivateRepoServiceConfig<TSecret = SecretView> extends PublicRe
 	sshKeyId: string;
 }
 
+export interface GithubRepoServiceConfig<TSecret = SecretView> extends PublicRepoServiceConfig<TSecret> {
+	repoFullName: string;
+	installationId: string;
+}
+
 export interface DatabaseServiceConfig<TSecret = SecretView> extends RuntimeConfig<TSecret> {
 	version: string;
 	storage: {
@@ -107,6 +121,7 @@ export type ServiceConfigView =
 	| DockerfileServiceConfig<SecretView>
 	| PublicRepoServiceConfig<SecretView>
 	| PrivateRepoServiceConfig<SecretView>
+	| GithubRepoServiceConfig<SecretView>
 	| DatabaseServiceConfig<SecretView>;
 
 export type ServiceConfigInput =
@@ -114,6 +129,7 @@ export type ServiceConfigInput =
 	| DockerfileServiceConfig<SecretInput>
 	| PublicRepoServiceConfig<SecretInput>
 	| PrivateRepoServiceConfig<SecretInput>
+	| GithubRepoServiceConfig<SecretInput>
 	| DatabaseServiceConfig<SecretInput>;
 
 export type ServiceView = Omit<ServiceViewDto, 'config'> & {

@@ -288,6 +288,21 @@ const privateRepoConfigBase = publicRepoConfigBase.extend({
 export const privateRepoConfigSchema = privateRepoConfigBase.superRefine(refineRuntimeConfig);
 export type PrivateRepoConfigInput = z.infer<typeof privateRepoConfigSchema>;
 
+// GitHub-App-backed source: no client-supplied repoUrl (derived from repoFullName server-side); auth is the installation, not a deploy key.
+const githubRepoConfigBase = publicRepoConfigBase.omit({ repoUrl: true }).extend({
+	installationId: z.string().uuid('Select a connected repository.'),
+	repoFullName: z
+		.string()
+		.trim()
+		.min(1)
+		.max(255)
+		.regex(/^[\w.-]+\/[\w.-]+$/, 'Enter a repository as owner/repo.')
+		.refine(noTraversal, 'Invalid repository name.')
+});
+
+export const githubRepoConfigSchema = githubRepoConfigBase.superRefine(refineRuntimeConfig);
+export type GithubRepoConfigInput = z.infer<typeof githubRepoConfigSchema>;
+
 const dbIdentifierSchema = z
 	.string()
 	.trim()
@@ -328,7 +343,17 @@ export const autoDeployInputSchema = z.object({
 });
 export type AutoDeployInput = z.infer<typeof autoDeployInputSchema>;
 
-export const serviceTypeSchema = z.enum(['docker-image', 'dockerfile', 'public-repo', 'private-repo', 'postgres', 'mysql', 'mariadb', 'mongodb']);
+export const serviceTypeSchema = z.enum([
+	'docker-image',
+	'dockerfile',
+	'public-repo',
+	'private-repo',
+	'github-repo',
+	'postgres',
+	'mysql',
+	'mariadb',
+	'mongodb'
+]);
 export const serviceTypes = serviceTypeSchema.options;
 
 const createServiceCommonFields = {
@@ -354,14 +379,30 @@ export const createServiceSchema = z.discriminatedUnion('type', [
 	z.object({ ...createServiceCommonFields, type: z.literal('postgres'), config: postgresConfigSchema }),
 	z.object({ ...createServiceCommonFields, type: z.literal('mysql'), config: mysqlConfigSchema }),
 	z.object({ ...createServiceCommonFields, type: z.literal('mariadb'), config: mariadbConfigSchema }),
-	z.object({ ...createServiceCommonFields, type: z.literal('mongodb'), config: mongodbConfigSchema })
+	z.object({ ...createServiceCommonFields, type: z.literal('mongodb'), config: mongodbConfigSchema }),
+	z.object({
+		...createServiceCommonFields,
+		type: z.literal('github-repo'),
+		config: githubRepoConfigSchema,
+		autoDeploy: autoDeployInputSchema.optional()
+	})
 ]);
 
 export const updateServiceSchema = z.object({
 	name: z.string().trim().min(1).max(100).optional(),
 	description: z.string().trim().max(1000).optional(),
 	config: z
-		.union([dockerImageConfigSchema, dockerfileConfigSchema, publicRepoConfigSchema, privateRepoConfigSchema, databaseUpdateConfigSchema])
+		.union([
+			dockerImageConfigSchema,
+			dockerfileConfigSchema,
+			// The specific repo schemas (extra required discriminators) must precede publicRepoConfigSchema: it only requires an https repoUrl, so a
+			// github-repo update that round-trips its derived repoUrl would otherwise match public-repo first and have installationId/repoFullName stripped
+			// as unknown keys — then the type-mismatch guard in updateService rejects a valid update.
+			githubRepoConfigSchema,
+			privateRepoConfigSchema,
+			publicRepoConfigSchema,
+			databaseUpdateConfigSchema
+		])
 		.optional(),
 	autoDeploy: autoDeployInputSchema.optional()
 });

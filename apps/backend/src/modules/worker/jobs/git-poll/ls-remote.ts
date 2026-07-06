@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { db, sshKeys } from '@kubwave/db';
 import { decryptSecret } from '@kubwave/crypto';
 import { errorMessage } from '../../../../shared/worker-common/errors.js';
+import { gitTokenAuthEnv } from '../../../git/git-clone-auth.js';
 
 // Resolve branch HEAD via git ls-remote; private repos auth with the team deploy key decrypted into a 0600 temp file, removed afterwards.
 
@@ -14,6 +15,8 @@ export interface ResolveHeadOptions {
 	branch: string;
 	// Present for private-repo services — the ssh_keys row id whose private half we decrypt.
 	sshKeyId?: string | null;
+	// Present for github-repo services — the git_installations row id whose short-lived token authenticates over HTTPS.
+	installationId?: string | null;
 	timeoutMs: number;
 }
 
@@ -69,6 +72,10 @@ export async function resolveRemoteHead(opts: ResolveHeadOptions): Promise<strin
 			const keyPath = join(keyDir, 'id');
 			await writeFile(keyPath, await decryptDeployKey(opts.sshKeyId), { mode: 0o600 });
 			gitEnv.GIT_SSH_COMMAND = sshCommand(keyPath);
+		} else if (opts.installationId) {
+			// Lazy import keeps the installation-token module (and its db/crypto deps) out of the static graph, so the pure parse tests stay stub-free.
+			const { getInstallationToken } = await import('../../../git/installation-token.js');
+			Object.assign(gitEnv, gitTokenAuthEnv(opts.repoUrl, await getInstallationToken(opts.installationId)));
 		}
 
 		const wantedRef = toRemoteRef(opts.branch);

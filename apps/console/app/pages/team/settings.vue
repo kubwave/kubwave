@@ -9,7 +9,14 @@ const route = useRoute();
 
 useHead({ title: 'Team settings' });
 
-const initialTab = route.query.tab === 'members' ? 'members' : route.query.tab === 'ssh-keys' ? 'ssh-keys' : 'general';
+const initialTab =
+	route.query.tab === 'members'
+		? 'members'
+		: route.query.tab === 'ssh-keys'
+			? 'ssh-keys'
+			: route.query.tab === 'github' || route.query.installation_id
+				? 'github'
+				: 'general';
 
 onServerPrefetch(async () => {
 	const teamsData = await queryClient.fetchQuery(teamsQuery(api));

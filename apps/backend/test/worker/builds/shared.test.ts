@@ -46,4 +46,42 @@ describe('summarizeBuildLog', () => {
 		expect(out).toContain('line 29');
 		expect(out).not.toContain('line 0');
 	});
+
+	test('surfaces the failing RUN step block, not BuildKit’s generic "failed to solve" trailer', () => {
+		const log = [
+			'#9 [stage-0 6/7] RUN pnpm run build',
+			'#9 11.284 ERROR  Nuxt Build Error: src/pages/index.vue:12:3 - Cannot find name ‘foo’.',
+			'#9 ERROR: process "/bin/bash -ol pipefail -c pnpm run build" did not complete successfully: exit code: 1',
+			'------',
+			' > [stage-0 6/7] RUN pnpm run build:',
+			'0.598 > my-app@1.0.0 build /app',
+			'0.598 > nuxt build',
+			'11.284 ERROR  Nuxt Build Error: src/pages/index.vue:12:3 - Cannot find name ‘foo’.',
+			'11.512 ELIFECYCLE  Command failed with exit code 1.',
+			'------',
+			'Dockerfile:24',
+			'--------------------',
+			'  23 |     ',
+			'  24 | >>> RUN pnpm run build',
+			'  25 |     ',
+			'--------------------',
+			'ERROR: failed to solve: process "/bin/bash -ol pipefail -c pnpm run build" did not complete successfully: exit code: 1'
+		].join('\n');
+		const out = summarizeBuildLog(log);
+		expect(out).toContain('RUN pnpm run build');
+		expect(out).toContain('Nuxt Build Error');
+		expect(out).toContain('ELIFECYCLE');
+		expect(out).not.toContain('failed to solve');
+		expect(out).not.toContain('Dockerfile:24');
+	});
+
+	test('skips the generic BuildKit trailer when no fenced block is present', () => {
+		const log = [
+			'#12 45.1 ERROR  Type error: Property does not exist.',
+			'ERROR: failed to solve: process "/bin/bash -ol pipefail -c pnpm run build" did not complete successfully: exit code: 1'
+		].join('\n');
+		const out = summarizeBuildLog(log);
+		expect(out).toContain('Type error');
+		expect(out).not.toContain('failed to solve');
+	});
 });

@@ -19,8 +19,8 @@ mock.module('~/shared/config/worker-env', () => ({
 		storageClassName: ''
 	}
 }));
-mock.module('@kubwave/db', () => ({ db: {}, sshKeys: {} }));
-mock.module('@kubwave/crypto', () => ({ decryptSecret: (s: string) => s }));
+mock.module('@kubwave/db', () => ({ db: {}, sshKeys: {}, gitAppConnections: {}, gitInstallations: {} }));
+mock.module('@kubwave/crypto', () => ({ decryptSecret: (s: string) => s, signJwtRs256: () => 'jwt' }));
 
 const { getDeployer } = await import('~/modules/worker/jobs/deployments/deployers/registry');
 

@@ -1,5 +1,12 @@
 import { eq } from 'drizzle-orm';
-import { db, services, type PrivateRepoServiceConfig, type PublicRepoServiceConfig, type ServiceConfig } from '@kubwave/db';
+import {
+	db,
+	services,
+	type GithubRepoServiceConfig,
+	type PrivateRepoServiceConfig,
+	type PublicRepoServiceConfig,
+	type ServiceConfig
+} from '@kubwave/db';
 import { env } from '../../../../shared/config/worker-env.js';
 import { errorMessage } from '../../../../shared/worker-common/errors.js';
 import { resolveRemoteHead } from './ls-remote.js';
@@ -7,17 +14,22 @@ import { computeBackoffAt, shouldDeploy } from './schedule.js';
 import { enqueueAutoDeployment } from './enqueue.js';
 import type { DueService } from './claim.js';
 
-function repoRef(config: ServiceConfig): { repoUrl: string; branch: string; sshKeyId?: string } {
-	const repo = config as PublicRepoServiceConfig | PrivateRepoServiceConfig;
-	return { repoUrl: repo.repoUrl, branch: repo.branch, sshKeyId: (repo as PrivateRepoServiceConfig).sshKeyId };
+function repoRef(config: ServiceConfig): { repoUrl: string; branch: string; sshKeyId?: string; installationId?: string } {
+	const repo = config as PublicRepoServiceConfig | PrivateRepoServiceConfig | GithubRepoServiceConfig;
+	return {
+		repoUrl: repo.repoUrl,
+		branch: repo.branch,
+		sshKeyId: (repo as PrivateRepoServiceConfig).sshKeyId,
+		installationId: (repo as GithubRepoServiceConfig).installationId
+	};
 }
 
 // Poll one claimed service. On a new branch HEAD: enqueue (pinning the SHA) and record it,
 // so the same SHA is never re-triggered. On failure: store the message and back off.
 export async function pollService(service: DueService, now: Date): Promise<void> {
-	const { repoUrl, branch, sshKeyId } = repoRef(service.config);
+	const { repoUrl, branch, sshKeyId, installationId } = repoRef(service.config);
 	try {
-		const head = await resolveRemoteHead({ repoUrl, branch, sshKeyId, timeoutMs: env.gitLsRemoteTimeoutMs });
+		const head = await resolveRemoteHead({ repoUrl, branch, sshKeyId, installationId, timeoutMs: env.gitLsRemoteTimeoutMs });
 		if (shouldDeploy(head, service.lastPolledCommit)) {
 			await enqueueAutoDeployment(service, head!);
 		}
