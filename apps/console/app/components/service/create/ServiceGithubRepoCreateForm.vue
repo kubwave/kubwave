@@ -33,7 +33,7 @@ const toast = useToast();
 const { activeTeamId } = useTeamContext();
 const createService = useCreateService(() => props.environmentId);
 
-const { form, isSubmitting, values } = useAppForm({
+const { form, isSubmitting, values, setFieldValue } = useAppForm({
 	schema,
 	defaultValues: {
 		name: '',
@@ -84,6 +84,9 @@ const { form, isSubmitting, values } = useAppForm({
 
 const selectedInstallationId = computed(() => values.value.installationId || null);
 const isDockerfile = computed(() => values.value.builder === 'dockerfile');
+
+// Clear the repo picker when the account changes, so a repo chosen under the previous installation isn't submitted with the new one.
+watch(selectedInstallationId, () => setFieldValue('repoFullName', ''));
 
 const { data: installations, isPending: installationsPending } = useGitInstallations(activeTeamId);
 const { data: repos, isPending: reposPending } = useGitRepos(activeTeamId, selectedInstallationId);

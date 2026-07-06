@@ -8,7 +8,7 @@ export type WebhookAction =
 	| { kind: 'installation-suspended'; githubInstallationId: string; suspended: boolean }
 	| { kind: 'repos-added'; githubInstallationId: string; repos: WebhookRepo[] }
 	| { kind: 'repos-removed'; githubInstallationId: string; repoFullNames: string[] }
-	| { kind: 'push'; githubInstallationId: string; repoFullName: string; branch: string; headSha: string }
+	| { kind: 'push'; githubInstallationId: string; repoFullName: string; branch: string }
 	| { kind: 'ignored'; reason: string };
 
 function installationId(payload: Record<string, unknown>): string | null {
@@ -58,7 +58,7 @@ export function parseWebhookEvent(event: string, payload: unknown): WebhookActio
 		const repoFullName = typeof repo?.full_name === 'string' ? repo.full_name : '';
 		// Ignore tag pushes and branch deletions (after is all-zero) — nothing to deploy.
 		if (!branch || !repoFullName || p.deleted === true || /^0+$/.test(headSha)) return { kind: 'ignored', reason: 'push: non-branch or deleted' };
-		return { kind: 'push', githubInstallationId: id, repoFullName, branch, headSha };
+		return { kind: 'push', githubInstallationId: id, repoFullName, branch };
 	}
 
 	return { kind: 'ignored', reason: event };

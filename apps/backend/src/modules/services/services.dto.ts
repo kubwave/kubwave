@@ -395,9 +395,12 @@ export const updateServiceSchema = z.object({
 		.union([
 			dockerImageConfigSchema,
 			dockerfileConfigSchema,
-			publicRepoConfigSchema,
-			privateRepoConfigSchema,
+			// The specific repo schemas (extra required discriminators) must precede publicRepoConfigSchema: it only requires an https repoUrl, so a
+			// github-repo update that round-trips its derived repoUrl would otherwise match public-repo first and have installationId/repoFullName stripped
+			// as unknown keys — then the type-mismatch guard in updateService rejects a valid update.
 			githubRepoConfigSchema,
+			privateRepoConfigSchema,
+			publicRepoConfigSchema,
 			databaseUpdateConfigSchema
 		])
 		.optional(),

@@ -70,7 +70,7 @@ export class GitInstallationsService {
 		await this.teams.requireTeamRole(userId, teamId, 'member');
 		const conn = await this.connections.getConnection();
 		if (!conn.connected) return { connected: false, installUrl: null };
-		return { connected: true, installUrl: await this.connections.teamInstallUrl(userId, teamId) };
+		return { connected: true, installUrl: await this.connections.teamInstallUrl(userId, teamId, conn) };
 	}
 
 	// Prove the code-derived user owns the install, then hand back a grant. Binding waits for the console to redeem it authenticated, so a
@@ -79,7 +79,7 @@ export class GitInstallationsService {
 		const { uid, teamId } = await this.connections.verifyInstallState(state);
 		const creds = await this.connections.getOAuthCredentials();
 		const userToken = await exchangeOAuthCode(creds.clientId, creds.clientSecret, code);
-		const owned = await listUserInstallationIds(userToken);
+		const owned = await listUserInstallationIds(userToken, { findId: githubInstallationId });
 		if (!owned.has(githubInstallationId)) throw new ApiError(403, 'installation_not_owned');
 		return this.connections.signInstallGrant(uid, teamId, githubInstallationId);
 	}

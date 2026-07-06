@@ -13,7 +13,7 @@ interface CachedToken {
 
 const cache = new Map<string, CachedToken>();
 
-function appJwt(appId: string, privateKeyPem: string): string {
+export function signAppJwt(appId: string, privateKeyPem: string): string {
 	const nowSeconds = Math.floor(Date.now() / 1000);
 	return signJwtRs256({ ...buildAppJwtClaims(appId, nowSeconds) }, privateKeyPem);
 }
@@ -34,7 +34,7 @@ export async function getInstallationToken(installationRowId: string): Promise<s
 		.limit(1);
 	if (!row) throw new Error('GitHub installation not found — the connection may have been removed. Reconnect it in platform settings.');
 
-	const jwt = appJwt(row.appId, decryptSecret(row.privateKeyCiphertext));
+	const jwt = signAppJwt(row.appId, decryptSecret(row.privateKeyCiphertext));
 	let res: Response;
 	try {
 		res = await fetch(`${GITHUB_API}/app/installations/${row.githubInstallationId}/access_tokens`, {

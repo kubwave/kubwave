@@ -44,13 +44,12 @@ describe('parseWebhookEvent', () => {
 		);
 	});
 
-	test('a branch push resolves to a push action with repo + branch + head sha', () => {
+	test('a branch push resolves to a push action with repo + branch', () => {
 		expect(parseWebhookEvent('push', { ...inst, ref: 'refs/heads/main', after: 'c'.repeat(40), repository: { full_name: 'acme/api' } })).toEqual({
 			kind: 'push',
 			githubInstallationId: '42',
 			repoFullName: 'acme/api',
-			branch: 'main',
-			headSha: 'c'.repeat(40)
+			branch: 'main'
 		});
 	});
 

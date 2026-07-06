@@ -1,13 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { desc, eq } from 'drizzle-orm';
 import { SignJWT, jwtVerify } from 'jose';
-import { db, gitAppConnections } from '@kubwave/db';
-import { decryptSecret, encryptSecret, signJwtRs256 } from '@kubwave/crypto';
+import { db, gitAppConnections, type GitAppConnection } from '@kubwave/db';
+import { decryptSecret, encryptSecret } from '@kubwave/crypto';
 import { BackendConfigService } from '../../shared/config/backend-config.service.js';
 import { ApiError } from '../../shared/errors/api-error.js';
-import { buildAppJwtClaims } from './github-app.js';
-import { clearInstallationTokenCache } from './installation-token.js';
-import { appsNewUrl, buildAppManifest, installUrl, parseManifestConversion } from './git-manifest.js';
+import { clearInstallationTokenCache, signAppJwt } from './installation-token.js';
+import { appsNewUrl, buildAppManifest, consoleGitSettingsUrl, installUrl, parseManifestConversion } from './git-manifest.js';
 import type { GithubConnectionDto, GithubManifestDto } from './git-connection.dto.js';
 
 const STATE_PURPOSE = 'github-app-manifest';
@@ -75,13 +74,19 @@ export class GitConnectionService {
 		return { slug: conv.slug };
 	}
 
-	async getConnection(): Promise<GithubConnectionDto> {
+	// The single platform-wide App: completeManifest replaces the row wholesale, so newest-by-createdAt is the live connection.
+	private async latestConnectionRow(): Promise<GitAppConnection | undefined> {
 		const [row] = await db
 			.select()
 			.from(gitAppConnections)
 			.where(eq(gitAppConnections.provider, 'github'))
 			.orderBy(desc(gitAppConnections.createdAt))
 			.limit(1);
+		return row;
+	}
+
+	async getConnection(): Promise<GithubConnectionDto> {
+		const row = await this.latestConnectionRow();
 		if (!row) return { connected: false, appSlug: null, appId: null, installUrl: null, connectedAt: null };
 		return {
 			connected: true,
@@ -93,27 +98,21 @@ export class GitConnectionService {
 	}
 
 	async getAppContext(): Promise<{ connectionId: string; appJwt: string } | null> {
-		const [row] = await db
-			.select({ id: gitAppConnections.id, appId: gitAppConnections.appId, pem: gitAppConnections.privateKeyCiphertext })
-			.from(gitAppConnections)
-			.where(eq(gitAppConnections.provider, 'github'))
-			.orderBy(desc(gitAppConnections.createdAt))
-			.limit(1);
+		const row = await this.latestConnectionRow();
 		if (!row) return null;
-		const jwt = signJwtRs256({ ...buildAppJwtClaims(row.appId, Math.floor(Date.now() / 1000)) }, decryptSecret(row.pem));
-		return { connectionId: row.id, appJwt: jwt };
+		return { connectionId: row.id, appJwt: signAppJwt(row.appId, decryptSecret(row.privateKeyCiphertext)) };
 	}
 
 	// State binds the install to the authenticated caller (uid+teamId); the callback trusts it because only this authed path mints it.
-	async teamInstallUrl(uid: string, teamId: string): Promise<string | null> {
-		const conn = await this.getConnection();
-		if (!conn.connected || !conn.appSlug) return null;
+	async teamInstallUrl(uid: string, teamId: string, conn?: GithubConnectionDto): Promise<string | null> {
+		const connection = conn ?? (await this.getConnection());
+		if (!connection.connected || !connection.appSlug) return null;
 		const state = await new SignJWT({ purpose: INSTALL_STATE_PURPOSE, uid, teamId })
 			.setProtectedHeader({ alg: 'HS256' })
 			.setIssuedAt()
 			.setExpirationTime('30m')
 			.sign(this.stateSecret());
-		return `${installUrl(conn.appSlug)}?state=${encodeURIComponent(state)}`;
+		return `${installUrl(connection.appSlug)}?state=${encodeURIComponent(state)}`;
 	}
 
 	async verifyInstallState(state: string): Promise<{ uid: string; teamId: string }> {
@@ -148,24 +147,14 @@ export class GitConnectionService {
 	}
 
 	async getOAuthCredentials(): Promise<{ clientId: string; clientSecret: string }> {
-		const [row] = await db
-			.select({ clientId: gitAppConnections.clientId, ct: gitAppConnections.clientSecretCiphertext })
-			.from(gitAppConnections)
-			.where(eq(gitAppConnections.provider, 'github'))
-			.orderBy(desc(gitAppConnections.createdAt))
-			.limit(1);
-		if (!row?.clientId || !row.ct) throw new ApiError(400, 'github_oauth_not_configured');
-		return { clientId: row.clientId, clientSecret: decryptSecret(row.ct) };
+		const row = await this.latestConnectionRow();
+		if (!row?.clientId || !row.clientSecretCiphertext) throw new ApiError(400, 'github_oauth_not_configured');
+		return { clientId: row.clientId, clientSecret: decryptSecret(row.clientSecretCiphertext) };
 	}
 
 	async getWebhookSecret(): Promise<string | null> {
-		const [row] = await db
-			.select({ ct: gitAppConnections.webhookSecretCiphertext })
-			.from(gitAppConnections)
-			.where(eq(gitAppConnections.provider, 'github'))
-			.orderBy(desc(gitAppConnections.createdAt))
-			.limit(1);
-		return row ? decryptSecret(row.ct) : null;
+		const row = await this.latestConnectionRow();
+		return row ? decryptSecret(row.webhookSecretCiphertext) : null;
 	}
 
 	async deleteConnection(): Promise<void> {
@@ -174,7 +163,7 @@ export class GitConnectionService {
 	}
 
 	consoleRedirect(query: Record<string, string>): string {
-		return `${this.config.api.appBaseUrl.replace(/\/+$/, '')}/admin/settings?${new URLSearchParams(query).toString()}`;
+		return consoleGitSettingsUrl(this.config.api.appBaseUrl, query);
 	}
 
 	teamSetupRedirect(query: Record<string, string>): string {

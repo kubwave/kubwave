@@ -213,6 +213,18 @@ function toggleSecret(id: string) {
 	shownSecrets[id] = !shownSecrets[id];
 }
 
+function repoBuildFields(values: ServiceSettingsValues) {
+	return {
+		branch: values.branch.trim(),
+		builder: values.builder,
+		...(values.builder === 'dockerfile' && values.dockerfilePath.trim() ? { dockerfilePath: values.dockerfilePath.trim() } : {}),
+		...(values.commit.trim() ? { commit: values.commit.trim() } : {}),
+		...(values.rootDirectory.trim() ? { rootDirectory: values.rootDirectory.trim() } : {}),
+		...(values.builder !== 'dockerfile' && values.buildCommand.trim() ? { buildCommand: values.buildCommand.trim() } : {}),
+		...(values.builder !== 'dockerfile' && values.startCommand.trim() ? { startCommand: values.startCommand.trim() } : {})
+	};
+}
+
 function buildConfig(values: ServiceSettingsValues) {
 	const port = values.containerPort.trim();
 	const hc = values.healthCheck;
@@ -283,45 +295,13 @@ function buildConfig(values: ServiceSettingsValues) {
 	if (isDatabaseEngine(props.service.type)) return dbConfig;
 	if (props.service.type === 'dockerfile') return { dockerfile: values.dockerfile.trim(), ...sharedConfig };
 	if (props.service.type === 'public-repo') {
-		return {
-			repoUrl: values.repoUrl.trim(),
-			branch: values.branch.trim(),
-			builder: values.builder,
-			...(values.builder === 'dockerfile' && values.dockerfilePath.trim() ? { dockerfilePath: values.dockerfilePath.trim() } : {}),
-			...(values.commit.trim() ? { commit: values.commit.trim() } : {}),
-			...(values.rootDirectory.trim() ? { rootDirectory: values.rootDirectory.trim() } : {}),
-			...(values.builder !== 'dockerfile' && values.buildCommand.trim() ? { buildCommand: values.buildCommand.trim() } : {}),
-			...(values.builder !== 'dockerfile' && values.startCommand.trim() ? { startCommand: values.startCommand.trim() } : {}),
-			...sharedConfig
-		};
+		return { repoUrl: values.repoUrl.trim(), ...repoBuildFields(values), ...sharedConfig };
 	}
 	if (props.service.type === 'private-repo') {
-		return {
-			repoUrl: values.repoUrl.trim(),
-			branch: values.branch.trim(),
-			sshKeyId: values.sshKeyId.trim(),
-			builder: values.builder,
-			...(values.builder === 'dockerfile' && values.dockerfilePath.trim() ? { dockerfilePath: values.dockerfilePath.trim() } : {}),
-			...(values.commit.trim() ? { commit: values.commit.trim() } : {}),
-			...(values.rootDirectory.trim() ? { rootDirectory: values.rootDirectory.trim() } : {}),
-			...(values.builder !== 'dockerfile' && values.buildCommand.trim() ? { buildCommand: values.buildCommand.trim() } : {}),
-			...(values.builder !== 'dockerfile' && values.startCommand.trim() ? { startCommand: values.startCommand.trim() } : {}),
-			...sharedConfig
-		};
+		return { repoUrl: values.repoUrl.trim(), sshKeyId: values.sshKeyId.trim(), ...repoBuildFields(values), ...sharedConfig };
 	}
 	if (props.service.type === 'github-repo') {
-		return {
-			installationId: values.installationId.trim(),
-			repoFullName: values.repoFullName.trim(),
-			branch: values.branch.trim(),
-			builder: values.builder,
-			...(values.builder === 'dockerfile' && values.dockerfilePath.trim() ? { dockerfilePath: values.dockerfilePath.trim() } : {}),
-			...(values.commit.trim() ? { commit: values.commit.trim() } : {}),
-			...(values.rootDirectory.trim() ? { rootDirectory: values.rootDirectory.trim() } : {}),
-			...(values.builder !== 'dockerfile' && values.buildCommand.trim() ? { buildCommand: values.buildCommand.trim() } : {}),
-			...(values.builder !== 'dockerfile' && values.startCommand.trim() ? { startCommand: values.startCommand.trim() } : {}),
-			...sharedConfig
-		};
+		return { installationId: values.installationId.trim(), repoFullName: values.repoFullName.trim(), ...repoBuildFields(values), ...sharedConfig };
 	}
 	return {
 		image: values.image,

@@ -62,7 +62,7 @@ export async function exchangeOAuthCode(clientId: string, clientSecret: string, 
 }
 
 // Installation ids the user can administer — the ownership proof: only someone who controls the install sees it here.
-export async function listUserInstallationIds(userToken: string, opts?: { maxPages?: number }): Promise<Set<string>> {
+export async function listUserInstallationIds(userToken: string, opts?: { maxPages?: number; findId?: string }): Promise<Set<string>> {
 	const maxPages = opts?.maxPages ?? 10;
 	const ids = new Set<string>();
 	for (let page = 1; page <= maxPages; page++) {
@@ -77,6 +77,8 @@ export async function listUserInstallationIds(userToken: string, opts?: { maxPag
 			const id = (it as { id?: unknown }).id;
 			if (typeof id === 'number' || typeof id === 'string') ids.add(String(id));
 		}
+		// An ownership check only needs the one id; stop paging once it appears.
+		if (opts?.findId && ids.has(opts.findId)) break;
 		if (arr.length < 100) break;
 	}
 	return ids;

@@ -236,9 +236,6 @@ export function makeServiceSettingsSchema(type: Service['type'], originalVolumeS
 				ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a public http(s) Git URL.', path: ['repoUrl'] });
 			}
 			if (!val.branch.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a branch.', path: ['branch'] });
-			if (val.commit.trim() && !/^[0-9a-fA-F]{7,64}$/.test(val.commit.trim())) {
-				ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a valid commit SHA.', path: ['commit'] });
-			}
 		} else if (type === 'private-repo') {
 			if (!val.repoUrl.trim()) {
 				ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a repository URL.', path: ['repoUrl'] });
@@ -247,17 +244,11 @@ export function makeServiceSettingsSchema(type: Service['type'], originalVolumeS
 			}
 			if (!val.branch.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a branch.', path: ['branch'] });
 			if (!val.sshKeyId.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Select a deploy key.', path: ['sshKeyId'] });
-			if (val.commit.trim() && !/^[0-9a-fA-F]{7,64}$/.test(val.commit.trim())) {
-				ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a valid commit SHA.', path: ['commit'] });
-			}
 		} else if (type === 'github-repo') {
 			if (!val.branch.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a branch.', path: ['branch'] });
 			// repoFullName + installationId are fixed at creation and read-only here; flag defensively if the link is somehow missing.
 			if (!val.installationId.trim() || !val.repoFullName.trim()) {
 				ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'This service is missing its GitHub repository link.', path: ['repoFullName'] });
-			}
-			if (val.commit.trim() && !/^[0-9a-fA-F]{7,64}$/.test(val.commit.trim())) {
-				ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a valid commit SHA.', path: ['commit'] });
 			}
 		} else if (isDatabaseEngine(type)) {
 			if (!val.version.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Pick a version.', path: ['version'] });
@@ -268,6 +259,11 @@ export function makeServiceSettingsSchema(type: Service['type'], originalVolumeS
 		} else {
 			if (!val.image.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter an image.', path: ['image'] });
 			if (!val.tag.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a tag.', path: ['tag'] });
+		}
+		if (type === 'public-repo' || type === 'private-repo' || type === 'github-repo') {
+			if (val.commit.trim() && !/^[0-9a-fA-F]{7,64}$/.test(val.commit.trim())) {
+				ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a valid commit SHA.', path: ['commit'] });
+			}
 		}
 		val.volumes.forEach((vol, i) => {
 			const original = originalVolumeSizes[vol.name.trim()];

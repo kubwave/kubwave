@@ -132,9 +132,9 @@ function isGenericBuildkitError(line: string): boolean {
 	return /failed to solve|did not complete successfully/i.test(line);
 }
 
-// Strip a leading BuildKit step prefix (`#12 ` progress marker or the in-block `12.34 ` elapsed-seconds stamp) so the raw command output reads cleanly.
+// Strip BuildKit's `#12 ` marker and `12.34 ` elapsed stamp; the stamp regex requires the decimal so a real `404 …`/`2 errors …` line isn't truncated.
 function stripStepPrefix(line: string): string {
-	return line.replace(/^#\d+\s+/, '').replace(/^\d+(?:\.\d+)?\s/, '');
+	return line.replace(/^#\d+\s+/, '').replace(/^\d+\.\d+\s/, '');
 }
 
 // On a failed RUN, BuildKit echoes the step's tail output between `------` fences under a `> [stage] RUN …:` header. That block is the real error; return it if present.

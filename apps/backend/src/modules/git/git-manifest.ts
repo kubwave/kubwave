@@ -69,10 +69,10 @@ export function isPubliclyReachable(appBaseUrl: string): boolean {
 	return true;
 }
 
-export function buildAppManifest(appBaseUrl: string, opts?: { name?: string }): GithubManifest {
+export function buildAppManifest(appBaseUrl: string): GithubManifest {
 	const reachable = isPubliclyReachable(appBaseUrl);
 	return {
-		name: opts?.name?.trim() || defaultAppName(appBaseUrl),
+		name: defaultAppName(appBaseUrl),
 		url: base(appBaseUrl),
 		redirect_url: githubCallbackUrl(appBaseUrl),
 		callback_urls: [githubCallbackUrl(appBaseUrl)],
