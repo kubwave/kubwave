@@ -1,18 +1,14 @@
-# Build output
-dist/
+# Nuxt
+.nuxt
+.output
+.data
+dist
 
-# Astro generated types
-.astro/
-
-# Dependencies
-node_modules/
-
-# Logs
+# Node
+node_modules
 *.log
 
-# Environment variables
+# Env
 .env
-.env.production
-
-# macOS
-.DS_Store
+.env.*
+!.env.example

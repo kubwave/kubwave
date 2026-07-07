@@ -382,6 +382,7 @@ jobs:
               'image-backend',
               'image-console',
               'image-cli',
+              'image-build-tools',
               'chart-tarball',
             ]);
 
@@ -408,13 +409,12 @@ jobs:
               core.warning(`Could not delete temporary artifacts: ${error.message}`);
             }
 
-  deploy-docs:
-    name: Deploy docs
+  deploy-docs-latest:
+    name: Deploy docs (latest)
     runs-on: ubuntu-latest
     needs:
       - resolve-version
       - github-release
-    # Only stable releases publish the public docs; prereleases stay on previews.
     if: needs.resolve-version.outputs.latest == 'true'
     steps:
       - name: Checkout
@@ -429,14 +429,44 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build docs
+        env:
+          NUXT_PUBLIC_DOCS_CHANNEL: latest
         run: bun run --filter=docs build
 
-      # Cloudflare's Git integration is intentionally disconnected so that pushes to
-      # main never auto-publish docs.kubwave.com. Production is deployed here, only on
-      # a stable release. PR previews are handled by docs-preview.yml.
       - name: Deploy to Cloudflare
         working-directory: apps/docs
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: bunx wrangler deploy
+
+  deploy-docs-next:
+    name: Deploy docs (next)
+    runs-on: ubuntu-latest
+    needs:
+      - resolve-version
+      - github-release
+    if: needs.resolve-version.outputs.prerelease == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build docs
+        env:
+          NUXT_PUBLIC_DOCS_CHANNEL: next
+        run: bun run --filter=docs build
+
+      - name: Deploy to Cloudflare
+        working-directory: apps/docs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bunx wrangler deploy --env next

@@ -1,23 +1,41 @@
 {
 	"$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
+	// Production ("latest" channel) worker. Serves docs.kubwave.com, whose custom
+	// domain is attached in the Cloudflare dashboard (kept off *.workers.dev).
+	// Deployed only on a stable release by release.yml (deploy-docs-latest).
 	"name": "kubwave",
 	"compatibility_date": "2026-05-28",
 	"assets": {
-		"directory": "./dist",
+		"directory": "./.output/public",
 		"not_found_handling": "404-page"
 	},
 	"observability": {
 		"enabled": true
 	},
-	// Production is served from the custom domain only — keep it off *.workers.dev.
 	"workers_dev": false,
 	"env": {
-		// Per-PR preview deploys (docs-preview.yml) deploy under a throwaway worker
-		// name and DO expose a *.workers.dev URL so the preview is reachable.
+		// "next" channel worker: the docs built from prerelease tags (e.g. 1.2.3-preview.1).
+		// Served at next.docs.kubwave.com — attach that custom domain to this worker in the
+		// Cloudflare dashboard (one-time, like production). workers_dev stays on so the build
+		// is reachable at kubwave-docs-next.<subdomain>.workers.dev until the domain is live.
+		// Deployed on every prerelease by release.yml (deploy-docs-next).
+		"next": {
+			"name": "kubwave-docs-next",
+			"workers_dev": true,
+			"assets": {
+				"directory": "./.output/public",
+				"not_found_handling": "404-page"
+			},
+			"observability": {
+				"enabled": true
+			}
+		},
+		// Per-PR preview deploys (docs-preview.yml) reuse this env under a throwaway
+		// worker name (kubwave-docs-pr-<N>) and expose a *.workers.dev URL.
 		"preview": {
 			"workers_dev": true,
 			"assets": {
-				"directory": "./dist",
+				"directory": "./.output/public",
 				"not_found_handling": "404-page"
 			},
 			"observability": {
