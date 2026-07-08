@@ -93,7 +93,9 @@ The installer prompts whether to install the autoscaler. It creates:
 You need:
 
 - The **UKS cluster UUID** from the UpCloud Control Panel
-- An UpCloud API user with permission to manage the Kubernetes cluster
+- An **UpCloud API token** with permission to manage the Kubernetes cluster (preferred).
+  A username/password pair is still accepted as a basic-auth fallback, but tokens are more
+  reliable and easier to scope.
 
 Node group **min/max sizes** are configured in UpCloud (Control Panel, API, or Terraform) — kubwave
 does not change node group limits.
@@ -101,8 +103,7 @@ does not change node group limits.
 Non-interactive example:
 
 ```sh
-export UPCLOUD_USERNAME=your-api-user
-export UPCLOUD_PASSWORD=your-api-password
+export UPCLOUD_TOKEN=your-api-token
 
 kubwave install \
   --platform upcloud-uks \

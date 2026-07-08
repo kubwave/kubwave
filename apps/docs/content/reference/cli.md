@@ -66,8 +66,9 @@ kubwave install --platform cloudfleet-hetzner --ha
 | `--upcloud-autoscaling`                             | (prompted)        | Install the UpCloud Cluster Autoscaler on `upcloud-uks`. Required with `--yes` for non-interactive installs.                                                                                                 |
 | `--no-upcloud-autoscaling`                          | —                 | Skip the UpCloud Cluster Autoscaler on `upcloud-uks`.                                                                                                                                                        |
 | `--upcloud-cluster-uuid <uuid>`                     | —                 | UpCloud UKS cluster UUID (from the Control Panel). Required with `--yes --upcloud-autoscaling`.                                                                                                              |
-| `--upcloud-username <user>`                         | —                 | UpCloud API username. Falls back to `UPCLOUD_USERNAME`.                                                                                                                                                      |
-| `--upcloud-password <pass>`                         | —                 | UpCloud API password. Falls back to `UPCLOUD_PASSWORD`.                                                                                                                                                      |
+| `--upcloud-token <token>`                           | —                 | UpCloud API token (preferred). Falls back to `UPCLOUD_TOKEN`.                                                                                                                                                |
+| `--upcloud-username <user>`                         | —                 | UpCloud API username (basic-auth fallback, less reliable). Falls back to `UPCLOUD_USERNAME`.                                                                                                                 |
+| `--upcloud-password <pass>`                         | —                 | UpCloud API password (basic-auth fallback, less reliable). Falls back to `UPCLOUD_PASSWORD`.                                                                                                                 |
 | `--registry <url>`                                  | `ghcr.io/kubwave` | Container registry endpoint for platform images.                                                                                                                                                             |
 | `--storage <auto\|skip>`                            | `auto`            | `auto` installs a CSI driver if no default StorageClass exists; `skip` does nothing.                                                                                                                         |
 | `--storage-class <name>`                            | —                 | Use this StorageClass and skip CSI auto-install.                                                                                                                                                             |
@@ -200,7 +201,8 @@ Channel          stable (from cluster)
 
 ### Install environment variables (UpCloud UKS)
 
-| Variable           | Description                                  |
-| ------------------ | -------------------------------------------- |
-| `UPCLOUD_USERNAME` | UpCloud API username for Cluster Autoscaler. |
-| `UPCLOUD_PASSWORD` | UpCloud API password for Cluster Autoscaler. |
+| Variable           | Description                                                        |
+| ------------------ | ------------------------------------------------------------------ |
+| `UPCLOUD_TOKEN`    | UpCloud API token for Cluster Autoscaler (preferred).              |
+| `UPCLOUD_USERNAME` | UpCloud API username for Cluster Autoscaler (basic-auth fallback). |
+| `UPCLOUD_PASSWORD` | UpCloud API password for Cluster Autoscaler (basic-auth fallback). |
