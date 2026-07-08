@@ -73,7 +73,7 @@ export function renderAutoscalerDeployment(cfg: { clusterUuid: string; imageTag:
 	if (leftover) {
 		throw new FatalCliError(
 			'Unsubstituted placeholder in cluster-autoscaler deployment manifest. ' +
-			'The vendored YAML may have changed upstream — check scripts/gen-upcloud-cs-manifest.sh and verify the placeholder constants in autoscaling.ts match the current template.'
+				'The vendored YAML may have changed upstream — check scripts/gen-upcloud-cs-manifest.sh and verify the placeholder constants in autoscaling.ts match the current template.'
 		);
 	}
 

@@ -460,7 +460,11 @@ async function uninstallStagingRelease(target: ReleaseTarget): Promise<void> {
 	}
 }
 
-async function deletePersistentVolumeClaims(api: CoreV1Api, patchApi: ReturnType<typeof KubernetesObjectApi.makeApiClient>, plan: UninstallPlan): Promise<void> {
+async function deletePersistentVolumeClaims(
+	api: CoreV1Api,
+	patchApi: ReturnType<typeof KubernetesObjectApi.makeApiClient>,
+	plan: UninstallPlan
+): Promise<void> {
 	if (!plan.deletePvcs) return;
 
 	const namespaces = [plan.appRelease.namespace];
@@ -474,7 +478,11 @@ async function deletePersistentVolumeClaims(api: CoreV1Api, patchApi: ReturnType
 	}
 }
 
-async function deletePvcsInNamespace(api: CoreV1Api, patchApi: ReturnType<typeof KubernetesObjectApi.makeApiClient>, namespace: string): Promise<void> {
+async function deletePvcsInNamespace(
+	api: CoreV1Api,
+	patchApi: ReturnType<typeof KubernetesObjectApi.makeApiClient>,
+	namespace: string
+): Promise<void> {
 	const spinner = p.spinner();
 	spinner.start(`Deleting PersistentVolumeClaims in ${namespace}...`);
 	try {
