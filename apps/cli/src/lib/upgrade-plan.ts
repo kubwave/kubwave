@@ -1,12 +1,21 @@
 import { writeFileSync } from 'node:fs';
 import { stringify } from 'yaml';
 import { APP_NAMESPACE, HELM_RELEASE_NAME } from '~/lib/constants.js';
-import { buildProductionValues } from '~/lib/helm.js';
+import { buildProductionValues, dnsPolicyForPlatform } from '~/lib/helm.js';
 import { writeValuesFile } from '~/lib/values-file.js';
+import { defaultTraefikValuesForPlatform } from '~/lib/platforms.js';
 import type { InstallState } from '~/lib/install-state.js';
 
 // Maps InstallState onto the shared production values builder; omitting certManagerClusterIssuer keeps the existing issuer (--reset-then-reuse-values).
 export function buildUpgradeValues(state: InstallState, targetVersion: string): Record<string, unknown> {
+	// Re-apply platform-specific Traefik defaults so upgrades pick up fixes like the UpCloud
+	// TCP-passthrough annotation even when the marker was written by an older CLI version.
+	const platformTraefikValues = state.platformId
+		? defaultTraefikValuesForPlatform(state.platformId, state.dependencies.traefik.helmValues)
+		: undefined;
+	const dependencies = platformTraefikValues
+		? { ...state.dependencies, traefik: { ...state.dependencies.traefik, helmValues: platformTraefikValues } }
+		: state.dependencies;
 	return buildProductionValues({
 		domain: state.domain,
 		imageRegistry: state.imageRegistry,
@@ -27,7 +36,8 @@ export function buildUpgradeValues(state: InstallState, targetVersion: string): 
 		ingressControllerNamespace: state.ingressControllerNamespace,
 		...(state.storageClass ? { storageClass: state.storageClass } : {}),
 		...(state.nodeSelector && Object.keys(state.nodeSelector).length > 0 ? { nodeSelector: state.nodeSelector } : {}),
-		dependencies: state.dependencies,
+		dependencies,
+		dnsPolicy: dnsPolicyForPlatform(state.platformId),
 		// Preserve HA: the marker (worker-mirrored on toggle) is authoritative for replicas/affinity.
 		ha: state.ha,
 		// Preserve the tenant PSS level chosen at install so the upgrade doesn't revert to the chart default.

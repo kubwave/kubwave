@@ -4,7 +4,11 @@ import type { CloudProvider } from '~/lib/cloud-provider.js';
 import { UserCancelledError } from '~/lib/errors.js';
 import { cloudfleetHetznerDescriptor } from '~/platforms/cloudfleet/hetzner/descriptor.js';
 import { cloudfleetGcpDescriptor } from '~/platforms/cloudfleet/gcp/descriptor.js';
+import { upcloudUksDescriptor } from '~/platforms/upcloud/descriptor.js';
 import type { DependencyStateInput } from '~/lib/dependency-state.js';
+import { buildUpcloudTraefikValues } from '~/platforms/upcloud/traefik-values.js';
+import { buildGcpTraefikValues } from '~/platforms/cloudfleet/gcp/traefik-overrides.js';
+import { buildCloudfleetTraefikValues } from '~/platforms/cloudfleet/traefik-values.js';
 
 export type StorageOpts = {
 	storageMode: 'auto' | 'skip';
@@ -17,13 +21,37 @@ export type StorageDecision = {
 	nodeSelector?: Record<string, string>;
 };
 
+export type UpcloudNodeGroup = {
+	name: string;
+	min: number;
+	max: number;
+};
+
+export type AutoscalingOpts = {
+	upcloudAutoscaling?: boolean;
+	upcloudClusterUuid?: string;
+	upcloudToken?: string;
+	upcloudUsername?: string;
+	upcloudPassword?: string;
+	upcloudNodeGroups?: UpcloudNodeGroup[];
+	upcloudAutoscalerImageTag?: string;
+	assumeYes?: boolean;
+};
+
+export type AutoscalingDecision = {
+	enabled: boolean;
+	clusterUuid: string;
+	nodeGroups?: UpcloudNodeGroup[];
+};
+
 export interface Platform {
 	id: string;
 	label: string;
 	description: string;
-	provider: CloudProvider;
+	provider?: CloudProvider;
 	nodeSelector?: Record<string, string>;
 	ensureStorage(kc: KubeConfig, opts: StorageOpts): Promise<StorageDecision>;
+	ensureAutoscaling?: (kc: KubeConfig, opts: AutoscalingOpts) => Promise<AutoscalingDecision | void>;
 	dependencies: DependencyStateInput;
 }
 
@@ -39,7 +67,7 @@ export interface PlatformDescriptor {
 	build(opts: PlatformBuildOpts): Promise<Platform>;
 }
 
-export const PLATFORMS: ReadonlyArray<PlatformDescriptor> = [cloudfleetHetznerDescriptor, cloudfleetGcpDescriptor];
+export const PLATFORMS: ReadonlyArray<PlatformDescriptor> = [cloudfleetHetznerDescriptor, cloudfleetGcpDescriptor, upcloudUksDescriptor];
 
 export function getPlatformDescriptor(id: string): PlatformDescriptor {
 	const found = PLATFORMS.find(descriptor => descriptor.id === id);
@@ -53,6 +81,28 @@ export function getPlatformDescriptor(id: string): PlatformDescriptor {
 export async function selectPlatform(opts: { platform?: string } & PlatformBuildOpts): Promise<Platform> {
 	const descriptor = await pickDescriptor(opts);
 	return descriptor.build(opts);
+}
+
+// Rebuild the default Traefik helm values for a known platform. Upgrades use this so fixes to
+// platform-specific service annotations (e.g. UpCloud TCP passthrough) are applied even when the
+// marker was created by an older CLI version. Existing Hetzner annotations are preserved.
+export function defaultTraefikValuesForPlatform(platformId: string, existingValues?: Record<string, unknown>): Record<string, unknown> | undefined {
+	switch (platformId) {
+		case 'upcloud-uks':
+			return buildUpcloudTraefikValues();
+		case 'cloudfleet-gcp':
+			return buildGcpTraefikValues();
+		case 'cloudfleet-hetzner': {
+			const annotations = (existingValues?.service as Record<string, unknown> | undefined)?.annotations as Record<string, string> | undefined;
+			const lbLocation = annotations?.['load-balancer.hetzner.cloud/location'];
+			return buildCloudfleetTraefikValues({
+				provider: 'hetzner',
+				...(lbLocation ? { serviceAnnotations: { 'load-balancer.hetzner.cloud/location': lbLocation } } : {})
+			});
+		}
+		default:
+			return undefined;
+	}
 }
 
 async function pickDescriptor(opts: { platform?: string }): Promise<PlatformDescriptor> {

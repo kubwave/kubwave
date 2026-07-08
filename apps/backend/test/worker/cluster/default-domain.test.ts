@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, mock, setSystemTime, test } from 'bun:test';
 import type { CoreV1Api } from '@kubernetes/client-node';
 
 // Mock the IO seams. NOTE: the SUT carries module-level state (lastWritten + IP cache); tests are ordered around it.
@@ -19,6 +19,14 @@ mock.module('~/shared/config/worker-env', () => ({
 		get ingressClusterIssuer() {
 			return envOverride.ingressClusterIssuer;
 		}
+	}
+}));
+
+let resolve4Impl: (hostname: string) => Promise<string[]> = async () => [];
+
+mock.module('node:dns', () => ({
+	promises: {
+		resolve4: (hostname: string) => resolve4Impl(hostname)
 	}
 }));
 
@@ -103,6 +111,31 @@ describe('reconcileDefaultDomainRuntime', () => {
 		}
 		expect(setCalls.length).toBe(1);
 		expect(warnings.some(w => w.includes('default-domain runtime'))).toBe(true);
+	});
+
+	test('resolves a hostname-only LB status to an IPv4 (UpCloud UKS, AWS ELB)', async () => {
+		envOverride = { ingressLoadBalancerIp: undefined, ingressClusterIssuer: undefined };
+		setCalls.length = 0;
+		resolve4Impl = async () => ['5.22.215.26'];
+		setSystemTime(new Date('2030-01-01T00:00:00Z'));
+
+		const runtime = await reconcileDefaultDomainRuntime(svcWithIngress({ hostname: 'lb-example.upcloudlb.com' }));
+		expect(runtime).toEqual({ ingressIp: '5.22.215.26', tls: false });
+		expect(setCalls).toEqual([{ key: 'default-domain-runtime', value: { ingressIp: '5.22.215.26', tls: false } }]);
+	});
+
+	test('keeps the last known IP when hostname resolution fails, without re-writing', async () => {
+		envOverride = { ingressLoadBalancerIp: undefined, ingressClusterIssuer: undefined };
+		setCalls.length = 0;
+		resolve4Impl = async () => {
+			throw new Error('ENOTFOUND');
+		};
+		setSystemTime(new Date('2030-01-01T00:02:00Z'));
+
+		const runtime = await reconcileDefaultDomainRuntime(svcWithIngress({ hostname: 'lb-example.upcloudlb.com' }));
+		expect(runtime).toEqual({ ingressIp: '5.22.215.26', tls: false });
+		expect(setCalls).toEqual([]);
+		setSystemTime();
 	});
 });
 

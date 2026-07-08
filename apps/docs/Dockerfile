@@ -14,11 +14,14 @@ COPY packages/kube/package.json ./packages/kube/
 COPY packages/templates/package.json ./packages/templates/
 RUN bun install --frozen-lockfile --ignore-scripts
 
-FROM oven/bun:1.3.14-alpine AS dev
+FROM node:24-alpine AS dev
+RUN apk add --no-cache python3 make g++
 WORKDIR /app
 COPY --from=deps /app ./
 COPY packages ./packages
 COPY apps/docs ./apps/docs
+RUN npm rebuild better-sqlite3
 EXPOSE 4321
+ENV PORT=4321 NUXT_TELEMETRY_DISABLED=1
 WORKDIR /app/apps/docs
-CMD ["bun", "run", "nuxt", "dev", "--host", "0.0.0.0", "--port", "4321"]
+CMD ["node", "node_modules/.bin/nuxt", "dev", "--port", "4321", "--host", "0.0.0.0"]

@@ -277,6 +277,19 @@ describe('buildInstallState', () => {
 		} as never);
 		expect(state.storageClass).toBe('hcloud-volumes');
 	});
+
+	test('round-trips upcloud-uks platform_id through the marker encode/decode', () => {
+		const encoded = encodeInstallStateData({
+			platformId: 'upcloud-uks',
+			storageClass: 'upcloud-block-storage-maxiops'
+		});
+		expect(encoded.platform_id).toBe('upcloud-uks');
+		expect(encoded.storage_class).toBe('upcloud-block-storage-maxiops');
+		expect(decodeInstallStateData(encoded)).toMatchObject({
+			platformId: 'upcloud-uks',
+			storageClass: 'upcloud-block-storage-maxiops'
+		});
+	});
 });
 
 test('external install persists its endpoint and preserves it through upgrade', () => {

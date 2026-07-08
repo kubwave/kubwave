@@ -18,6 +18,7 @@ import { resolveLatestRelease, getReleaseByTag, validateTargetForChannel, platfo
 import { describeRefresh, refreshAndReExec } from '~/lib/self-refresh.js';
 import { resolveInstallState, resolveInstalledDependencyState, type InstallState, type PartialInstallState } from '~/lib/install-state.js';
 import { buildHelmUpgradeArgs, generateUpgradeValuesFile, writeUpgradeValuesFileTo } from '~/lib/upgrade-plan.js';
+import { reconcileUpcloudAutoscaler } from '~/platforms/upcloud/autoscaling.js';
 import { applyDesiredBuildRegistry, ensureDesiredBuildRegistrySecrets, readDesiredBuildRegistrySettings } from '~/lib/registry-settings.js';
 import { FatalCliError, UserCancelledError, printAndExit } from '~/lib/errors.js';
 
@@ -187,6 +188,7 @@ export async function runUpdate(
 	// In-cluster path skips dependencies above; resolve state here. Local path reuses.
 	const resolvedState = installState ?? (await resolveInstallStateWithProgress(kc, marker?.installState, opts.registry, reporter));
 	await ensurePlatformRegistrySecrets(kc, resolvedState, reporter);
+	await reconcileUpcloudAutoscalerIfEnabled(kc, resolvedState, reporter);
 
 	await runHelmUpgrade(resolvedState, targetVersion, reporter);
 
@@ -251,6 +253,7 @@ export async function runRepairDependencies(reporter: ProgressReporter): Promise
 	const dependencyState = await resolveInstalledDependencyState(kc, marker?.installState);
 
 	await ensureDependenciesSilent(kc, reporter, dependencyState);
+	await reconcileUpcloudAutoscalerIfEnabled(kc, marker?.installState, reporter);
 }
 
 // In-cluster dependency wait: verifies readiness through Kubernetes APIs only.
@@ -416,6 +419,19 @@ async function ensurePlatformRegistrySecrets(
 	reporter.start('Ensuring platform registry secrets...');
 	await createRegistrySecrets(kc, buildRegistryEndpointHost(installState.registryHost));
 	reporter.succeed('Platform registry secrets ready');
+}
+
+async function reconcileUpcloudAutoscalerIfEnabled(
+	kc: ReturnType<typeof loadKubeConfig>,
+	installState: InstallState | PartialInstallState | undefined,
+	reporter: ProgressReporter
+): Promise<void> {
+	const autoscaling = installState?.upcloudAutoscaling;
+	if (installState?.platformId !== 'upcloud-uks' || !autoscaling?.enabled || !autoscaling.clusterUuid) return;
+
+	reporter.start('Reconciling UpCloud Cluster Autoscaler...');
+	await reconcileUpcloudAutoscaler(kc, { clusterUuid: autoscaling.clusterUuid, nodeGroups: autoscaling.nodeGroups });
+	reporter.succeed('UpCloud Cluster Autoscaler reconciled');
 }
 
 async function runHelmUpgrade(

@@ -1,5 +1,15 @@
 import { describe, expect, test } from 'bun:test';
 import { buildTraefikHelmValues } from '../src/lib/traefik.js';
+import { buildSharedTraefikValues } from '../src/platforms/cloudfleet/traefik-values.js';
+
+describe('buildSharedTraefikValues', () => {
+	test('sets HA defaults without a nodeSelector', () => {
+		const values = buildSharedTraefikValues({});
+		expect((values.deployment as Record<string, unknown>).replicas).toBe(2);
+		expect(values.nodeSelector).toBeUndefined();
+		expect((values.service as Record<string, unknown>).type).toBe('LoadBalancer');
+	});
+});
 
 describe('buildTraefikHelmValues', () => {
 	test('sets resource requests so CFKE can size nodes for the ingress controller', () => {

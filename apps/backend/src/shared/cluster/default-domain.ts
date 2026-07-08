@@ -1,3 +1,4 @@
+import { promises as dns } from 'node:dns';
 import type { CoreV1Api } from '@kubernetes/client-node';
 import {
 	DEFAULT_DOMAIN_RUNTIME_KEY,
@@ -21,11 +22,23 @@ const IP_CACHE_TTL_MS = 60_000;
 let cachedIp: string | null = null;
 let cachedAt = 0;
 
+// Hostname-only LB status (UpCloud UKS, AWS ELB): sslip needs an IPv4, not a DNS name.
+async function resolveHostnameToIpv4(hostname: string): Promise<string | null> {
+	try {
+		const [ip] = await dns.resolve4(hostname);
+		return ip ?? null;
+	} catch {
+		return null;
+	}
+}
+
 async function readIngressIp(coreApi: CoreV1Api): Promise<string | null> {
 	try {
 		const svc = await coreApi.readNamespacedService({ name: env.ingressControllerService, namespace: env.ingressControllerNamespace });
 		const ingress = svc.status?.loadBalancer?.ingress?.[0];
-		return ingress?.ip ?? ingress?.hostname ?? null;
+		if (ingress?.ip) return ingress.ip;
+		if (ingress?.hostname) return resolveHostnameToIpv4(ingress.hostname);
+		return null;
 	} catch {
 		// Service missing / not yet readable - treated as "no IP yet".
 		return null;

@@ -61,8 +61,13 @@ kubwave install --platform cloudfleet-hetzner --ha
 | `--domain <fqdn>`                                   | (prompted)        | Domain for the Console and API.                                                                                                                                                                              |
 | `--email <email>`                                   | (prompted)        | Email for Let's Encrypt certificate notifications.                                                                                                                                                           |
 | `--channel <stable\|preview>`                       | `stable`          | Release channel for future updates.                                                                                                                                                                          |
-| `--platform <id>`                                   | (prompted)        | Target platform. Currently: `cloudfleet-hetzner`. See [Supported providers](/start/supported-providers/).                                                                                                    |
+| `--platform <id>`                                   | (prompted)        | Target platform: `cloudfleet-hetzner`, `cloudfleet-gcp`, or `upcloud-uks`. See [Supported providers](/start/supported-providers/).                                                                           |
 | `--hetzner-lb-location <loc>`                       | —                 | Hetzner Load Balancer location: `fsn1`, `nbg1`, `hel1`, `ash`, or `hil`.                                                                                                                                     |
+| `--upcloud-autoscaling`                             | (prompted)        | Install the UpCloud Cluster Autoscaler on `upcloud-uks`. Required with `--yes` for non-interactive installs.                                                                                                 |
+| `--no-upcloud-autoscaling`                          | —                 | Skip the UpCloud Cluster Autoscaler on `upcloud-uks`.                                                                                                                                                        |
+| `--upcloud-cluster-uuid <uuid>`                     | —                 | UpCloud UKS cluster UUID (from the Control Panel). Required with `--yes --upcloud-autoscaling`.                                                                                                              |
+| `--upcloud-username <user>`                         | —                 | UpCloud API username. Falls back to `UPCLOUD_USERNAME`.                                                                                                                                                      |
+| `--upcloud-password <pass>`                         | —                 | UpCloud API password. Falls back to `UPCLOUD_PASSWORD`.                                                                                                                                                      |
 | `--registry <url>`                                  | `ghcr.io/kubwave` | Container registry endpoint for platform images.                                                                                                                                                             |
 | `--storage <auto\|skip>`                            | `auto`            | `auto` installs a CSI driver if no default StorageClass exists; `skip` does nothing.                                                                                                                         |
 | `--storage-class <name>`                            | —                 | Use this StorageClass and skip CSI auto-install.                                                                                                                                                             |
@@ -192,3 +197,10 @@ Channel          stable (from cluster)
 - **Release channels:**
   - `stable` — production-ready releases. The `:latest` container tag is pushed.
   - `preview` — prereleases (tags with a dash, e.g. `0.2.0-alpha.1`). No `:latest` push.
+
+### Install environment variables (UpCloud UKS)
+
+| Variable           | Description                                  |
+| ------------------ | -------------------------------------------- |
+| `UPCLOUD_USERNAME` | UpCloud API username for Cluster Autoscaler. |
+| `UPCLOUD_PASSWORD` | UpCloud API password for Cluster Autoscaler. |
