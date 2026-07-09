@@ -27,6 +27,7 @@ export const UPCLOUD_AUTOSCALER_IMAGE_TAG_PLACEHOLDER = '${UPCLOUD_AUTOSCALER_IM
 export const UPCLOUD_AUTOSCALER_NODES_FLAGS_PLACEHOLDER = '            # ${UPCLOUD_AUTOSCALER_NODES_FLAGS}';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const NODE_GROUP_NAME_RE = /^[a-z0-9-]+$/i;
 
 const AUTOSCALER_OWNERSHIP_LABELS = buildOwnershipLabels({
 	component: 'platform',
@@ -55,6 +56,9 @@ export function parseUpcloudNodeGroup(spec: string): UpcloudNodeGroup {
 	if (!minRaw || !Number.isInteger(min) || min < 0) throw new FatalCliError(`Invalid min nodes in "${spec}": must be a non-negative integer.`);
 	if (!maxRaw || !Number.isInteger(max) || max < min) throw new FatalCliError(`Invalid max nodes in "${spec}": must be an integer >= min.`);
 	if (!name) throw new FatalCliError(`Invalid node group name in "${spec}": name is required.`);
+	if (!NODE_GROUP_NAME_RE.test(name)) {
+		throw new FatalCliError(`Invalid node group name "${name}" in "${spec}": only letters, digits and hyphens are allowed.`);
+	}
 	return { name, min, max };
 }
 
@@ -240,6 +244,11 @@ export async function ensureAutoscalerSecret(kc: KubeConfig, credentials: { toke
 	} catch (err) {
 		if (!isAlreadyExistsError(err)) throw err;
 		const existing = await api.readNamespacedSecret({ namespace: UPCLOUD_AUTOSCALER_NAMESPACE, name: UPCLOUD_AUTOSCALER_SECRET });
+		if (!hasUpcloudAutoscalerOwnership(existing.metadata?.labels)) {
+			throw new FatalCliError(
+				`Secret "${UPCLOUD_AUTOSCALER_SECRET}" already exists in ${UPCLOUD_AUTOSCALER_NAMESPACE} and is not managed by kubwave; refusing to overwrite it.`
+			);
+		}
 		await api.replaceNamespacedSecret({
 			namespace: UPCLOUD_AUTOSCALER_NAMESPACE,
 			name: UPCLOUD_AUTOSCALER_SECRET,
@@ -328,8 +337,8 @@ async function resolveNodeGroups(opts: AutoscalingOpts): Promise<UpcloudNodeGrou
 					? 'Node group name to autoscale (press Enter to skip, e.g. "workers")'
 					: 'Another node group name (or press Enter to finish)',
 			validate(input) {
-				if (input && input.includes(':')) return 'Name cannot contain ":"';
 				if (input && !input.trim()) return 'Name cannot be only whitespace';
+				if (input && !NODE_GROUP_NAME_RE.test(input.trim())) return 'Name may only contain letters, digits and hyphens';
 			}
 		});
 		if (p.isCancel(name)) throw new UserCancelledError('Node group entry aborted.');

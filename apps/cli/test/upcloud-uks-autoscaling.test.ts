@@ -79,6 +79,14 @@ describe('parseUpcloudNodeGroup', () => {
 	test('rejects max below min', () => {
 		expect(() => parseUpcloudNodeGroup('5:3:workers')).toThrow('integer >= min');
 	});
+
+	test('accepts alphanumeric and hyphenated names', () => {
+		expect(parseUpcloudNodeGroup('1:3:gpu-pool-1')).toEqual({ name: 'gpu-pool-1', min: 1, max: 3 });
+	});
+
+	test.each(['2:10:my workers', '2:10:work\ners', '2:10:pool$(rm)', "2:10:a'b"])('rejects names with unsafe characters: %j', spec => {
+		expect(() => parseUpcloudNodeGroup(spec)).toThrow('only letters, digits and hyphens');
+	});
 });
 
 describe('resolveAutoscalerImageTag', () => {
@@ -140,7 +148,12 @@ describe('ensureAutoscalerSecret', () => {
 			throw err;
 		};
 		const replaceCalls: Array<{ body: { stringData: Record<string, string>; metadata: { resourceVersion: string } } }> = [];
-		const readNamespacedSecret = async () => ({ metadata: { resourceVersion: '42' } });
+		const readNamespacedSecret = async () => ({
+			metadata: {
+				resourceVersion: '42',
+				labels: buildOwnershipLabels({ component: 'platform', instance: 'upcloud-autoscaler', cliManaged: true })
+			}
+		});
 		const replaceNamespacedSecret = async (opts: { body: { stringData: Record<string, string>; metadata: { resourceVersion: string } } }) => {
 			replaceCalls.push(opts);
 			return { metadata: {} };
@@ -154,5 +167,23 @@ describe('ensureAutoscalerSecret', () => {
 		if (!call) throw new Error('expected replaceNamespacedSecret to be called');
 		expect(call.body.metadata.resourceVersion).toBe('42');
 		expect(call.body.stringData).toEqual({ token: 'secret-token' });
+	});
+
+	test('refuses to overwrite an existing secret not managed by kubwave', async () => {
+		const createNamespacedSecret = async () => {
+			const err = new Error('already exists');
+			(err as Error & { statusCode?: number }).statusCode = 409;
+			throw err;
+		};
+		let replaceCalled = false;
+		const readNamespacedSecret = async () => ({ metadata: { resourceVersion: '7', labels: { app: 'someone-elses-autoscaler' } } });
+		const replaceNamespacedSecret = async () => {
+			replaceCalled = true;
+			return { metadata: {} };
+		};
+		const kc = mockKubeConfig({ CoreV1Api: { createNamespacedSecret, readNamespacedSecret, replaceNamespacedSecret } });
+
+		await expect(ensureAutoscalerSecret(kc, { token: 'secret-token' })).rejects.toThrow('not managed by kubwave');
+		expect(replaceCalled).toBe(false);
 	});
 });
