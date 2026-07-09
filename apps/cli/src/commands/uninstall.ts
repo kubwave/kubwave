@@ -605,6 +605,11 @@ export async function deleteClaimedPersistentVolumes(kc: KubeConfig, plan: Unins
 		const claimNs = pv.spec?.claimRef?.namespace;
 		if (!name || !claimNs || !targetNamespaces.has(claimNs)) return;
 
+		if (pv.status?.phase !== 'Released') {
+			skipped++;
+			return;
+		}
+
 		const finalizers = pv.metadata?.finalizers ?? [];
 
 		// Drop only the built-in protection finalizer; leave controller-owned ones (external-attacher/*)
@@ -649,7 +654,7 @@ export async function deleteClaimedPersistentVolumes(kc: KubeConfig, plan: Unins
 	const base =
 		deleted === 0 && skipped === 0
 			? 'No claimed PersistentVolumes needed deleting'
-			: `Deleted ${deleted} claimed PV(s)${skipped ? `, ${skipped} already gone` : ''}`;
+			: `Deleted ${deleted} claimed PV(s)${skipped ? `, ${skipped} skipped (gone or not yet released)` : ''}`;
 	spinner.stop(failed > 0 ? `${base}; ${failed} could not be deleted (see warnings above)` : base);
 }
 
