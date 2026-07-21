@@ -1,6 +1,15 @@
 import type { Command } from 'commander';
 import * as p from '@clack/prompts';
-import { ApiextensionsV1Api, CoreV1Api, KubernetesObjectApi, RbacAuthorizationV1Api, StorageV1Api, type KubeConfig } from '@kubernetes/client-node';
+import {
+	ApiextensionsV1Api,
+	CoreV1Api,
+	KubernetesObjectApi,
+	RbacAuthorizationV1Api,
+	StorageV1Api,
+	type KubeConfig,
+	type KubernetesObject,
+	type V1PersistentVolume
+} from '@kubernetes/client-node';
 import {
 	APP_NAMESPACE,
 	APP_CLUSTER_RESOURCE_PREFIX,
@@ -13,10 +22,11 @@ import {
 	KUBWAVE_PART_OF_VALUE
 } from '~/lib/constants.js';
 import { getClusterInfo, loadKubeConfig } from '~/lib/k8s.js';
-import { isNotFoundError } from '~/lib/k8s-errors.js';
+import { isConflictError, isNotFoundError } from '~/lib/k8s-errors.js';
 import { helmUninstall, listReleaseNames } from '~/lib/helm.js';
 import { UserCancelledError, printAndExit } from '~/lib/errors.js';
 import { CSI_CATALOG, type CsiDefinition, type CsiInstall } from '~/platforms/cloudfleet/csi-catalog.js';
+import { detectUpcloudAutoscalerInstalled, teardownUpcloudAutoscaler } from '~/platforms/upcloud/autoscaling.js';
 import { deleteManifest, listAllCustomObjectsWith, mergePatchWith } from '~/lib/k8s-apply.js';
 
 const CERT_MANAGER_NAMESPACE = 'cert-manager';
@@ -72,6 +82,7 @@ export interface UninstallPlan {
 	customResourceDefinitions: DependencyCrd[];
 	// CSI drivers installed by kubwave that need symmetric teardown (LAST step, after disk reclamation).
 	csiTeardowns: CsiTeardownTarget[];
+	upcloudAutoscalerInstalled: boolean;
 }
 
 export interface BuildPlanOpts {
@@ -98,6 +109,26 @@ function resolvePvDrainTimeoutMs(): number {
 	const seconds = Number(process.env.KUBWAVE_PV_DRAIN_TIMEOUT?.trim());
 	if (Number.isFinite(seconds) && seconds > 0) return seconds * 1000;
 	return 300_000; // 5 minutes
+}
+
+function targetNamespaceSet(plan: UninstallPlan): Set<string> {
+	const namespaces = new Set<string>([...plan.namespacesToDelete, ...plan.environmentNamespaces, plan.appRelease.namespace]);
+	if (plan.stagingRelease) namespaces.add(plan.stagingRelease.namespace);
+	return namespaces;
+}
+
+async function patchPVReclaimPolicyToDelete(patchApi: ReturnType<typeof KubernetesObjectApi.makeApiClient>, pvName: string): Promise<void> {
+	const patch = { apiVersion: 'v1', kind: 'PersistentVolume', metadata: { name: pvName }, spec: { persistentVolumeReclaimPolicy: 'Delete' } };
+	await mergePatchWith(patchApi, patch as unknown as KubernetesObject);
+}
+
+async function forEachPersistentVolume(api: CoreV1Api, cb: (pv: V1PersistentVolume) => void | Promise<void>): Promise<void> {
+	let cont: string | undefined;
+	do {
+		const list = await api.listPersistentVolume({ limit: 500, _continue: cont });
+		for (const pv of list.items) await cb(pv);
+		cont = list.metadata?._continue || undefined;
+	} while (cont);
 }
 
 export function registerUninstallCommand(parent: Command): void {
@@ -169,22 +200,32 @@ export async function runUninstall(opts: UninstallOpts): Promise<void> {
 		}
 	}
 
+	if (plan.upcloudAutoscalerInstalled) {
+		p.log.info('UpCloud Cluster Autoscaler (kubwave-installed) detected — will be removed after CSI teardown.');
+	}
+
 	await confirmUninstallPlan(plan, opts.yes);
 
 	const api = kc.makeApiClient(CoreV1Api);
 	const rbacApi = kc.makeApiClient(RbacAuthorizationV1Api);
 	const crdApi = kc.makeApiClient(ApiextensionsV1Api);
+	const patchApi = KubernetesObjectApi.makeApiClient(kc);
 
 	await uninstallReleases(plan);
-	await deletePersistentVolumeClaims(api, plan);
+	await deletePersistentVolumeClaims(api, patchApi, plan);
+	await reclaimRetainedPvs(kc, plan);
 	await deleteAcmeAccountKeys(api, plan);
 	await uninstallDependencyReleases(plan);
 	await drainDependencyCustomResources(kc, plan);
 	await deleteNamespaces(api, plan);
 	await deleteEnvironmentNamespaces(api, plan);
+	await reclaimClaimedPersistentVolumes(kc, plan);
 	await deleteClusterScopedRbac(rbacApi, plan);
 	await deleteCustomResourceDefinitions(crdApi, plan);
 	await teardownCsiDrivers(kc, plan);
+	if (plan.upcloudAutoscalerInstalled) {
+		await teardownUpcloudAutoscaler(kc, true);
+	}
 
 	p.log.success('kubwave removed from the cluster.');
 	p.outro('Uninstall complete');
@@ -206,13 +247,15 @@ export async function buildUninstallPlan(opts: BuildPlanOpts): Promise<Uninstall
 	const namespacesToDelete =
 		stagingNamespaceExists && !baseNamespaces.includes(stagingNamespace) ? [...baseNamespaces, stagingNamespace] : baseNamespaces;
 
-	// Independent cluster reads — run concurrently so plan-building doesn't serialize four round-trips.
-	const [environmentNamespaces, { clusterRoles, clusterRoleBindings }, customResourceDefinitions, csiTeardowns] = await Promise.all([
-		detectEnvironmentNamespaces(opts.kc),
-		detectOrphanClusterRbac(opts.kc),
-		detectKeptDependencyCrds(opts.kc),
-		detectCsiTeardowns(opts.kc)
-	]);
+	// Independent cluster reads — run concurrently so plan-building doesn't serialize round-trips.
+	const [environmentNamespaces, { clusterRoles, clusterRoleBindings }, customResourceDefinitions, csiTeardowns, upcloudAutoscalerInstalled] =
+		await Promise.all([
+			detectEnvironmentNamespaces(opts.kc),
+			detectOrphanClusterRbac(opts.kc),
+			detectKeptDependencyCrds(opts.kc),
+			detectCsiTeardowns(opts.kc),
+			detectUpcloudAutoscalerInstalled(opts.kc)
+		]);
 
 	return {
 		appRelease: { release: HELM_RELEASE_NAME, namespace: APP_NAMESPACE },
@@ -227,7 +270,8 @@ export async function buildUninstallPlan(opts: BuildPlanOpts): Promise<Uninstall
 		clusterRoles,
 		clusterRoleBindings,
 		customResourceDefinitions,
-		csiTeardowns
+		csiTeardowns,
+		upcloudAutoscalerInstalled
 	};
 }
 
@@ -364,7 +408,8 @@ async function confirmUninstallPlan(plan: UninstallPlan, skipConfirm: boolean): 
 			: null,
 		plan.customResourceDefinitions.length > 0 ? `delete ${plan.customResourceDefinitions.length} CRDs` : null,
 		`uninstall ${plan.dependencyReleases.length} dependencies`,
-		plan.csiTeardowns.length > 0 ? `remove ${plan.csiTeardowns.length} CSI driver(s)` : null
+		plan.csiTeardowns.length > 0 ? `remove ${plan.csiTeardowns.length} CSI driver(s)` : null,
+		plan.upcloudAutoscalerInstalled ? 'remove UpCloud Cluster Autoscaler' : null
 	].filter((part): part is string => part !== null);
 
 	p.log.info(`Planned operations: ${opParts.join(', ')}.`);
@@ -415,7 +460,11 @@ async function uninstallStagingRelease(target: ReleaseTarget): Promise<void> {
 	}
 }
 
-async function deletePersistentVolumeClaims(api: CoreV1Api, plan: UninstallPlan): Promise<void> {
+async function deletePersistentVolumeClaims(
+	api: CoreV1Api,
+	patchApi: ReturnType<typeof KubernetesObjectApi.makeApiClient>,
+	plan: UninstallPlan
+): Promise<void> {
 	if (!plan.deletePvcs) return;
 
 	const namespaces = [plan.appRelease.namespace];
@@ -425,11 +474,15 @@ async function deletePersistentVolumeClaims(api: CoreV1Api, plan: UninstallPlan)
 	}
 
 	for (const ns of namespaces) {
-		await deletePvcsInNamespace(api, ns);
+		await deletePvcsInNamespace(api, patchApi, ns);
 	}
 }
 
-async function deletePvcsInNamespace(api: CoreV1Api, namespace: string): Promise<void> {
+async function deletePvcsInNamespace(
+	api: CoreV1Api,
+	patchApi: ReturnType<typeof KubernetesObjectApi.makeApiClient>,
+	namespace: string
+): Promise<void> {
 	const spinner = p.spinner();
 	spinner.start(`Deleting PersistentVolumeClaims in ${namespace}...`);
 	try {
@@ -443,6 +496,35 @@ async function deletePvcsInNamespace(api: CoreV1Api, namespace: string): Promise
 			const name = pvc.metadata?.name;
 			if (!name) continue;
 
+			const pvName = pvc.spec?.volumeName;
+			let pv: Awaited<ReturnType<typeof api.readPersistentVolume>> | undefined;
+			if (pvName) {
+				try {
+					pv = await api.readPersistentVolume({ name: pvName });
+				} catch (err) {
+					if (!isNotFoundError(err)) {
+						// Non-fatal: a missing PV just means nothing to patch; the PVC delete still proceeds.
+						p.log.warn(`Could not read bound PV "${pvName}" for PVC "${name}": ${err instanceof Error ? err.message : String(err)}`);
+					}
+				}
+			}
+
+			// A Retain PV keeps the cloud disk after the PVC is gone (UpCloud UKS ships Retain). Patch to Delete
+			// while still Bound so the CSI controller reclaims the disk when the PVC disappears. Safe on Delete
+			// PVs (no-op) and on Retain PVs whose CSI driver is still running (always true here — teardown is last).
+			if (pv?.spec?.persistentVolumeReclaimPolicy === 'Retain') {
+				try {
+					await patchPVReclaimPolicyToDelete(patchApi, pvName!);
+					p.log.info(`PV "${pvName}" reclaimPolicy Retain → Delete (disk will be reclaimed)`);
+				} catch (err) {
+					if (!isNotFoundError(err)) {
+						p.log.warn(
+							`Could not patch PV "${pvName}" reclaimPolicy to Delete: ${err instanceof Error ? err.message : String(err)} — cloud disk may persist.`
+						);
+					}
+				}
+			}
+
 			try {
 				await api.deleteNamespacedPersistentVolumeClaim({ name, namespace });
 				p.log.success(`PVC "${name}" deleted`);
@@ -454,6 +536,7 @@ async function deletePvcsInNamespace(api: CoreV1Api, namespace: string): Promise
 				}
 			}
 		}
+
 		spinner.stop(`PVCs in ${namespace} deleted`);
 	} catch (err) {
 		if (isNotFoundError(err)) {
@@ -463,6 +546,133 @@ async function deletePvcsInNamespace(api: CoreV1Api, namespace: string): Promise
 			throw err;
 		}
 	}
+}
+
+// Sweep all PVs whose claimRef points to a namespace we're deleting and patch Retain → Delete so the CSI
+// controller reclaims the cloud disk. Catches already-Released orphan PVs from prior runs (e.g. UpCloud UKS
+// ships its StorageClass with reclaimPolicy: Retain, so each leftover PV keeps its disk forever). Must run
+// before CSI teardown so the driver is still alive to process DeleteVolume.
+export async function reclaimRetainedPvs(kc: KubeConfig, plan: UninstallPlan): Promise<void> {
+	const api = kc.makeApiClient(CoreV1Api);
+	const patchApi = KubernetesObjectApi.makeApiClient(kc);
+	const targetNamespaces = targetNamespaceSet(plan);
+
+	const spinner = p.spinner();
+	spinner.start('Reclaiming retained PersistentVolumes for deleted namespaces...');
+
+	let patched = 0;
+	let skipped = 0;
+	await forEachPersistentVolume(api, async pv => {
+		const name = pv.metadata?.name;
+		const claimNs = pv.spec?.claimRef?.namespace;
+		if (!name || !claimNs || !targetNamespaces.has(claimNs)) return;
+		if (pv.spec?.persistentVolumeReclaimPolicy !== 'Retain') {
+			skipped++;
+			return;
+		}
+
+		try {
+			await patchPVReclaimPolicyToDelete(patchApi, name);
+			patched++;
+			p.log.info(`PV "${name}" reclaimPolicy Retain → Delete (claim in ${claimNs})`);
+		} catch (err) {
+			if (!isNotFoundError(err)) {
+				p.log.warn(`Could not patch PV "${name}" reclaimPolicy to Delete: ${err instanceof Error ? err.message : String(err)}`);
+			}
+		}
+	});
+
+	spinner.stop(patched === 0 ? 'No retained PVs needed reclaiming' : `Patched ${patched} retained PV(s) to Delete (${skipped} already Delete)`);
+}
+
+// Reclaim PVs whose claim lived in a removed namespace: patch Retain → Delete and let the still-running CSI provisioner call DeleteVolume and remove the PV object. Never delete the PV object here — deleting it before the provisioner acts skips DeleteVolume and orphans the cloud disk.
+export async function reclaimClaimedPersistentVolumes(
+	kc: KubeConfig,
+	plan: UninstallPlan,
+	opts?: { timeoutMs?: number; pollMs?: number }
+): Promise<void> {
+	const api = kc.makeApiClient(CoreV1Api);
+	const patchApi = KubernetesObjectApi.makeApiClient(kc);
+	const targetNamespaces = targetNamespaceSet(plan);
+	const timeoutMs = opts?.timeoutMs ?? CSI_PV_DRAIN_TIMEOUT_MS;
+	const pollMs = opts?.pollMs ?? CSI_PV_POLL_INTERVAL_MS;
+
+	const spinner = p.spinner();
+	spinner.start('Reclaiming PersistentVolumes for removed namespaces...');
+
+	const listTargetPvs = async (): Promise<V1PersistentVolume[]> => {
+		const found: V1PersistentVolume[] = [];
+		await forEachPersistentVolume(api, pv => {
+			const claimNs = pv.spec?.claimRef?.namespace;
+			if (pv.metadata?.name && claimNs && targetNamespaces.has(claimNs)) found.push(pv);
+		});
+		return found;
+	};
+
+	const seen = new Set<string>();
+	let target = await listTargetPvs();
+	const deadline = Date.now() + timeoutMs;
+	for (;;) {
+		for (const pv of target) {
+			const name = pv.metadata?.name;
+			if (!name) continue;
+			seen.add(name);
+
+			// Arrange disk reclaim first: the PV may only be unprotected once reclaimPolicy is Delete.
+			let reclaimArranged = pv.spec?.persistentVolumeReclaimPolicy !== 'Retain';
+			if (pv.spec?.persistentVolumeReclaimPolicy === 'Retain') {
+				try {
+					await patchPVReclaimPolicyToDelete(patchApi, name);
+					p.log.info(`PV "${name}" reclaimPolicy Retain → Delete (handed to CSI provisioner)`);
+					reclaimArranged = true;
+				} catch (err) {
+					// Keep pv-protection on failure so a still-Retain PV cannot be deleted (and its disk orphaned) before the next retry.
+					if (!isNotFoundError(err)) {
+						p.log.warn(`Could not patch PV "${name}" reclaimPolicy to Delete: ${err instanceof Error ? err.message : String(err)}`);
+					}
+				}
+			}
+
+			// Strip pv-protection only once reclaim is arranged and the PV is unbound; UKS can leave it on Released PVs, stalling object removal. resourceVersion guards against clobbering concurrent finalizer changes (409 → retried next poll with fresh state).
+			const finalizers = pv.metadata?.finalizers ?? [];
+			if (reclaimArranged && pv.status?.phase !== 'Bound' && finalizers.includes('kubernetes.io/pv-protection')) {
+				try {
+					const keep = finalizers.filter(f => f !== 'kubernetes.io/pv-protection');
+					await mergePatchWith(patchApi, {
+						apiVersion: 'v1',
+						kind: 'PersistentVolume',
+						metadata: { name, resourceVersion: pv.metadata?.resourceVersion, finalizers: keep }
+					} as unknown as KubernetesObject);
+					p.log.info(`PV "${name}" stripped kubernetes.io/pv-protection finalizer`);
+				} catch (err) {
+					if (!isNotFoundError(err) && !isConflictError(err)) {
+						p.log.warn(`Could not strip pv-protection finalizer on PV "${name}": ${err instanceof Error ? err.message : String(err)}`);
+					}
+				}
+			}
+		}
+
+		if (target.length === 0 || Date.now() >= deadline) break;
+		spinner.message(`Waiting for CSI provisioner to reclaim ${target.length} PersistentVolume(s)...`);
+		await new Promise(r => setTimeout(r, pollMs));
+		target = await listTargetPvs();
+	}
+
+	if (seen.size === 0) {
+		spinner.stop('No claimed PersistentVolumes needed reclaiming');
+		return;
+	}
+
+	const reclaimed = seen.size - target.length;
+	if (target.length === 0) {
+		spinner.stop(`Reclaimed ${reclaimed} PersistentVolume(s) (disks deleted by CSI provisioner)`);
+		return;
+	}
+
+	const notReleased = target.filter(pv => pv.status?.phase !== 'Released').length;
+	const notes = [`${target.length} not reclaimed within timeout — cloud disk(s) may need manual cleanup`];
+	if (notReleased > 0) notes.push(`${notReleased} still bound (PVC teardown not finished)`);
+	spinner.stop(`Reclaimed ${reclaimed} of ${seen.size} PersistentVolume(s); ${notes.join(', ')}`);
 }
 
 async function deleteAcmeAccountKeys(api: CoreV1Api, plan: UninstallPlan): Promise<void> {
@@ -735,13 +945,8 @@ async function deleteOwnedStorageClass(api: StorageV1Api, name: string): Promise
 
 export async function countCsiPvs(api: CoreV1Api, provisioner: string): Promise<number> {
 	let count = 0;
-	let cont: string | undefined;
-	do {
-		const list = await api.listPersistentVolume({ limit: 500, _continue: cont });
-		for (const pv of list.items) {
-			if (pv.spec?.csi?.driver === provisioner) count++;
-		}
-		cont = list.metadata?._continue || undefined;
-	} while (cont);
+	await forEachPersistentVolume(api, pv => {
+		if (pv.spec?.csi?.driver === provisioner) count++;
+	});
 	return count;
 }

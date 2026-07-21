@@ -9,6 +9,7 @@ const expectedRoutes = [
 	'/start/architecture',
 	'/providers/cloudfleet-hetzner',
 	'/providers/cloudfleet-gcp',
+	'/providers/upcloud-uks',
 	'/guides/deploy-a-service',
 	'/guides/configure-a-service',
 	'/guides/tenant-isolation',

@@ -6,10 +6,7 @@ export interface CloudfleetTraefikOpts {
 	serviceAnnotations?: Record<string, string>;
 }
 
-// Shared Traefik HA values for all Cloudfleet providers. A Service of type LoadBalancer drives each cloud's
-// pre-installed cloud-controller-manager to provision an external LB; providers differ only in the node pin
-// and the service annotations. Keep provider-specific knobs in the thin wrappers, not here.
-export function buildCloudfleetTraefikValues({ provider, serviceAnnotations }: CloudfleetTraefikOpts): Record<string, unknown> {
+export function buildSharedTraefikValues(opts: { serviceAnnotations?: Record<string, string> }): Record<string, unknown> {
 	return {
 		deployment: {
 			replicas: 2
@@ -36,8 +33,17 @@ export function buildCloudfleetTraefikValues({ provider, serviceAnnotations }: C
 		},
 		service: {
 			type: 'LoadBalancer',
-			...(serviceAnnotations ? { annotations: serviceAnnotations } : {})
-		},
+			...(opts.serviceAnnotations ? { annotations: opts.serviceAnnotations } : {})
+		}
+	};
+}
+
+// Shared Traefik HA values for all Cloudfleet providers. A Service of type LoadBalancer drives each cloud's
+// pre-installed cloud-controller-manager to provision an external LB; providers differ only in the node pin
+// and the service annotations. Keep provider-specific knobs in the thin wrappers, not here.
+export function buildCloudfleetTraefikValues({ provider, serviceAnnotations }: CloudfleetTraefikOpts): Record<string, unknown> {
+	return {
+		...buildSharedTraefikValues({ serviceAnnotations }),
 		nodeSelector: cfkeNodeSelector(provider)
 	};
 }

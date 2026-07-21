@@ -27,6 +27,7 @@ cloud-sa.json
 .playwright-mcp
 .claude
 .codex
+.cursor/
 .pi
 .omo
 /.omo/

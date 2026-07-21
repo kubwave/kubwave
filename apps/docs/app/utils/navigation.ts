@@ -22,7 +22,8 @@ export const docsNav = [
 		title: 'Provider setup',
 		items: [
 			{ title: 'Cloudfleet (Hetzner)', path: '/providers/cloudfleet-hetzner' },
-			{ title: 'Cloudfleet (Google Cloud)', path: '/providers/cloudfleet-gcp' }
+			{ title: 'Cloudfleet (Google Cloud)', path: '/providers/cloudfleet-gcp' },
+			{ title: 'UpCloud UKS', path: '/providers/upcloud-uks' }
 		]
 	},
 	{

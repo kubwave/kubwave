@@ -555,7 +555,7 @@ async function isTraefikDeploymentReady(api: AppsV1Api, controller: TraefikDepen
 	return isDeploymentReady(await api.readNamespacedDeployment({ namespace: controller.namespace, name: controller.releaseName }));
 }
 
-function isDeploymentReady(dep: { spec?: { replicas?: number }; status?: { readyReplicas?: number; updatedReplicas?: number } }): boolean {
+export function isDeploymentReady(dep: { spec?: { replicas?: number }; status?: { readyReplicas?: number; updatedReplicas?: number } }): boolean {
 	const desired = dep.spec?.replicas ?? 1;
 	const ready = dep.status?.readyReplicas ?? 0;
 	const updated = dep.status?.updatedReplicas ?? 0;

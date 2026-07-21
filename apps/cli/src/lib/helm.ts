@@ -19,6 +19,7 @@ export { execHelm };
 import { buildRegistryNetworkPolicyEgressPorts, platformRegistryHost } from '@kubwave/kube';
 import { HelmCommandError } from '~/lib/errors.js';
 import type { CertManagerClusterIssuerConfig } from '~/lib/cert-manager.js';
+import type { UpcloudNodeGroup } from '~/lib/platforms.js';
 
 // Build registry trust model: platform = Kubwave-managed (TLS, or legacy in-cluster HTTP on upgrades); external = operator-supplied.
 export type BuildRegistryConfig =
@@ -43,6 +44,8 @@ export interface InstallConfig {
 	tenantPodSecurity?: string;
 	// Sandbox runtime for tenant pods ('' = runc). Set by --tenant-runtime-class, persisted; 'gvisor' auto-installs the runtimeClass on all Linux nodes.
 	tenantRuntimeClass?: string;
+	upcloudAutoscaling?: { enabled: boolean; clusterUuid: string; nodeGroups?: UpcloudNodeGroup[] };
+	dnsPolicy?: DnsPolicy;
 }
 
 export function generateValuesFile(config: InstallConfig): string {
@@ -72,20 +75,29 @@ export interface ProductionValuesInput {
 	tenantRuntimeClass?: string;
 	// Install-only: emits the certManager cluster-issuer block. Upgrade omits it (--reset-then-reuse-values reuses the existing issuer).
 	certManagerClusterIssuer?: CertManagerClusterIssuerConfig;
+	dnsPolicy?: DnsPolicy;
 }
 
-const cloudfleetDnsPolicy = {
+export type DnsPolicy = { namespace: string; podLabels: Record<string, string>; serviceIp: string };
+
+const defaultDnsPolicy: DnsPolicy = {
 	namespace: 'kube-system',
 	podLabels: { 'k8s-app': 'coredns' },
 	serviceIp: '10.96.0.10/32'
 };
+
+const upcloudDnsPolicy: DnsPolicy = { ...defaultDnsPolicy, podLabels: { 'k8s-app': 'kube-dns' } };
+
+export function dnsPolicyForPlatform(platformId: string | undefined): DnsPolicy {
+	return platformId === 'upcloud-uks' ? upcloudDnsPolicy : defaultDnsPolicy;
+}
 
 const productionConsoleResources = {
 	requests: { cpu: '100m', memory: '256Mi' },
 	limits: { cpu: '1000m', memory: '1Gi' }
 };
 
-function registryValues(input: ProductionValuesInput): { registry: Record<string, unknown>; builds: Record<string, unknown> } {
+function registryValues(input: ProductionValuesInput, dnsPolicy: DnsPolicy): { registry: Record<string, unknown>; builds: Record<string, unknown> } {
 	const buildDefaults = {
 		engine: 'buildkit',
 		builderImage: 'moby/buildkit:v0.31.0-rootless',
@@ -93,7 +105,7 @@ function registryValues(input: ProductionValuesInput): { registry: Record<string
 	};
 	const networkPolicy = (egressPorts?: number[], ingressController = false) => ({
 		enabled: true,
-		dns: cloudfleetDnsPolicy,
+		dns: dnsPolicy,
 		...(egressPorts ? { egressPorts } : {}),
 		...(ingressController
 			? {
@@ -169,6 +181,7 @@ function registryValues(input: ProductionValuesInput): { registry: Record<string
 // Must emit the full api/console/worker shape — prod layers no other file, so anything omitted falls back to the chart's DEV defaults (broken install).
 export function buildProductionValues(input: ProductionValuesInput): Record<string, unknown> {
 	const nodeSelector = input.nodeSelector && Object.keys(input.nodeSelector).length > 0 ? { nodeSelector: input.nodeSelector } : {};
+	const dnsPolicy = input.dnsPolicy ?? defaultDnsPolicy;
 	const ingressClassName = input.ingressClassName;
 	const clusterIssuerName = input.clusterIssuerName ?? input.certManagerClusterIssuer?.name ?? '';
 	const image = (app: string) => ({
@@ -253,7 +266,7 @@ export function buildProductionValues(input: ProductionValuesInput): Record<stri
 			dependencies: buildUpdateDependencyValues(input.dependencies),
 			...nodeSelector
 		},
-		...registryValues(input),
+		...registryValues(input, dnsPolicy),
 		// Tenant namespace hardening: turn egress confinement ON (Cilium-enforced); podSecurity stays the chart baseline unless --tenant-pod-security overrides it.
 		tenants: {
 			...(input.tenantPodSecurity !== undefined ? { podSecurity: input.tenantPodSecurity } : {}),
@@ -267,8 +280,8 @@ export function buildProductionValues(input: ProductionValuesInput): Record<stri
 				: {}),
 			egress: {
 				enabled: true,
-				dnsPodLabels: cloudfleetDnsPolicy.podLabels,
-				dnsServiceIp: cloudfleetDnsPolicy.serviceIp
+				dnsPodLabels: dnsPolicy.podLabels,
+				dnsServiceIp: dnsPolicy.serviceIp
 			}
 		}
 	};
@@ -298,7 +311,8 @@ export function buildValues(config: InstallConfig): Record<string, unknown> {
 		tenantPodSecurity: config.tenantPodSecurity,
 		tenantRuntimeClass: config.tenantRuntimeClass,
 		clusterIssuerName: certManagerClusterIssuer.name,
-		certManagerClusterIssuer
+		certManagerClusterIssuer,
+		...(config.dnsPolicy ? { dnsPolicy: config.dnsPolicy } : {})
 	});
 }
 
