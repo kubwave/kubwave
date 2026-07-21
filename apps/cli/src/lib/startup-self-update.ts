@@ -11,6 +11,7 @@ type ConfirmFn = (message: string) => Promise<boolean | symbol>;
 
 export interface StartupSelfUpdateOptions {
 	commandName: string;
+	channel?: string;
 	nonInteractive?: boolean;
 	argv?: string[];
 	env?: Record<string, string | undefined>;
@@ -42,7 +43,7 @@ export async function maybeRunStartupSelfUpdate(opts: StartupSelfUpdateOptions):
 
 	let release: ReleaseInfo;
 	try {
-		release = await resolveLatest(startupChannel(env));
+		release = await resolveLatest(startupChannel(env, opts.channel));
 	} catch (err) {
 		reporter.log(`CLI update check skipped: ${errorMessage(err)}`);
 		return;
@@ -92,8 +93,9 @@ export function shouldSkipStartupSelfUpdate(
 	return commandName === 'update' || commandName === 'version';
 }
 
-function startupChannel(env: Record<string, string | undefined>): Channel {
-	return resolveChannel({ override: env['KUBWAVE_CHANNEL'] || undefined });
+// The command's --channel flag wins over $KUBWAVE_CHANNEL so the refresh targets the same channel the command installs from.
+function startupChannel(env: Record<string, string | undefined>, commandChannel?: string): Channel {
+	return resolveChannel({ override: commandChannel || env['KUBWAVE_CHANNEL'] || undefined });
 }
 
 function isInteractive(opts: StartupSelfUpdateOptions, env: Record<string, string | undefined>): boolean {
