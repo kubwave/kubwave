@@ -28,13 +28,13 @@ describe('upcloud-uks helm values', () => {
 		});
 	});
 
-	test('dnsPolicyForPlatform selects kube-dns for upcloud-uks and coredns otherwise', () => {
-		expect(dnsPolicyForPlatform('upcloud-uks').podLabels).toEqual({ 'k8s-app': 'kube-dns' });
+	test('dnsPolicyForPlatform selects coredns for upcloud-uks and every other platform', () => {
+		expect(dnsPolicyForPlatform('upcloud-uks').podLabels).toEqual({ 'k8s-app': 'coredns' });
 		expect(dnsPolicyForPlatform('cloudfleet-hetzner').podLabels).toEqual({ 'k8s-app': 'coredns' });
 		expect(dnsPolicyForPlatform(undefined).podLabels).toEqual({ 'k8s-app': 'coredns' });
 	});
 
-	test('buildProductionValues emits the kube-dns egress policy for upcloud-uks', async () => {
+	test('buildProductionValues emits the coredns egress policy for upcloud-uks', async () => {
 		const platform = await upcloudUksDescriptor.build({});
 		const dependencies = resolveDependencyState({ platformState: platform.dependencies });
 		const values = buildProductionValues({
@@ -51,8 +51,8 @@ describe('upcloud-uks helm values', () => {
 		});
 
 		const tenants = values.tenants as { egress: { dnsPodLabels: Record<string, string> } };
-		expect(tenants.egress.dnsPodLabels).toEqual({ 'k8s-app': 'kube-dns' });
+		expect(tenants.egress.dnsPodLabels).toEqual({ 'k8s-app': 'coredns' });
 		const builds = values.builds as { networkPolicy: { dns: { podLabels: Record<string, string> } } };
-		expect(builds.networkPolicy.dns.podLabels).toEqual({ 'k8s-app': 'kube-dns' });
+		expect(builds.networkPolicy.dns.podLabels).toEqual({ 'k8s-app': 'coredns' });
 	});
 });
