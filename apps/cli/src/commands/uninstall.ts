@@ -22,7 +22,7 @@ import {
 	KUBWAVE_PART_OF_VALUE
 } from '~/lib/constants.js';
 import { getClusterInfo, loadKubeConfig } from '~/lib/k8s.js';
-import { isNotFoundError } from '~/lib/k8s-errors.js';
+import { isConflictError, isNotFoundError } from '~/lib/k8s-errors.js';
 import { helmUninstall, listReleaseNames } from '~/lib/helm.js';
 import { UserCancelledError, printAndExit } from '~/lib/errors.js';
 import { CSI_CATALOG, type CsiDefinition, type CsiInstall } from '~/platforms/cloudfleet/csi-catalog.js';
@@ -618,30 +618,34 @@ export async function reclaimClaimedPersistentVolumes(
 			if (!name) continue;
 			seen.add(name);
 
+			// Arrange disk reclaim first: the PV may only be unprotected once reclaimPolicy is Delete.
+			let reclaimArranged = pv.spec?.persistentVolumeReclaimPolicy !== 'Retain';
 			if (pv.spec?.persistentVolumeReclaimPolicy === 'Retain') {
 				try {
 					await patchPVReclaimPolicyToDelete(patchApi, name);
 					p.log.info(`PV "${name}" reclaimPolicy Retain → Delete (handed to CSI provisioner)`);
+					reclaimArranged = true;
 				} catch (err) {
+					// Keep pv-protection on failure so a still-Retain PV cannot be deleted (and its disk orphaned) before the next retry.
 					if (!isNotFoundError(err)) {
 						p.log.warn(`Could not patch PV "${name}" reclaimPolicy to Delete: ${err instanceof Error ? err.message : String(err)}`);
 					}
 				}
 			}
 
-			// Strip pv-protection once the PV is unbound: UKS can leave it on Released PVs, stalling object removal (and this wait) until the controller clears it. Disk reclaim stays provisioner-driven via the Delete policy.
+			// Strip pv-protection only once reclaim is arranged and the PV is unbound; UKS can leave it on Released PVs, stalling object removal. resourceVersion guards against clobbering concurrent finalizer changes (409 → retried next poll with fresh state).
 			const finalizers = pv.metadata?.finalizers ?? [];
-			if (pv.status?.phase !== 'Bound' && finalizers.includes('kubernetes.io/pv-protection')) {
+			if (reclaimArranged && pv.status?.phase !== 'Bound' && finalizers.includes('kubernetes.io/pv-protection')) {
 				try {
 					const keep = finalizers.filter(f => f !== 'kubernetes.io/pv-protection');
 					await mergePatchWith(patchApi, {
 						apiVersion: 'v1',
 						kind: 'PersistentVolume',
-						metadata: { name, finalizers: keep }
+						metadata: { name, resourceVersion: pv.metadata?.resourceVersion, finalizers: keep }
 					} as unknown as KubernetesObject);
 					p.log.info(`PV "${name}" stripped kubernetes.io/pv-protection finalizer`);
 				} catch (err) {
-					if (!isNotFoundError(err)) {
+					if (!isNotFoundError(err) && !isConflictError(err)) {
 						p.log.warn(`Could not strip pv-protection finalizer on PV "${name}": ${err instanceof Error ? err.message : String(err)}`);
 					}
 				}

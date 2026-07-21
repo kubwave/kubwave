@@ -4,11 +4,13 @@ import * as realK8sApply from '../src/lib/k8s-apply.js';
 import { clackStub } from './support/clack-stub.js';
 
 const promptEvents: string[] = [];
-const mergePatchCalls: Array<{ name?: string; finalizers?: string[]; reclaimPolicy?: string }> = [];
+const mergePatchCalls: Array<{ name?: string; finalizers?: string[]; reclaimPolicy?: string; resourceVersion?: string }> = [];
 const deletedPvNames: string[] = [];
 
 let listedPvs: V1PersistentVolume[] = [];
 let listQueue: V1PersistentVolume[][] = [];
+let failReclaimFor: Set<string> = new Set();
+let stripConflicts = 0;
 
 mock.module('@clack/prompts', () => ({
 	...clackStub(),
@@ -29,13 +31,28 @@ mock.module('~/lib/k8s-apply.js', () => ({
 	...realK8sApply,
 	mergePatchWith: async (
 		_api: unknown,
-		obj: { metadata?: { name?: string; finalizers?: string[] }; spec?: { persistentVolumeReclaimPolicy?: string } }
+		obj: { metadata?: { name?: string; finalizers?: string[]; resourceVersion?: string }; spec?: { persistentVolumeReclaimPolicy?: string } }
 	) => {
+		const name = obj.metadata?.name;
+		const isStrip = obj.metadata?.finalizers !== undefined;
+		const isReclaim = obj.spec?.persistentVolumeReclaimPolicy === 'Delete';
+		if (isStrip && stripConflicts > 0) {
+			stripConflicts--;
+			const err = new Error('the object has been modified; please apply your changes to the latest version') as Error & { statusCode?: number };
+			err.statusCode = 409;
+			throw err;
+		}
 		mergePatchCalls.push({
-			name: obj.metadata?.name,
+			name,
 			finalizers: obj.metadata?.finalizers,
-			reclaimPolicy: obj.spec?.persistentVolumeReclaimPolicy
+			reclaimPolicy: obj.spec?.persistentVolumeReclaimPolicy,
+			resourceVersion: obj.metadata?.resourceVersion
 		});
+		if (isReclaim && name && failReclaimFor.has(name)) {
+			const err = new Error('simulated transient API failure') as Error & { statusCode?: number };
+			err.statusCode = 500;
+			throw err;
+		}
 	}
 }));
 
@@ -90,6 +107,8 @@ function reset(): void {
 	deletedPvNames.length = 0;
 	listedPvs = [];
 	listQueue = [];
+	failReclaimFor = new Set();
+	stripConflicts = 0;
 }
 
 describe('reclaimClaimedPersistentVolumes disk-safety', () => {
@@ -133,6 +152,41 @@ describe('reclaimClaimedPersistentVolumes disk-safety', () => {
 		expect(strip?.finalizers).toEqual([]);
 		expect(mergePatchCalls.some(c => c.reclaimPolicy === 'Delete')).toBe(false);
 		expect(deletedPvNames).toHaveLength(0);
+	});
+
+	test('sends the PV resourceVersion with the strip so a stale read cannot clobber concurrent finalizer changes', async () => {
+		reset();
+		const target = pv('pv-released', 'env-tenant-a', 'Released', 'Delete');
+		target.metadata!.resourceVersion = '12345';
+		listQueue = [[target], []];
+
+		await reclaimClaimedPersistentVolumes(mockKc, plan(), { pollMs: 1 });
+
+		const strip = mergePatchCalls.find(c => c.finalizers !== undefined);
+		expect(strip?.resourceVersion).toBe('12345');
+	});
+
+	test('keeps pv-protection when the Retain→Delete patch fails, so the disk stays protected for the next retry', async () => {
+		reset();
+		failReclaimFor = new Set(['pv-released']);
+		listQueue = [[pv('pv-released', 'env-tenant-a', 'Released', 'Retain')], []];
+
+		await reclaimClaimedPersistentVolumes(mockKc, plan(), { pollMs: 1 });
+
+		expect(mergePatchCalls.some(c => c.reclaimPolicy === 'Delete')).toBe(true);
+		expect(mergePatchCalls.some(c => c.finalizers !== undefined)).toBe(false);
+		expect(deletedPvNames).toHaveLength(0);
+	});
+
+	test('treats a 409 conflict on the strip as retryable: no warning, re-read and stripped on the next poll', async () => {
+		reset();
+		stripConflicts = 1;
+		listQueue = [[pv('pv-released', 'env-tenant-a', 'Released', 'Delete')], [pv('pv-released', 'env-tenant-a', 'Released', 'Delete')], []];
+
+		await reclaimClaimedPersistentVolumes(mockKc, plan(), { pollMs: 1 });
+
+		expect(mergePatchCalls.some(c => c.finalizers !== undefined)).toBe(true);
+		expect(promptEvents.some(e => e.startsWith('warn:') && e.includes('pv-protection'))).toBe(false);
 	});
 
 	test('ignores PVs claimed outside the removed namespaces', async () => {
