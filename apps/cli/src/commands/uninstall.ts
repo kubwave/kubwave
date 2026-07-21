@@ -617,13 +617,33 @@ export async function reclaimClaimedPersistentVolumes(
 			const name = pv.metadata?.name;
 			if (!name) continue;
 			seen.add(name);
-			if (pv.spec?.persistentVolumeReclaimPolicy !== 'Retain') continue;
-			try {
-				await patchPVReclaimPolicyToDelete(patchApi, name);
-				p.log.info(`PV "${name}" reclaimPolicy Retain → Delete (handed to CSI provisioner)`);
-			} catch (err) {
-				if (!isNotFoundError(err)) {
-					p.log.warn(`Could not patch PV "${name}" reclaimPolicy to Delete: ${err instanceof Error ? err.message : String(err)}`);
+
+			if (pv.spec?.persistentVolumeReclaimPolicy === 'Retain') {
+				try {
+					await patchPVReclaimPolicyToDelete(patchApi, name);
+					p.log.info(`PV "${name}" reclaimPolicy Retain → Delete (handed to CSI provisioner)`);
+				} catch (err) {
+					if (!isNotFoundError(err)) {
+						p.log.warn(`Could not patch PV "${name}" reclaimPolicy to Delete: ${err instanceof Error ? err.message : String(err)}`);
+					}
+				}
+			}
+
+			// Strip pv-protection once the PV is unbound: UKS can leave it on Released PVs, stalling object removal (and this wait) until the controller clears it. Disk reclaim stays provisioner-driven via the Delete policy.
+			const finalizers = pv.metadata?.finalizers ?? [];
+			if (pv.status?.phase !== 'Bound' && finalizers.includes('kubernetes.io/pv-protection')) {
+				try {
+					const keep = finalizers.filter(f => f !== 'kubernetes.io/pv-protection');
+					await mergePatchWith(patchApi, {
+						apiVersion: 'v1',
+						kind: 'PersistentVolume',
+						metadata: { name, finalizers: keep }
+					} as unknown as KubernetesObject);
+					p.log.info(`PV "${name}" stripped kubernetes.io/pv-protection finalizer`);
+				} catch (err) {
+					if (!isNotFoundError(err)) {
+						p.log.warn(`Could not strip pv-protection finalizer on PV "${name}": ${err instanceof Error ? err.message : String(err)}`);
+					}
 				}
 			}
 		}

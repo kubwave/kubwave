@@ -70,9 +70,15 @@ function plan(): Parameters<typeof reclaimClaimedPersistentVolumes>[1] {
 	};
 }
 
-function pv(name: string, claimNs: string, phase: string, reclaimPolicy: 'Retain' | 'Delete' = 'Delete'): V1PersistentVolume {
+function pv(
+	name: string,
+	claimNs: string,
+	phase: string,
+	reclaimPolicy: 'Retain' | 'Delete' = 'Delete',
+	finalizers: string[] = ['kubernetes.io/pv-protection']
+): V1PersistentVolume {
 	return {
-		metadata: { name, finalizers: ['kubernetes.io/pv-protection'] },
+		metadata: { name, finalizers },
 		spec: { claimRef: { namespace: claimNs }, persistentVolumeReclaimPolicy: reclaimPolicy },
 		status: { phase }
 	} as V1PersistentVolume;
@@ -107,13 +113,25 @@ describe('reclaimClaimedPersistentVolumes disk-safety', () => {
 		expect(promptEvents.some(e => e.startsWith('stop:') && e.includes('Reclaimed 1'))).toBe(true);
 	});
 
-	test('does not patch a PV that already uses the Delete reclaimPolicy', async () => {
+	test('does not patch reclaimPolicy on a PV that already uses Delete', async () => {
+		reset();
+		listQueue = [[pv('pv-released', 'env-tenant-a', 'Released', 'Delete', [])], []];
+
+		await reclaimClaimedPersistentVolumes(mockKc, plan(), { pollMs: 1 });
+
+		expect(mergePatchCalls).toHaveLength(0);
+		expect(deletedPvNames).toHaveLength(0);
+	});
+
+	test('strips a lingering pv-protection finalizer from a Released PV without deleting the PV object', async () => {
 		reset();
 		listQueue = [[pv('pv-released', 'env-tenant-a', 'Released', 'Delete')], []];
 
 		await reclaimClaimedPersistentVolumes(mockKc, plan(), { pollMs: 1 });
 
-		expect(mergePatchCalls).toHaveLength(0);
+		const strip = mergePatchCalls.find(c => c.name === 'pv-released' && c.finalizers !== undefined);
+		expect(strip?.finalizers).toEqual([]);
+		expect(mergePatchCalls.some(c => c.reclaimPolicy === 'Delete')).toBe(false);
 		expect(deletedPvNames).toHaveLength(0);
 	});
 
@@ -150,12 +168,13 @@ describe('reclaimClaimedPersistentVolumes polling', () => {
 		expect(promptEvents.some(e => e.startsWith('stop:') && e.includes('not reclaimed within timeout'))).toBe(true);
 	});
 
-	test('flags persistently Bound PVs as still bound at the deadline', async () => {
+	test('flags persistently Bound PVs as still bound and never strips their pv-protection', async () => {
 		reset();
 		listedPvs = [pv('pv-bound', 'env-tenant-a', 'Bound', 'Delete')];
 
 		await reclaimClaimedPersistentVolumes(mockKc, plan(), { timeoutMs: 20, pollMs: 1 });
 
+		expect(mergePatchCalls.some(c => c.finalizers !== undefined)).toBe(false);
 		expect(deletedPvNames).toHaveLength(0);
 		expect(promptEvents.some(e => e.startsWith('stop:') && e.includes('still bound'))).toBe(true);
 	});
