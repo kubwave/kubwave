@@ -91,19 +91,28 @@ describe('parseUpcloudNodeGroup', () => {
 
 describe('resolveAutoscalerImageTag', () => {
 	test('override wins over cluster version', () => {
-		expect(resolveAutoscalerImageTag('v1.27.1', 'custom-tag')).toEqual({ tag: 'custom-tag', defaulted: false });
+		expect(resolveAutoscalerImageTag('v1.27.1', 'custom-tag')).toEqual({ tag: 'custom-tag' });
 	});
 
-	test('maps k8s minor versions to UpCloud autoscaler tags', () => {
-		expect(resolveAutoscalerImageTag('v1.27.1', undefined)).toEqual({ tag: 'v1.27.8', defaulted: false });
-		expect(resolveAutoscalerImageTag('v1.28.4', undefined)).toEqual({ tag: 'v1.28.6', defaulted: false });
-		expect(resolveAutoscalerImageTag('v1.29.5', undefined)).toEqual({ tag: 'v1.29.5', defaulted: false });
-		expect(resolveAutoscalerImageTag('v1.30.0', undefined)).toEqual({ tag: 'v1.29.5', defaulted: false });
+	test('maps k8s minor versions to UpCloud autoscaler tags without a warning', () => {
+		expect(resolveAutoscalerImageTag('v1.27.1', undefined)).toEqual({ tag: 'v1.27.8' });
+		expect(resolveAutoscalerImageTag('v1.28.4', undefined)).toEqual({ tag: 'v1.28.6' });
+		expect(resolveAutoscalerImageTag('v1.29.5', undefined)).toEqual({ tag: 'v1.29.5' });
 	});
 
-	test('falls back when version is unknown or too old', () => {
-		expect(resolveAutoscalerImageTag(undefined, undefined)).toEqual({ tag: 'v1.29.5', defaulted: true });
-		expect(resolveAutoscalerImageTag('v1.26.0', undefined)).toEqual({ tag: 'v1.29.5', defaulted: true });
+	test('warns when the cluster is newer than the newest mapped autoscaler tag', () => {
+		const result = resolveAutoscalerImageTag('v1.30.0', undefined);
+		expect(result.tag).toBe('v1.29.5');
+		expect(result.warning).toContain('1.30');
+	});
+
+	test('falls back with a warning when version is unknown or too old', () => {
+		const unknown = resolveAutoscalerImageTag(undefined, undefined);
+		expect(unknown.tag).toBe('v1.29.5');
+		expect(unknown.warning).toBeDefined();
+		const tooOld = resolveAutoscalerImageTag('v1.26.0', undefined);
+		expect(tooOld.tag).toBe('v1.29.5');
+		expect(tooOld.warning).toBeDefined();
 	});
 });
 

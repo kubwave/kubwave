@@ -130,8 +130,8 @@ export async function ensureUpcloudAutoscaling(kc: KubeConfig, opts: Autoscaling
 	if (!decision?.enabled) return;
 
 	const credentials = await resolveCredentials(opts);
-	const { tag: imageTag, defaulted } = resolveAutoscalerImageTag(await readClusterKubernetesVersion(kc), opts.upcloudAutoscalerImageTag);
-	if (defaulted) p.log.warn('Could not determine matching UpCloud autoscaler image tag; defaulting to v1.29.5.');
+	const { tag: imageTag, warning } = resolveAutoscalerImageTag(await readClusterKubernetesVersion(kc), opts.upcloudAutoscalerImageTag);
+	if (warning) p.log.warn(warning);
 	await installUpcloudAutoscaler(kc, {
 		clusterUuid: decision.clusterUuid,
 		nodeGroups: decision.nodeGroups,
@@ -152,8 +152,8 @@ export async function reconcileUpcloudAutoscaler(kc: KubeConfig, cfg: { clusterU
 		throw err;
 	}
 
-	const { tag: imageTag, defaulted } = resolveAutoscalerImageTag(await readClusterKubernetesVersion(kc), undefined);
-	if (defaulted) p.log.warn('Could not determine matching UpCloud autoscaler image tag during reconcile; defaulting to v1.29.5.');
+	const { tag: imageTag, warning } = resolveAutoscalerImageTag(await readClusterKubernetesVersion(kc), undefined);
+	if (warning) p.log.warn(warning);
 	await applyUpcloudAutoscalerManifests(kc, { clusterUuid: cfg.clusterUuid, imageTag, nodeGroups: cfg.nodeGroups });
 }
 
@@ -380,16 +380,27 @@ async function readClusterKubernetesVersion(kc: KubeConfig): Promise<string | un
 	}
 }
 
-export function resolveAutoscalerImageTag(clusterVersion: string | undefined, override: string | undefined): { tag: string; defaulted: boolean } {
-	if (override) return { tag: override, defaulted: false };
+export function resolveAutoscalerImageTag(clusterVersion: string | undefined, override: string | undefined): { tag: string; warning?: string } {
+	if (override) return { tag: override };
 	const match = clusterVersion?.match(/^v?(\d+)\.(\d+)/);
-	if (!match) return { tag: 'v1.29.5', defaulted: true };
+	if (!match) {
+		return { tag: 'v1.29.5', warning: 'Could not determine the cluster Kubernetes version; defaulting the UpCloud autoscaler image to v1.29.5.' };
+	}
 	const major = Number(match[1]);
 	const minor = Number(match[2]);
-	if (major === 1 && minor === 27) return { tag: 'v1.27.8', defaulted: false };
-	if (major === 1 && minor === 28) return { tag: 'v1.28.6', defaulted: false };
-	if (major === 1 && minor >= 29) return { tag: 'v1.29.5', defaulted: false };
-	return { tag: 'v1.29.5', defaulted: true };
+	if (major === 1 && minor === 27) return { tag: 'v1.27.8' };
+	if (major === 1 && minor === 28) return { tag: 'v1.28.6' };
+	if (major === 1 && minor === 29) return { tag: 'v1.29.5' };
+	if (major === 1 && minor > 29) {
+		return {
+			tag: 'v1.29.5',
+			warning: `Cluster runs Kubernetes 1.${minor}; the newest mapped UpCloud autoscaler tag is v1.29.5 (override with --upcloud-autoscaler-image-tag if needed).`
+		};
+	}
+	return {
+		tag: 'v1.29.5',
+		warning: `Cluster Kubernetes version "${clusterVersion}" predates the supported autoscaler range; defaulting to v1.29.5.`
+	};
 }
 
 function validateClusterUuid(clusterUuid: string): void {
