@@ -1,3 +1,5 @@
+import type { ResourceConfig } from '@kubwave/db';
+
 function num(name: string, fallback: number): number {
 	const value = process.env[name];
 	return value ? Number(value) : fallback;
@@ -28,6 +30,25 @@ function jsonRecord(name: string): Record<string, string> {
 	} catch {
 		console.warn(`[env] ${name} is not valid JSON; ignoring`);
 		return {};
+	}
+}
+
+function resourceConfig(name: string, fallback: ResourceConfig): ResourceConfig {
+	const value = process.env[name];
+	if (!value) return fallback;
+	try {
+		const parsed: unknown = JSON.parse(value);
+		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return fallback;
+		const raw = parsed as Record<string, unknown>;
+		const out: ResourceConfig = {};
+		if (raw.cpuRequest) out.cpuRequest = String(raw.cpuRequest);
+		if (raw.cpuLimit) out.cpuLimit = String(raw.cpuLimit);
+		if (raw.memoryRequest) out.memoryRequest = String(raw.memoryRequest);
+		if (raw.memoryLimit) out.memoryLimit = String(raw.memoryLimit);
+		return Object.keys(out).length > 0 ? out : fallback;
+	} catch {
+		console.warn(`[env] ${name} is not valid JSON; ignoring`);
+		return fallback;
 	}
 }
 
@@ -85,6 +106,7 @@ export interface WorkerRuntimeConfig {
 	prometheusStorageSize: string;
 	tenantPodSecurity: string;
 	tenantRuntimeClass: string;
+	tenantDefaultResources: ResourceConfig;
 	tenantEgressEnabled: boolean;
 	tenantEgressBlockedCidrs: string[];
 	dnsNamespace: string;
@@ -143,6 +165,7 @@ export function resolveWorkerRuntimeConfig(): WorkerRuntimeConfig {
 		prometheusStorageSize: process.env.PROMETHEUS_STORAGE_SIZE ?? '5Gi',
 		tenantPodSecurity: process.env.TENANT_POD_SECURITY ?? 'baseline',
 		tenantRuntimeClass: process.env.TENANT_RUNTIME_CLASS ?? '',
+		tenantDefaultResources: resourceConfig('TENANT_DEFAULT_RESOURCES', { cpuRequest: '50m', memoryRequest: '128Mi' }),
 		tenantEgressEnabled: bool('TENANT_EGRESS_ENABLED', false),
 		tenantEgressBlockedCidrs: list('TENANT_EGRESS_BLOCKED_CIDRS', ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16']),
 		dnsNamespace: process.env.DNS_NAMESPACE ?? 'kube-system',
