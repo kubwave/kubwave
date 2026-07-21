@@ -137,6 +137,11 @@ describe('ensureEnvironmentNamespace', () => {
 				namespaceSelector: { matchLabels: { 'kubernetes.io/metadata.name': 'kube-system' } },
 				podSelector: { matchLabels: { 'k8s-app': 'coredns' } }
 			},
+			// Well-known DNS selectors are always re-allowed so a misconfigured label can't break DNS.
+			{
+				namespaceSelector: { matchLabels: { 'kubernetes.io/metadata.name': 'kube-system' } },
+				podSelector: { matchLabels: { 'k8s-app': 'kube-dns' } }
+			},
 			{ ipBlock: { cidr: '10.96.0.10/32' } }
 		]);
 		expect(policy.spec.egress[2]!.to[0]).toEqual({ ipBlock: { cidr: '0.0.0.0/0', except: ['10.0.0.0/8', '169.254.0.0/16'] } });

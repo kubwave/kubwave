@@ -54,13 +54,22 @@ function buildNamespace(environmentId: string, podSecurityEnforce: string): V1Na
 	};
 }
 
+// Cilium enforces egress on the post-DNAT DNS pod IP, so allow the well-known DNS pod labels (kube-dns/coredns) or tenants lose name resolution.
+const WELL_KNOWN_DNS_POD_LABELS: Record<string, string>[] = [{ 'k8s-app': 'kube-dns' }, { 'k8s-app': 'coredns' }];
+
 function buildEgressRules(egress: TenantEgressConfig): V1NetworkPolicyEgressRule[] {
-	const dnsTargets: NonNullable<V1NetworkPolicyEgressRule['to']> = [
-		{
+	const dnsTargets: NonNullable<V1NetworkPolicyEgressRule['to']> = [];
+	const seen = new Set<string>();
+	for (const labels of [egress.dnsPodLabels, ...WELL_KNOWN_DNS_POD_LABELS]) {
+		if (Object.keys(labels).length === 0) continue;
+		const key = JSON.stringify(labels);
+		if (seen.has(key)) continue;
+		seen.add(key);
+		dnsTargets.push({
 			namespaceSelector: { matchLabels: { 'kubernetes.io/metadata.name': egress.dnsNamespace } },
-			podSelector: { matchLabels: egress.dnsPodLabels }
-		}
-	];
+			podSelector: { matchLabels: labels }
+		});
+	}
 	if (egress.dnsServiceIp) dnsTargets.push({ ipBlock: { cidr: egress.dnsServiceIp } });
 
 	return [
