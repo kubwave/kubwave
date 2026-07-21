@@ -49,9 +49,9 @@ const api = {
 
 const mockKc = { makeApiClient: () => api } as unknown as KubeConfig;
 
-const { deleteClaimedPersistentVolumes } = await import('../src/commands/uninstall.js');
+const { reclaimClaimedPersistentVolumes } = await import('../src/commands/uninstall.js');
 
-function plan(): Parameters<typeof deleteClaimedPersistentVolumes>[1] {
+function plan(): Parameters<typeof reclaimClaimedPersistentVolumes>[1] {
 	return {
 		appRelease: { release: 'kubwave', namespace: 'kubwave' },
 		stagingRelease: null,
@@ -70,10 +70,10 @@ function plan(): Parameters<typeof deleteClaimedPersistentVolumes>[1] {
 	};
 }
 
-function pv(name: string, claimNs: string, phase: string): V1PersistentVolume {
+function pv(name: string, claimNs: string, phase: string, reclaimPolicy: 'Retain' | 'Delete' = 'Delete'): V1PersistentVolume {
 	return {
 		metadata: { name, finalizers: ['kubernetes.io/pv-protection'] },
-		spec: { claimRef: { namespace: claimNs }, persistentVolumeReclaimPolicy: 'Delete' },
+		spec: { claimRef: { namespace: claimNs }, persistentVolumeReclaimPolicy: reclaimPolicy },
 		status: { phase }
 	} as V1PersistentVolume;
 }
@@ -86,56 +86,77 @@ function reset(): void {
 	listQueue = [];
 }
 
-describe('deleteClaimedPersistentVolumes phase guard', () => {
-	test('skips a still-Bound PV whose namespace is mid-teardown — no finalizer strip, no delete', async () => {
+describe('reclaimClaimedPersistentVolumes disk-safety', () => {
+	test('never deletes the PV object directly — reclaim is left to the CSI provisioner', async () => {
 		reset();
-		listedPvs = [pv('pv-bound', 'env-tenant-a', 'Bound')];
+		listQueue = [[pv('pv-released', 'env-tenant-a', 'Released', 'Retain')], []];
 
-		await deleteClaimedPersistentVolumes(mockKc, plan(), { timeoutMs: 0, pollMs: 1 });
+		await reclaimClaimedPersistentVolumes(mockKc, plan(), { pollMs: 1 });
 
 		expect(deletedPvNames).toHaveLength(0);
+	});
+
+	test('patches a Retain PV to Delete and reports it reclaimed once the provisioner removes it', async () => {
+		reset();
+		listQueue = [[pv('pv-released', 'env-tenant-a', 'Released', 'Retain')], []];
+
+		await reclaimClaimedPersistentVolumes(mockKc, plan(), { pollMs: 1 });
+
+		expect(mergePatchCalls.some(c => c.name === 'pv-released' && c.reclaimPolicy === 'Delete')).toBe(true);
+		expect(deletedPvNames).toHaveLength(0);
+		expect(promptEvents.some(e => e.startsWith('stop:') && e.includes('Reclaimed 1'))).toBe(true);
+	});
+
+	test('does not patch a PV that already uses the Delete reclaimPolicy', async () => {
+		reset();
+		listQueue = [[pv('pv-released', 'env-tenant-a', 'Released', 'Delete')], []];
+
+		await reclaimClaimedPersistentVolumes(mockKc, plan(), { pollMs: 1 });
+
 		expect(mergePatchCalls).toHaveLength(0);
+		expect(deletedPvNames).toHaveLength(0);
 	});
 
-	test('strips the protection finalizer and deletes a Released PV', async () => {
+	test('ignores PVs claimed outside the removed namespaces', async () => {
 		reset();
-		listedPvs = [pv('pv-released', 'env-tenant-a', 'Released')];
+		listQueue = [[pv('pv-other', 'some-other-ns', 'Released', 'Retain')], []];
 
-		await deleteClaimedPersistentVolumes(mockKc, plan());
+		await reclaimClaimedPersistentVolumes(mockKc, plan(), { pollMs: 1 });
 
-		expect(deletedPvNames).toEqual(['pv-released']);
-		expect(mergePatchCalls.some(c => c.name === 'pv-released' && !(c.finalizers ?? []).includes('kubernetes.io/pv-protection'))).toBe(true);
-	});
-
-	test('processes only the Released PV when Bound and Released share the sweep', async () => {
-		reset();
-		listedPvs = [pv('pv-bound', 'env-tenant-a', 'Bound'), pv('pv-released', 'kubwave', 'Released')];
-
-		await deleteClaimedPersistentVolumes(mockKc, plan(), { timeoutMs: 0, pollMs: 1 });
-
-		expect(deletedPvNames).toEqual(['pv-released']);
+		expect(mergePatchCalls).toHaveLength(0);
+		expect(promptEvents.some(e => e.startsWith('stop:') && e.includes('No claimed PersistentVolumes'))).toBe(true);
 	});
 });
 
-describe('deleteClaimedPersistentVolumes polling', () => {
-	test('polls until a Bound PV becomes Released, then deletes it', async () => {
+describe('reclaimClaimedPersistentVolumes polling', () => {
+	test('polls until a Bound PV turns Released and the provisioner reclaims it', async () => {
 		reset();
-		listQueue = [[pv('pv-bound', 'env-tenant-a', 'Bound')], [pv('pv-bound', 'env-tenant-a', 'Released')]];
+		listQueue = [[pv('pv-bound', 'env-tenant-a', 'Bound', 'Retain')], [pv('pv-bound', 'env-tenant-a', 'Released', 'Retain')], []];
 
-		await deleteClaimedPersistentVolumes(mockKc, plan(), { timeoutMs: 5_000, pollMs: 1 });
+		await reclaimClaimedPersistentVolumes(mockKc, plan(), { timeoutMs: 5_000, pollMs: 1 });
 
-		expect(deletedPvNames).toEqual(['pv-bound']);
-		expect(mergePatchCalls.some(c => c.name === 'pv-bound' && !(c.finalizers ?? []).includes('kubernetes.io/pv-protection'))).toBe(true);
+		expect(mergePatchCalls.some(c => c.name === 'pv-bound' && c.reclaimPolicy === 'Delete')).toBe(true);
+		expect(deletedPvNames).toHaveLength(0);
+		expect(promptEvents.some(e => e.startsWith('stop:') && e.includes('Reclaimed 1'))).toBe(true);
 	});
 
-	test('stops at the deadline and leaves a persistently-Bound PV to the CSI teardown drain wait', async () => {
+	test('stops at the deadline, reports PVs not reclaimed, and still never deletes them', async () => {
 		reset();
-		listedPvs = [pv('pv-bound', 'env-tenant-a', 'Bound')];
+		listedPvs = [pv('pv-stuck', 'env-tenant-a', 'Released', 'Delete')];
 
-		await deleteClaimedPersistentVolumes(mockKc, plan(), { timeoutMs: 20, pollMs: 1 });
+		await reclaimClaimedPersistentVolumes(mockKc, plan(), { timeoutMs: 20, pollMs: 1 });
 
 		expect(deletedPvNames).toHaveLength(0);
-		expect(mergePatchCalls).toHaveLength(0);
-		expect(promptEvents.some(e => e.startsWith('stop:') && e.includes('not yet released'))).toBe(true);
+		expect(promptEvents.some(e => e.startsWith('stop:') && e.includes('not reclaimed within timeout'))).toBe(true);
+	});
+
+	test('flags persistently Bound PVs as still bound at the deadline', async () => {
+		reset();
+		listedPvs = [pv('pv-bound', 'env-tenant-a', 'Bound', 'Delete')];
+
+		await reclaimClaimedPersistentVolumes(mockKc, plan(), { timeoutMs: 20, pollMs: 1 });
+
+		expect(deletedPvNames).toHaveLength(0);
+		expect(promptEvents.some(e => e.startsWith('stop:') && e.includes('still bound'))).toBe(true);
 	});
 });
