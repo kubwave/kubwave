@@ -8,6 +8,7 @@ const mergePatchCalls: Array<{ name?: string; finalizers?: string[]; reclaimPoli
 const deletedPvNames: string[] = [];
 
 let listedPvs: V1PersistentVolume[] = [];
+let listQueue: V1PersistentVolume[][] = [];
 
 mock.module('@clack/prompts', () => ({
 	...clackStub(),
@@ -19,6 +20,7 @@ mock.module('@clack/prompts', () => ({
 	},
 	spinner: () => ({
 		start: (msg: string) => promptEvents.push(`start:${msg}`),
+		message: (msg: string) => promptEvents.push(`message:${msg}`),
 		stop: (msg: string) => promptEvents.push(`stop:${msg}`)
 	})
 }));
@@ -38,7 +40,7 @@ mock.module('~/lib/k8s-apply.js', () => ({
 }));
 
 const api = {
-	listPersistentVolume: async () => ({ items: listedPvs, metadata: {} }),
+	listPersistentVolume: async () => ({ items: listQueue.length > 0 ? listQueue.shift()! : listedPvs, metadata: {} }),
 	deletePersistentVolume: async ({ name }: { name: string }) => {
 		deletedPvNames.push(name);
 	},
@@ -81,6 +83,7 @@ function reset(): void {
 	mergePatchCalls.length = 0;
 	deletedPvNames.length = 0;
 	listedPvs = [];
+	listQueue = [];
 }
 
 describe('deleteClaimedPersistentVolumes phase guard', () => {
@@ -88,7 +91,7 @@ describe('deleteClaimedPersistentVolumes phase guard', () => {
 		reset();
 		listedPvs = [pv('pv-bound', 'env-tenant-a', 'Bound')];
 
-		await deleteClaimedPersistentVolumes(mockKc, plan());
+		await deleteClaimedPersistentVolumes(mockKc, plan(), { timeoutMs: 0, pollMs: 1 });
 
 		expect(deletedPvNames).toHaveLength(0);
 		expect(mergePatchCalls).toHaveLength(0);
@@ -108,8 +111,31 @@ describe('deleteClaimedPersistentVolumes phase guard', () => {
 		reset();
 		listedPvs = [pv('pv-bound', 'env-tenant-a', 'Bound'), pv('pv-released', 'kubwave', 'Released')];
 
-		await deleteClaimedPersistentVolumes(mockKc, plan());
+		await deleteClaimedPersistentVolumes(mockKc, plan(), { timeoutMs: 0, pollMs: 1 });
 
 		expect(deletedPvNames).toEqual(['pv-released']);
+	});
+});
+
+describe('deleteClaimedPersistentVolumes polling', () => {
+	test('polls until a Bound PV becomes Released, then deletes it', async () => {
+		reset();
+		listQueue = [[pv('pv-bound', 'env-tenant-a', 'Bound')], [pv('pv-bound', 'env-tenant-a', 'Released')]];
+
+		await deleteClaimedPersistentVolumes(mockKc, plan(), { timeoutMs: 5_000, pollMs: 1 });
+
+		expect(deletedPvNames).toEqual(['pv-bound']);
+		expect(mergePatchCalls.some(c => c.name === 'pv-bound' && !(c.finalizers ?? []).includes('kubernetes.io/pv-protection'))).toBe(true);
+	});
+
+	test('stops at the deadline and leaves a persistently-Bound PV to the CSI teardown drain wait', async () => {
+		reset();
+		listedPvs = [pv('pv-bound', 'env-tenant-a', 'Bound')];
+
+		await deleteClaimedPersistentVolumes(mockKc, plan(), { timeoutMs: 20, pollMs: 1 });
+
+		expect(deletedPvNames).toHaveLength(0);
+		expect(mergePatchCalls).toHaveLength(0);
+		expect(promptEvents.some(e => e.startsWith('stop:') && e.includes('not yet released'))).toBe(true);
 	});
 });

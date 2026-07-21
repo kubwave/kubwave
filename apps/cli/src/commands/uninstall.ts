@@ -585,77 +585,104 @@ export async function reclaimRetainedPvs(kc: KubeConfig, plan: UninstallPlan): P
 	spinner.stop(patched === 0 ? 'No retained PVs needed reclaiming' : `Patched ${patched} retained PV(s) to Delete (${skipped} already Delete)`);
 }
 
-// After the namespaces are gone, PVs whose claimRef pointed into them are left Released. With reclaimPolicy
-// now Delete (reclaimRetainedPvs) the CSI controller should reap them, but the `kubernetes.io/pv-protection`
-// finalizer blocks deletion and leaves the cloud disk orphaned (seen on UpCloud UKS). Strip that finalizer
-// and delete the PV explicitly while the CSI driver is still alive (teardown runs last) so DeleteVolume fires.
-export async function deleteClaimedPersistentVolumes(kc: KubeConfig, plan: UninstallPlan): Promise<void> {
+// Delete PVs whose claim lived in a removed namespace: strip pv-protection, force reclaimPolicy Delete, and delete while the CSI driver still lives so DeleteVolume fires. Polls because namespace deletion is async, so a PV may still be Bound on the first pass and only become Released once its PVC is gone.
+export async function deleteClaimedPersistentVolumes(
+	kc: KubeConfig,
+	plan: UninstallPlan,
+	opts?: { timeoutMs?: number; pollMs?: number }
+): Promise<void> {
 	const api = kc.makeApiClient(CoreV1Api);
 	const patchApi = KubernetesObjectApi.makeApiClient(kc);
 	const targetNamespaces = targetNamespaceSet(plan);
+	const timeoutMs = opts?.timeoutMs ?? CSI_PV_DRAIN_TIMEOUT_MS;
+	const pollMs = opts?.pollMs ?? CSI_PV_POLL_INTERVAL_MS;
 
 	const spinner = p.spinner();
 	spinner.start('Deleting claimed PersistentVolumes for removed namespaces...');
 
+	const listTargetPvs = async (): Promise<V1PersistentVolume[]> => {
+		const found: V1PersistentVolume[] = [];
+		await forEachPersistentVolume(api, pv => {
+			const claimNs = pv.spec?.claimRef?.namespace;
+			if (pv.metadata?.name && claimNs && targetNamespaces.has(claimNs)) found.push(pv);
+		});
+		return found;
+	};
+
 	let deleted = 0;
-	let skipped = 0;
 	let failed = 0;
-	await forEachPersistentVolume(api, async pv => {
-		const name = pv.metadata?.name;
-		const claimNs = pv.spec?.claimRef?.namespace;
-		if (!name || !claimNs || !targetNamespaces.has(claimNs)) return;
+	const attempted = new Set<string>();
 
-		if (pv.status?.phase !== 'Released') {
-			skipped++;
-			return;
+	let target = await listTargetPvs();
+	const deadline = Date.now() + timeoutMs;
+	for (;;) {
+		const waiting = target.filter(pv => pv.status?.phase !== 'Released');
+		const ready = target.filter(pv => pv.status?.phase === 'Released' && !attempted.has(pv.metadata!.name!));
+
+		for (const pv of ready) {
+			attempted.add(pv.metadata!.name!);
+			const outcome = await deleteReleasedPersistentVolume(api, patchApi, pv);
+			if (outcome === 'deleted') deleted++;
+			else if (outcome === 'failed') failed++;
 		}
 
-		const finalizers = pv.metadata?.finalizers ?? [];
+		if (waiting.length === 0 || Date.now() >= deadline) break;
+		spinner.message(`Waiting for ${waiting.length} PersistentVolume(s) to be released...`);
+		await new Promise(r => setTimeout(r, pollMs));
+		target = await listTargetPvs();
+	}
 
-		// Drop only the built-in protection finalizer; leave controller-owned ones (external-attacher/*)
-		// for their controllers to remove during detach, otherwise we'd leak the volume attachment.
-		if (finalizers.includes('kubernetes.io/pv-protection')) {
-			try {
-				const keep = finalizers.filter(f => f !== 'kubernetes.io/pv-protection');
-				await mergePatchWith(patchApi, { apiVersion: 'v1', kind: 'PersistentVolume', metadata: { name, finalizers: keep } });
-				p.log.info(`PV "${name}" stripped kubernetes.io/pv-protection finalizer`);
-			} catch (err) {
-				if (!isNotFoundError(err)) {
-					p.log.warn(`Could not strip pv-protection finalizer on PV "${name}": ${err instanceof Error ? err.message : String(err)}`);
-				}
-			}
-		}
+	const notYetReleased = target.filter(pv => pv.status?.phase !== 'Released').length;
+	const base = deleted === 0 && notYetReleased === 0 ? 'No claimed PersistentVolumes needed deleting' : `Deleted ${deleted} claimed PV(s)`;
+	const notes: string[] = [];
+	if (notYetReleased > 0) notes.push(`${notYetReleased} not yet released (left for CSI teardown drain wait)`);
+	if (failed > 0) notes.push(`${failed} could not be deleted (see warnings above)`);
+	spinner.stop(notes.length ? `${base}; ${notes.join(', ')}` : base);
+}
 
-		// Idempotent safety: ensure reclaimPolicy is Delete so the disk is reclaimed, not just the PV object.
-		if (pv.spec?.persistentVolumeReclaimPolicy === 'Retain') {
-			try {
-				await patchPVReclaimPolicyToDelete(patchApi, name);
-			} catch (err) {
-				if (!isNotFoundError(err)) {
-					p.log.warn(`Could not patch PV "${name}" reclaimPolicy to Delete: ${err instanceof Error ? err.message : String(err)}`);
-				}
-			}
-		}
+async function deleteReleasedPersistentVolume(
+	api: CoreV1Api,
+	patchApi: ReturnType<typeof KubernetesObjectApi.makeApiClient>,
+	pv: V1PersistentVolume
+): Promise<'deleted' | 'gone' | 'failed'> {
+	const name = pv.metadata?.name;
+	if (!name) return 'gone';
 
+	const finalizers = pv.metadata?.finalizers ?? [];
+
+	// Drop only the built-in protection finalizer; leave controller-owned ones (e.g. external-attacher) so detach can still clean up the volume attachment.
+	if (finalizers.includes('kubernetes.io/pv-protection')) {
 		try {
-			await api.deletePersistentVolume({ name });
-			deleted++;
-			p.log.success(`PV "${name}" deleted (disk reclaim handed to CSI)`);
+			const keep = finalizers.filter(f => f !== 'kubernetes.io/pv-protection');
+			await mergePatchWith(patchApi, { apiVersion: 'v1', kind: 'PersistentVolume', metadata: { name, finalizers: keep } });
+			p.log.info(`PV "${name}" stripped kubernetes.io/pv-protection finalizer`);
 		} catch (err) {
-			if (isNotFoundError(err)) {
-				skipped++;
-			} else {
-				failed++;
-				p.log.warn(`Could not delete PV "${name}": ${err instanceof Error ? err.message : String(err)}`);
+			if (!isNotFoundError(err)) {
+				p.log.warn(`Could not strip pv-protection finalizer on PV "${name}": ${err instanceof Error ? err.message : String(err)}`);
 			}
 		}
-	});
+	}
 
-	const base =
-		deleted === 0 && skipped === 0
-			? 'No claimed PersistentVolumes needed deleting'
-			: `Deleted ${deleted} claimed PV(s)${skipped ? `, ${skipped} skipped (gone or not yet released)` : ''}`;
-	spinner.stop(failed > 0 ? `${base}; ${failed} could not be deleted (see warnings above)` : base);
+	// Idempotent safety: ensure reclaimPolicy is Delete so the disk is reclaimed, not just the PV object.
+	if (pv.spec?.persistentVolumeReclaimPolicy === 'Retain') {
+		try {
+			await patchPVReclaimPolicyToDelete(patchApi, name);
+		} catch (err) {
+			if (!isNotFoundError(err)) {
+				p.log.warn(`Could not patch PV "${name}" reclaimPolicy to Delete: ${err instanceof Error ? err.message : String(err)}`);
+			}
+		}
+	}
+
+	try {
+		await api.deletePersistentVolume({ name });
+		p.log.success(`PV "${name}" deleted (disk reclaim handed to CSI)`);
+		return 'deleted';
+	} catch (err) {
+		if (isNotFoundError(err)) return 'gone';
+		p.log.warn(`Could not delete PV "${name}": ${err instanceof Error ? err.message : String(err)}`);
+		return 'failed';
+	}
 }
 
 async function deleteAcmeAccountKeys(api: CoreV1Api, plan: UninstallPlan): Promise<void> {
