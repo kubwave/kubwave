@@ -113,6 +113,8 @@ export async function reconcileRuntime(ctx: DeployContext, config: RuntimeConfig
 	// Same source the namespace reconciler stamps as the PSS enforce label, so pod hardening and the admission level can't diverge.
 	const podSecurityEnforce = tenantIsolation.podSecurityEnforce;
 	const runtimeClass = runtimeClassForService(ctx.deployment.type, tenantIsolation.runtimeClass) || undefined;
+	// Cluster-wide baseline resources applied when a service configures none (scheduler spreading + autoscaler signal).
+	const defaultResources = env.tenantDefaultResources;
 	const desiredPorts = containerPorts(config);
 	const desiredDomains = withDefaultDomain(config, ctx.defaultDomainHost);
 
@@ -147,17 +149,23 @@ export async function reconcileRuntime(ctx: DeployContext, config: RuntimeConfig
 	if (!existing) {
 		await appsApi.createNamespacedDeployment({
 			namespace: ctx.namespace,
-			body: buildDeployment(ctx.deployment, ctx.namespace, config, imageRef, { imagePullSecretName, podSecurityEnforce, runtimeClass })
+			body: buildDeployment(ctx.deployment, ctx.namespace, config, imageRef, {
+				imagePullSecretName,
+				podSecurityEnforce,
+				runtimeClass,
+				defaultResources
+			})
 		});
 		events.push(stepEvent('deployment-created', `Created Deployment ${name} with image ${imageRef}`));
 		await syncNetworking();
 		return { state: 'progressing', phase: 'applying', events };
 	}
-	if (!deploymentMatchesConfig(existing, config, imageRef, serviceId, podSecurityEnforce, runtimeClass)) {
+	if (!deploymentMatchesConfig(existing, config, imageRef, serviceId, podSecurityEnforce, runtimeClass, defaultResources)) {
 		await replaceWithRetry({
 			label: `Deployment ${name}`,
 			read: () => readDeploymentOrNull(appsApi, ctx.namespace, name),
-			build: () => buildDeployment(ctx.deployment, ctx.namespace, config, imageRef, { imagePullSecretName, podSecurityEnforce, runtimeClass }),
+			build: () =>
+				buildDeployment(ctx.deployment, ctx.namespace, config, imageRef, { imagePullSecretName, podSecurityEnforce, runtimeClass, defaultResources }),
 			carryOver: (fresh, desired) => {
 				desired.metadata = { ...desired.metadata, resourceVersion: fresh.metadata?.resourceVersion ?? undefined };
 				// Under HPA, carry over the live replica count so the replace doesn't reset its scaling to the default.

@@ -1,5 +1,5 @@
 import type { V1Deployment, V1EnvVar, V1PodSecurityContext, V1SecurityContext } from '@kubernetes/client-node';
-import type { Deployment, RuntimeConfig, ServiceDomain } from '@kubwave/db';
+import type { Deployment, ResourceConfig, RuntimeConfig, ServiceDomain } from '@kubwave/db';
 import { fileKey, pvcName, resourceName, secretName, selectorLabels, SERVICE_ROLLOUT_PROGRESS_DEADLINE_SECONDS } from '@kubwave/kube';
 import { commonLabels } from '../../../../../../shared/cluster/networking.js';
 import { autoscalingEnabled } from './autoscaling.js';
@@ -50,12 +50,12 @@ export function buildDeployment(
 	namespace: string,
 	config: RuntimeConfig,
 	imageRef: string,
-	opts?: { imagePullSecretName?: string; podSecurityEnforce?: string; runtimeClass?: string }
+	opts?: { imagePullSecretName?: string; podSecurityEnforce?: string; runtimeClass?: string; defaultResources?: ResourceConfig }
 ): V1Deployment {
 	const name = resourceName(deployment.serviceId);
 	const labels = commonLabels(deployment.serviceId);
 	const probes = config.healthCheck ? buildProbes(config.healthCheck, config.containerPort) : null;
-	const resources = buildResources(config.resources);
+	const resources = buildResources(config.resources, opts?.defaultResources);
 	const hpaManaged = autoscalingEnabled(config);
 	const envEntries = buildEnv(deployment, config);
 	const checksum = secretsChecksum(config);
@@ -123,7 +123,8 @@ export function deploymentMatchesConfig(
 	imageRef: string,
 	serviceId: string,
 	podSecurityEnforce?: string,
-	runtimeClass?: string
+	runtimeClass?: string,
+	defaultResources?: ResourceConfig
 ): boolean {
 	const container = existing.spec?.template?.spec?.containers?.find(c => c.name === CONTAINER_NAME);
 	if (!container) return false;
@@ -140,7 +141,7 @@ export function deploymentMatchesConfig(
 	if ((existing.spec?.template?.spec?.runtimeClassName ?? '') !== (runtimeClass ?? '')) return false;
 	if ((container.ports?.[0]?.containerPort ?? null) !== (config.containerPort ?? null)) return false;
 	if (!probesMatch(container, config)) return false;
-	if (!resourcesMatch(container, config)) return false;
+	if (!resourcesMatch(container, config, defaultResources)) return false;
 
 	// command/args are part of the container spec; a change must roll the Deployment. Empty <-> undefined.
 	const stringArraysEqual = (a: string[] | undefined, b: string[] | undefined): boolean => {

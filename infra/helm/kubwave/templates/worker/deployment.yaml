@@ -116,6 +116,8 @@ spec:
               value: {{ .Values.tenants.podSecurity | quote }}
             - name: TENANT_RUNTIME_CLASS
               value: {{ .Values.tenants.runtimeClass.default | quote }}
+            - name: TENANT_DEFAULT_RESOURCES
+              value: {{ (.Values.tenants.defaultResources | default dict) | toJson | quote }}
             - name: TENANT_EGRESS_ENABLED
               value: {{ .Values.tenants.egress.enabled | quote }}
             - name: TENANT_EGRESS_BLOCKED_CIDRS
