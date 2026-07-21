@@ -60,6 +60,22 @@ describe('buildResources defaults', () => {
 	test('no defaults and no config yields undefined', () => {
 		expect(buildResources(undefined, undefined)).toBeUndefined();
 	});
+
+	test('empty-string per-service values fall back to the defaults', () => {
+		expect(buildResources({ cpuRequest: '', memoryRequest: '', cpuLimit: '', memoryLimit: '' }, DEFAULTS)).toEqual({
+			requests: { cpu: '50m', memory: '128Mi' }
+		});
+	});
+
+	test('whitespace-only per-service values fall back to the defaults', () => {
+		expect(buildResources({ cpuRequest: '  ', memoryLimit: '\t' }, DEFAULTS)).toEqual({
+			requests: { cpu: '50m', memory: '128Mi' }
+		});
+	});
+
+	test('blank per-service values with no defaults are omitted', () => {
+		expect(buildResources({ cpuRequest: '', memoryLimit: '   ' }, undefined)).toBeUndefined();
+	});
 });
 
 describe('resourcesMatch with defaults', () => {

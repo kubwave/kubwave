@@ -5,10 +5,12 @@ import type { ResourceConfig, RuntimeConfig } from '@kubwave/db';
 export function buildResources(resources: ResourceConfig | undefined, defaults?: ResourceConfig): V1ResourceRequirements | undefined {
 	const requests: Record<string, string> = {};
 	const limits: Record<string, string> = {};
-	const cpuRequest = resources?.cpuRequest ?? defaults?.cpuRequest;
-	const memoryRequest = resources?.memoryRequest ?? defaults?.memoryRequest;
-	const cpuLimit = resources?.cpuLimit ?? defaults?.cpuLimit;
-	const memoryLimit = resources?.memoryLimit ?? defaults?.memoryLimit;
+	// Blank per-service values are unset, not explicit overrides, so the cluster default still applies.
+	const present = (v: string | undefined): string | undefined => (v != null && v.trim() !== '' ? v : undefined);
+	const cpuRequest = present(resources?.cpuRequest) ?? defaults?.cpuRequest;
+	const memoryRequest = present(resources?.memoryRequest) ?? defaults?.memoryRequest;
+	const cpuLimit = present(resources?.cpuLimit) ?? defaults?.cpuLimit;
+	const memoryLimit = present(resources?.memoryLimit) ?? defaults?.memoryLimit;
 	if (cpuRequest) requests.cpu = cpuRequest;
 	if (memoryRequest) requests.memory = memoryRequest;
 	if (cpuLimit) limits.cpu = cpuLimit;
