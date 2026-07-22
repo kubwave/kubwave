@@ -70,6 +70,8 @@ export function planPreviewServices(base: Service[], ctx: ClonePlanContext): Clo
 		// env + domains exist on every ServiceConfig member (RuntimeConfig base).
 		config.env = (config.env ?? []).map(e => ({ key: e.key, value: rewriteCrossRefs(e.value, mapping) }));
 		config.domains = [];
+		// Previews never inherit public TCP exposures: the pool ports are scarce and the base's routes point at the base's pods.
+		delete config.exposedPorts;
 		// branch/commit only exist on repo-backed members; the `'repoUrl' in config` guard narrows to those.
 		if ('repoUrl' in config) {
 			if (tracksPr) {

@@ -180,6 +180,11 @@ describe('helm values generation', () => {
 		expect(values.workloadIngress.controllerNamespace).toBe('traefik');
 	});
 
+	test('mirrors the Traefik TCP port pool into workloadIngress for the API/worker', () => {
+		const values = buildValues(config) as { workloadIngress: { tcpPortPool: { enabled: boolean; start: number; size: number } } };
+		expect(values.workloadIngress.tcpPortPool).toEqual({ enabled: true, start: 30100, size: 20 });
+	});
+
 	test('turns on tenant egress isolation and the builder egress firewall for prod', () => {
 		// Cloudfleet enforces NetworkPolicy (Cilium), so prod must enable tenant + build egress confinement; the chart defaults them off (a no-op on dev/flannel).
 		const values = buildValues(config) as {

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { resolveWorkerRuntimeConfig, type WorkerRuntimeConfig } from './worker-env.js';
+import { assertValidTcpPortPool, resolveWorkerRuntimeConfig, type WorkerRuntimeConfig } from './worker-env.js';
 
 function required(name: string): string {
 	const value = process.env[name];
@@ -41,6 +41,13 @@ export interface SmtpEnvConfig {
 	fromName: string;
 }
 
+// Public TCP pool the API allocates exposed service ports from; mirrors the ingress controller's TCP entrypoints.
+export interface TcpPortPoolConfig {
+	enabled: boolean;
+	start: number;
+	size: number;
+}
+
 @Injectable()
 export class BackendConfigService {
 	get api(): ApiRuntimeConfig {
@@ -78,5 +85,15 @@ export class BackendConfigService {
 
 	get worker(): WorkerRuntimeConfig {
 		return resolveWorkerRuntimeConfig();
+	}
+
+	get tcpPortPool(): TcpPortPoolConfig {
+		const pool = {
+			enabled: process.env.TCP_PORT_POOL_ENABLED === 'true',
+			start: num('TCP_PORT_POOL_START', 30100),
+			size: num('TCP_PORT_POOL_SIZE', 0)
+		};
+		assertValidTcpPortPool(pool);
+		return pool;
 	}
 }

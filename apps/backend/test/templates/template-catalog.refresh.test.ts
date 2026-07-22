@@ -20,7 +20,7 @@ function entry(id: string, schemaVersion = 1) {
 				name: id,
 				primary: true,
 				type: 'docker-image' as const,
-				config: { image: id, tag: '1', containerPort: 80, env: [], secrets: [], domains: [], volumes: [], configFiles: [] }
+				config: { image: id, tag: '1', containerPort: 80, env: [], secrets: [], domains: [], exposedPorts: [], volumes: [], configFiles: [] }
 			}
 		]
 	};

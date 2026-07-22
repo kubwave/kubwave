@@ -112,6 +112,10 @@ rules:
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses", "networkpolicies"]
     verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  # Public TCP exposures: one IngressRouteTCP per exposed container port, routed via a pooled Traefik TCP entrypoint.
+  - apiGroups: ["traefik.io"]
+    resources: ["ingressroutetcps"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch"]

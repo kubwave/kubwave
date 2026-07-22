@@ -241,6 +241,12 @@ export type AutoDeployViewDto = {
 	lastPollError: string | null;
 };
 
+export type ExposedEndpointViewDto = {
+	containerPort: number;
+	publicPort: number;
+	host: string | null;
+};
+
 export type ServiceViewDto = {
 	id: string;
 	environmentId: string;
@@ -253,6 +259,7 @@ export type ServiceViewDto = {
 	autoDeploy: AutoDeployViewDto;
 	internalDomain: string | null;
 	defaultUrl: string | null;
+	exposedEndpoints: Array<ExposedEndpointViewDto>;
 	createdAt: string;
 	updatedAt: string;
 };
@@ -292,6 +299,9 @@ export type ServiceConnectionDto = {
 	database: string;
 	password: string;
 	uri: string;
+	externalHost: string | null;
+	externalPort: number | null;
+	externalUri: string | null;
 };
 
 export type ServiceRuntimeDto = {

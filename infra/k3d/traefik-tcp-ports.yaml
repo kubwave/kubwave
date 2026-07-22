@@ -1,0 +1,129 @@
+# k3s-bundled Traefik: add the dev TCP pool as entrypoints (mirrors workloadIngress.tcpPortPool); applied by scripts/dev.sh after cluster creation.
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    ports:
+      tcp-30100:
+        port: 30100
+        expose:
+          default: true
+        exposedPort: 30100
+        protocol: TCP
+      tcp-30101:
+        port: 30101
+        expose:
+          default: true
+        exposedPort: 30101
+        protocol: TCP
+      tcp-30102:
+        port: 30102
+        expose:
+          default: true
+        exposedPort: 30102
+        protocol: TCP
+      tcp-30103:
+        port: 30103
+        expose:
+          default: true
+        exposedPort: 30103
+        protocol: TCP
+      tcp-30104:
+        port: 30104
+        expose:
+          default: true
+        exposedPort: 30104
+        protocol: TCP
+      tcp-30105:
+        port: 30105
+        expose:
+          default: true
+        exposedPort: 30105
+        protocol: TCP
+      tcp-30106:
+        port: 30106
+        expose:
+          default: true
+        exposedPort: 30106
+        protocol: TCP
+      tcp-30107:
+        port: 30107
+        expose:
+          default: true
+        exposedPort: 30107
+        protocol: TCP
+      tcp-30108:
+        port: 30108
+        expose:
+          default: true
+        exposedPort: 30108
+        protocol: TCP
+      tcp-30109:
+        port: 30109
+        expose:
+          default: true
+        exposedPort: 30109
+        protocol: TCP
+      tcp-30110:
+        port: 30110
+        expose:
+          default: true
+        exposedPort: 30110
+        protocol: TCP
+      tcp-30111:
+        port: 30111
+        expose:
+          default: true
+        exposedPort: 30111
+        protocol: TCP
+      tcp-30112:
+        port: 30112
+        expose:
+          default: true
+        exposedPort: 30112
+        protocol: TCP
+      tcp-30113:
+        port: 30113
+        expose:
+          default: true
+        exposedPort: 30113
+        protocol: TCP
+      tcp-30114:
+        port: 30114
+        expose:
+          default: true
+        exposedPort: 30114
+        protocol: TCP
+      tcp-30115:
+        port: 30115
+        expose:
+          default: true
+        exposedPort: 30115
+        protocol: TCP
+      tcp-30116:
+        port: 30116
+        expose:
+          default: true
+        exposedPort: 30116
+        protocol: TCP
+      tcp-30117:
+        port: 30117
+        expose:
+          default: true
+        exposedPort: 30117
+        protocol: TCP
+      tcp-30118:
+        port: 30118
+        expose:
+          default: true
+        exposedPort: 30118
+        protocol: TCP
+      tcp-30119:
+        port: 30119
+        expose:
+          default: true
+        exposedPort: 30119
+        protocol: TCP

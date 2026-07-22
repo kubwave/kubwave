@@ -48,6 +48,18 @@ export class NotADatabaseServiceError extends ApiError {
 	}
 }
 
+export class PortExposureDisabledError extends ApiError {
+	constructor() {
+		super(400, 'port_exposure_disabled', { message: 'Public TCP port exposure is not enabled on this installation.' });
+	}
+}
+
+export class PortPoolExhaustedError extends ApiError {
+	constructor() {
+		super(409, 'port_pool_exhausted', { message: 'No public TCP ports left in the pool; remove an exposure elsewhere first.' });
+	}
+}
+
 export class ComposeImportError extends ApiError {
 	constructor(
 		status: number,

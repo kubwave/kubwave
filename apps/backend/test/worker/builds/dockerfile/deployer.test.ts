@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
-import { AppsV1Api, AutoscalingV2Api, BatchV1Api, CoreV1Api, NetworkingV1Api, type KubeConfig } from '@kubernetes/client-node';
+import { AppsV1Api, AutoscalingV2Api, BatchV1Api, CoreV1Api, CustomObjectsApi, NetworkingV1Api, type KubeConfig } from '@kubernetes/client-node';
 import type { DeployContext } from '~/modules/worker/jobs/deployments/deployers/types';
 
 // Replace the env module so the Dockerfile deployer sees a configured registry regardless of test-run load order.
@@ -145,6 +145,7 @@ function makeTeardownKc(opts: { jobs: string[]; configMaps: string[]; calls: Tea
 	const apps = { deleteNamespacedDeployment: () => (opts.calls.misc.push('deployment'), Promise.resolve({})) };
 	const autoscaling = { deleteNamespacedHorizontalPodAutoscaler: () => (opts.calls.misc.push('hpa'), Promise.resolve({})) };
 	const net = { deleteNamespacedIngress: () => (opts.calls.misc.push('ingress'), Promise.resolve({})) };
+	const custom = { listNamespacedCustomObject: () => Promise.resolve({ items: [] }) };
 	return {
 		makeApiClient: (klass: unknown) =>
 			klass === BatchV1Api
@@ -157,7 +158,9 @@ function makeTeardownKc(opts: { jobs: string[]; configMaps: string[]; calls: Tea
 							? autoscaling
 							: klass === NetworkingV1Api
 								? net
-								: {}
+								: klass === CustomObjectsApi
+									? custom
+									: {}
 	} as unknown as DeployContext['kc'];
 }
 

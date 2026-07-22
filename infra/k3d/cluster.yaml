@@ -11,6 +11,10 @@ ports:
   - port: '443:443'
     nodeFilters:
       - loadbalancer
+  # Public TCP pool (workloadIngress.tcpPortPool): host → serverlb → servicelb → Traefik TCP entrypoints.
+  - port: '30100-30119:30100-30119'
+    nodeFilters:
+      - loadbalancer
 registries:
   create:
     name: kubwave-registry

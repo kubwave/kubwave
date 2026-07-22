@@ -3947,6 +3947,22 @@
 				},
 				"required": ["enabled", "lastPolledCommit", "lastPolledAt", "nextPollAt", "lastPollError"]
 			},
+			"ExposedEndpointViewDto": {
+				"type": "object",
+				"properties": {
+					"containerPort": {
+						"type": "number"
+					},
+					"publicPort": {
+						"type": "number"
+					},
+					"host": {
+						"type": "string",
+						"nullable": true
+					}
+				},
+				"required": ["containerPort", "publicPort", "host"]
+			},
 			"ServiceViewDto": {
 				"type": "object",
 				"properties": {
@@ -3983,6 +3999,12 @@
 						"type": "string",
 						"nullable": true
 					},
+					"exposedEndpoints": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/ExposedEndpointViewDto"
+						}
+					},
 					"createdAt": {
 						"type": "string"
 					},
@@ -4000,6 +4022,7 @@
 					"autoDeploy",
 					"internalDomain",
 					"defaultUrl",
+					"exposedEndpoints",
 					"createdAt",
 					"updatedAt"
 				]
@@ -4094,9 +4117,21 @@
 					},
 					"uri": {
 						"type": "string"
+					},
+					"externalHost": {
+						"type": "string",
+						"nullable": true
+					},
+					"externalPort": {
+						"type": "number",
+						"nullable": true
+					},
+					"externalUri": {
+						"type": "string",
+						"nullable": true
 					}
 				},
-				"required": ["engine", "host", "port", "username", "database", "password", "uri"]
+				"required": ["engine", "host", "port", "username", "database", "password", "uri", "externalHost", "externalPort", "externalUri"]
 			},
 			"ServiceRuntimeDto": {
 				"type": "object",

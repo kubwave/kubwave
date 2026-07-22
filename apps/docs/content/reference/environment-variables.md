@@ -96,6 +96,9 @@ The Backend Worker orchestrates tenant workloads through a Nest application cont
 | `INGRESS_ANNOTATIONS`          | No       | `{}`          | JSON object of extra annotations on tenant Ingresses. |
 | `INGRESS_LB_IP`                | No       | —             | LoadBalancer IP (set by some providers).              |
 | `INGRESS_CONTROLLER_SERVICE`   | No       | `traefik`     | Name of the ingress controller's Service.             |
+| `TCP_PORT_POOL_ENABLED`        | No       | `false`       | Enable public TCP port exposures (IngressRouteTCP).   |
+| `TCP_PORT_POOL_START`          | No       | `30100`       | First public port of the TCP pool.                    |
+| `TCP_PORT_POOL_SIZE`           | No       | `0`           | Number of ports in the TCP pool.                      |
 | `STORAGE_CLASS_NAME`           | No       | `""`          | Default StorageClass for tenant PVCs.                 |
 
 ### Container registry & builds

@@ -211,6 +211,11 @@ workloadIngress:
   # where Traefik is host-mapped). A wrong literal here silently routes every
   # auto-domain at the wrong address, so defaulting to empty is the safe choice.
   loadBalancerIp: ''
+  # Public TCP pool: raw TCP container ports (e.g. Postgres for migrations) get one ingress-IP port each; the controller must expose the same range (CLI mirrors it onto Traefik, dev via infra/k3d).
+  tcpPortPool:
+    enabled: true
+    start: 30100
+    size: 20
 
 # ── Tenant namespace hardening (per-environment isolation) ──
 # Defence-in-depth the WORKER applies to every per-environment tenant namespace it provisions.

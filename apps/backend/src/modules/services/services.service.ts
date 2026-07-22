@@ -25,7 +25,9 @@ import type { DatabaseServiceConfig, ServiceConfig, ServiceType } from '@kubwave
 import { decryptSecret } from '@kubwave/crypto';
 import { internalServiceName, parseMemoryToBytes } from '@kubwave/kube';
 import { EnvironmentsService } from '../environments/environments.service.js';
+import { BackendConfigService } from '../../shared/config/backend-config.service.js';
 import { SettingsService } from '../../shared/settings/settings.service.js';
+import { reconcileExposedPorts } from './port-exposures.js';
 import {
 	buildStoredConfig,
 	buildStoredDatabaseConfig,
@@ -45,6 +47,7 @@ import {
 	GitInstallationNotAvailableError,
 	InvalidDatabaseVersionError,
 	NotADatabaseServiceError,
+	PortExposureDisabledError,
 	ServiceConfigTypeMismatchError,
 	ServiceNameTakenError,
 	ServiceNotFoundError,
@@ -102,6 +105,11 @@ function toServiceView(row: ServiceRow, defaultDomain: DefaultDomainContext): Se
 		},
 		internalDomain: hasInternalService ? internalServiceName(row.id) : null,
 		defaultUrl: resolveDefaultUrl(defaultDomain, row),
+		exposedEndpoints: (row.config.exposedPorts ?? []).map(exposure => ({
+			containerPort: exposure.containerPort,
+			publicPort: exposure.publicPort,
+			host: defaultDomain.runtime.ingressIp
+		})),
 		createdAt: row.createdAt.toISOString(),
 		updatedAt: row.updatedAt.toISOString()
 	};
@@ -111,7 +119,8 @@ function toServiceView(row: ServiceRow, defaultDomain: DefaultDomainContext): Se
 export class ServicesService {
 	constructor(
 		private readonly environmentsService: EnvironmentsService,
-		private readonly settings: SettingsService
+		private readonly settings: SettingsService,
+		private readonly backendConfig: BackendConfigService
 	) {}
 
 	async listServicesForEnvironment(actingUserId: string, environmentId: string): Promise<ServiceView[]> {
@@ -161,21 +170,36 @@ export class ServicesService {
 			}
 		})();
 
-		const [service] = await db
-			.insert(services)
-			.values({
-				// Optional caller-provided id (template instantiation pre-generates ids so cross-references resolve in any order).
-				...(id ? { id } : {}),
-				environmentId: environment.id,
-				name,
-				description: trimDescription(input.description),
-				type: input.type,
-				config,
-				...autoDeployColumns(input.type, 'autoDeploy' in input ? input.autoDeploy : undefined, new Date())
-			})
-			.returning();
+		const requestedExposedPorts = (input.config.exposedPorts ?? []).map(exposure => exposure.containerPort);
+		const pool = this.backendConfig.tcpPortPool;
+		if (requestedExposedPorts.length > 0 && !pool.enabled) throw new PortExposureDisabledError();
 
-		if (!service) throw new Error('failed to create service');
+		const service = await db.transaction(async tx => {
+			const [inserted] = await tx
+				.insert(services)
+				.values({
+					// Optional caller-provided id (template instantiation pre-generates ids so cross-references resolve in any order).
+					...(id ? { id } : {}),
+					environmentId: environment.id,
+					name,
+					description: trimDescription(input.description),
+					type: input.type,
+					config,
+					...autoDeployColumns(input.type, 'autoDeploy' in input ? input.autoDeploy : undefined, new Date())
+				})
+				.returning();
+			if (!inserted) throw new Error('failed to create service');
+			if (requestedExposedPorts.length === 0) return inserted;
+
+			const allocated = await reconcileExposedPorts(tx, inserted.id, requestedExposedPorts, pool);
+			const [withPorts] = await tx
+				.update(services)
+				.set({ config: { ...inserted.config, exposedPorts: allocated } })
+				.where(eq(services.id, inserted.id))
+				.returning();
+			if (!withPorts) throw new Error('failed to create service');
+			return withPorts;
+		});
 
 		return toServiceView(service, await this.loadDefaultDomainContext());
 	}
@@ -242,6 +266,10 @@ export class ServicesService {
 		const username = config.username?.trim() || DEFAULT_DATABASE_USERNAME;
 		const database = config.database?.trim() || DEFAULT_DATABASE_NAME;
 		const password = decryptSecret(config.password);
+		const { runtime } = await this.loadDefaultDomainContext();
+		const exposure = (config.exposedPorts ?? []).find(entry => entry.containerPort === port);
+		const externalHost = exposure ? runtime.ingressIp : null;
+		const externalPort = exposure?.publicPort ?? null;
 
 		return {
 			engine: service.type,
@@ -250,13 +278,23 @@ export class ServicesService {
 			username,
 			database,
 			password,
-			uri: databaseConnectionUri({ engine: service.type, host, port, username, password, database })
+			uri: databaseConnectionUri({ engine: service.type, host, port, username, password, database }),
+			externalHost,
+			externalPort,
+			externalUri:
+				externalHost && externalPort != null
+					? databaseConnectionUri({ engine: service.type, host: externalHost, port: externalPort, username, password, database })
+					: null
 		};
 	}
 
 	async updateService(actingUserId: string, serviceId: string, input: UpdateServiceInput): Promise<ServiceView> {
 		const service = await this.loadServiceForUser(actingUserId, serviceId);
 		const now = new Date();
+		// Absent key = keep the stored exposures (older clients); explicit [] = clear them.
+		const requestedExposedPorts = input.config?.exposedPorts?.map(exposure => exposure.containerPort) ?? null;
+		const pool = this.backendConfig.tcpPortPool;
+		if (requestedExposedPorts && requestedExposedPorts.length > 0 && !pool.enabled) throw new PortExposureDisabledError();
 		const values: {
 			name?: string;
 			description?: string;
@@ -326,7 +364,22 @@ export class ServicesService {
 			}
 		}
 
-		const [updated] = await db.update(services).set(values).where(eq(services.id, service.id)).returning();
+		const updated = await db.transaction(async tx => {
+			let config = values.config;
+			if (config !== undefined && requestedExposedPorts !== null) {
+				const allocated = await reconcileExposedPorts(tx, service.id, requestedExposedPorts, pool);
+				// Freshly built configs carry no exposedPorts key; empty allocations intentionally stay absent ("absent means []").
+				if (allocated.length > 0) config = { ...config, exposedPorts: allocated };
+			} else if (config !== undefined && service.config.exposedPorts?.length) {
+				config = { ...config, exposedPorts: service.config.exposedPorts };
+			}
+			const [row] = await tx
+				.update(services)
+				.set({ ...values, ...(config !== undefined ? { config } : {}) })
+				.where(eq(services.id, service.id))
+				.returning();
+			return row;
+		});
 		if (!updated) throw new ServiceNotFoundError();
 
 		return toServiceView(updated, await this.loadDefaultDomainContext());

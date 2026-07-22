@@ -1,12 +1,16 @@
-import { describe, expect, mock, test } from 'bun:test';
+import { describe, expect, mock, test, afterEach } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
 import { ApiextensionsV1Api, AppsV1Api, CoreV1Api, NetworkingV1Api } from '@kubernetes/client-node';
 import * as realHelm from '../src/lib/helm.js';
+import { buildTraefikHelmValues } from '../src/lib/traefik.js';
+import { mergeDependencyState } from '../src/lib/dependency-state.js';
 import { clackStub } from './support/clack-stub.js';
 
 const execHelmCalls: string[][] = [];
 let execHelmResults = [{ stdout: '', stderr: '', exitCode: 0 }];
+// null = release not readable (exitCode 1); a JSON string = the live user-supplied values.
+let helmGetValuesStdout: string | null = null;
 let confirmResult = true;
 const promptEvents: string[] = [];
 
@@ -14,9 +18,18 @@ mock.module('~/lib/helm.js', () => ({
 	...realHelm,
 	execHelm: async (args: string[]) => {
 		execHelmCalls.push(args);
+		if (args[0] === 'get' && args[1] === 'values') {
+			return helmGetValuesStdout === null
+				? { stdout: '', stderr: 'release: not found', exitCode: 1 }
+				: { stdout: helmGetValuesStdout, stderr: '', exitCode: 0 };
+		}
 		return execHelmResults.shift() ?? { stdout: '', stderr: '', exitCode: 0 };
 	}
 }));
+
+afterEach(() => {
+	helmGetValuesStdout = null;
+});
 
 // Ownership stamping has its own test; keep it out of the dependency-orchestration call counts.
 mock.module('~/lib/helm-ownership.js', () => ({ stampHelmReleaseOwnership: async () => {} }));
@@ -215,9 +228,56 @@ describe('dependency checks and installation orchestration', () => {
 			{ name: 'cert-manager', alreadyInstalled: true, installed: false, message: 'cert-manager controller ready' },
 			{ name: 'CloudNativePG', alreadyInstalled: true, installed: false, message: 'CloudNativePG CRDs found' }
 		]);
-		expect(execHelmCalls).toEqual([]);
+		// Only the drift probe runs — an unreadable release counts as no-drift (hands-off).
+		expect(execHelmCalls).toEqual([['get', 'values', 'traefik', '-n', 'traefik', '-o', 'json']]);
 		expect(reporter.events).toContain('succeed:Traefik: Traefik IngressClass found');
 		expect(reporter.events).toContain('succeed:cert-manager: cert-manager controller ready');
+	});
+
+	test('re-applies traefik values when the release drifted from the desired configuration', async () => {
+		execHelmCalls.length = 0;
+		helmGetValuesStdout = '{}';
+		execHelmResults = [
+			{ stdout: '', stderr: '', exitCode: 0 },
+			{ stdout: '', stderr: '', exitCode: 0 },
+			{ stdout: '', stderr: '', exitCode: 0 }
+		];
+		const reporter = recordingReporter();
+		const kc = createKubeConfigStub({
+			ingressClasses: [{ metadata: { name: 'traefik' } }],
+			deployment: readyDeployment(),
+			ingressClass: {},
+			service: { spec: { type: 'LoadBalancer' }, status: { loadBalancer: { ingress: [] } } },
+			crd: establishedCrd(),
+			deployments: certManagerDeployments()
+		});
+
+		const results = await ensureDependenciesSilent(kc, reporter, createDependencyStateStub());
+		expect(results[0]).toEqual({ name: 'Traefik', alreadyInstalled: false, installed: true, message: 'Traefik successfully installed' });
+		const upgradeCall = execHelmCalls.find(args => args[0] === 'upgrade')!;
+		expect(upgradeCall).toContain('traefik/traefik');
+		expect(upgradeCall).toContain('--reuse-values');
+		const valuesFile = upgradeCall[upgradeCall.indexOf('-f') + 1]!;
+		const values = parse(readFileSync(valuesFile, 'utf8'));
+		// The drifted (pre-pool) release gets the TCP entrypoints overlaid.
+		expect(values.ports['tcp-30100']).toEqual({ port: 30100, expose: { default: true }, exposedPort: 30100, protocol: 'TCP' });
+		expect(Object.keys(values.ports)).toHaveLength(20);
+	});
+
+	test('treats live values that are a superset of the desired ones as installed (no drift)', async () => {
+		execHelmCalls.length = 0;
+		const desired = buildTraefikHelmValues(mergeDependencyState(createDependencyStateStub()).traefik);
+		helmGetValuesStdout = JSON.stringify({ ...desired, extraOperatorKey: true });
+		const reporter = recordingReporter();
+		const kc = createKubeConfigStub({
+			ingressClasses: [{ metadata: { name: 'traefik' } }],
+			crd: establishedCrd(),
+			deployments: certManagerDeployments()
+		});
+
+		const results = await ensureDependenciesSilent(kc, reporter, createDependencyStateStub());
+		expect(results[0]).toEqual({ name: 'Traefik', alreadyInstalled: true, installed: false, message: 'Traefik IngressClass found' });
+		expect(execHelmCalls).toEqual([['get', 'values', 'traefik', '-n', 'traefik', '-o', 'json']]);
 	});
 
 	test('silent dependency repair installs only missing dependencies', async () => {
@@ -240,12 +300,13 @@ describe('dependency checks and installation orchestration', () => {
 			{ name: 'cert-manager', alreadyInstalled: false, installed: true, message: 'cert-manager successfully installed' },
 			{ name: 'CloudNativePG', alreadyInstalled: true, installed: false, message: 'CloudNativePG CRDs found' }
 		]);
-		expect(execHelmCalls).toHaveLength(3);
-		expect(execHelmCalls[2]).toContain('jetstack/cert-manager');
-		expect(execHelmCalls[2]).not.toContain('traefik/traefik');
-		expect(execHelmCalls[2]).toContain('resources.requests.cpu=10m');
-		expect(execHelmCalls[2]).toContain('webhook.resources.requests.memory=32Mi');
-		expect(execHelmCalls[2]).toContain('cainjector.resources.requests.memory=64Mi');
+		// Traefik drift probe + repo add/update + the cert-manager install only.
+		expect(execHelmCalls).toHaveLength(4);
+		expect(execHelmCalls[3]).toContain('jetstack/cert-manager');
+		expect(execHelmCalls[3]).not.toContain('traefik/traefik');
+		expect(execHelmCalls[3]).toContain('resources.requests.cpu=10m');
+		expect(execHelmCalls[3]).toContain('webhook.resources.requests.memory=32Mi');
+		expect(execHelmCalls[3]).toContain('cainjector.resources.requests.memory=64Mi');
 	});
 
 	test('reports silent install failures', async () => {
@@ -310,9 +371,10 @@ describe('dependency checks and installation orchestration', () => {
 			installed: true,
 			message: 'CloudNativePG successfully installed'
 		});
-		expect(execHelmCalls[2]).toContain('cnpg/cloudnative-pg');
-		expect(execHelmCalls[2]).toContain('resources.requests.cpu=50m');
-		expect(execHelmCalls[2]).toContain('resources.requests.memory=100Mi');
+		// [traefik drift probe, repo add, repo update, cnpg install]
+		expect(execHelmCalls[3]).toContain('cnpg/cloudnative-pg');
+		expect(execHelmCalls[3]).toContain('resources.requests.cpu=50m');
+		expect(execHelmCalls[3]).toContain('resources.requests.memory=100Mi');
 	});
 });
 

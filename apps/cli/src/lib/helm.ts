@@ -18,6 +18,7 @@ import { execHelm } from '~/lib/helm-exec.js';
 export { execHelm };
 import { buildRegistryNetworkPolicyEgressPorts, platformRegistryHost } from '@kubwave/kube';
 import { HelmCommandError } from '~/lib/errors.js';
+import { TCP_PORT_POOL } from '~/lib/traefik.js';
 import type { CertManagerClusterIssuerConfig } from '~/lib/cert-manager.js';
 import type { UpcloudNodeGroup } from '~/lib/platforms.js';
 
@@ -241,7 +242,9 @@ export function buildProductionValues(input: ProductionValuesInput): Record<stri
 			// The per-env NetworkPolicy whitelists this namespace so an enforcing CNI lets Traefik reach tenant pods; the kube-system default leaves them unreachable.
 			controllerNamespace: input.ingressControllerNamespace,
 			// Empty → worker reads the controller Service LB status and sslip-encodes the real IPv4; a literal (e.g. 127.0.0.1) pins every auto-domain to that IP.
-			loadBalancerIp: ''
+			loadBalancerIp: '',
+			// Same pool the Traefik dependency exposes as TCP entrypoints (see traefik.ts); the API allocates from it.
+			tcpPortPool: { enabled: true, start: TCP_PORT_POOL.start, size: TCP_PORT_POOL.size }
 		},
 		// Install-only: on upgrade cert-manager is already configured and helm reuses existing values (--reset-then-reuse-values), so we must not re-emit it.
 		...(input.certManagerClusterIssuer

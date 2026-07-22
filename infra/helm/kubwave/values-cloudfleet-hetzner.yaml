@@ -140,6 +140,11 @@ workloadIngress:
   # Empty → the worker auto-detects the sslip default-domain base from the Traefik
   # Service's LoadBalancer IP (the Hetzner LB address).
   loadBalancerIp: ''
+  # Must match the TCP entrypoints on the CLI-managed Traefik release (default pool 30100-30119).
+  tcpPortPool:
+    enabled: true
+    start: 30100
+    size: 20
 
 adminer:
   enabled: false

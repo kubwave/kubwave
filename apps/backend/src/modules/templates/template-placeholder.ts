@@ -16,6 +16,7 @@ export interface ResolvedServiceConfig {
 	env: Array<{ key: string; value: string }>;
 	secrets: Array<{ key: string; value: string }>;
 	domains: Array<{ host: string; port: number }>;
+	exposedPorts: Array<{ containerPort: number }>;
 	volumes: Array<{ name: string; mountPath: string; size: string; subPath?: string }>;
 	configFiles: Array<{ path: string; content: string }>;
 	command?: string[];
@@ -54,6 +55,7 @@ export function resolveTemplateServiceConfig(config: TemplateServiceConfig, ctx:
 		env: config.env.map(e => ({ key: e.key, value: resolveTemplateString(e.value, ctx) })),
 		secrets: config.secrets.map(s => ({ key: s.key, value: resolveTemplateString(s.value, ctx) })),
 		domains: config.domains.map(d => ({ host: resolveTemplateString(d.host, ctx), port: d.port })),
+		exposedPorts: config.exposedPorts.map(e => ({ containerPort: e.containerPort })),
 		volumes: config.volumes.map(v => ({ name: v.name, mountPath: v.mountPath, size: v.size, ...(v.subPath ? { subPath: v.subPath } : {}) })),
 		configFiles: config.configFiles.map(f => ({ path: f.path, content: resolveTemplateString(f.content, ctx) })),
 		...(config.command ? { command: config.command.map(c => resolveTemplateString(c, ctx)) } : {}),
