@@ -4,7 +4,7 @@ import { env } from '../../../../shared/config/worker-env.js';
 import { computeNextPollAt } from './schedule.js';
 
 // docker-image (prebuilt) and dockerfile (inline) have no upstream branch to follow, so they're excluded.
-const POLLABLE_TYPES: ServiceType[] = ['public-repo', 'private-repo'];
+export const POLLABLE_TYPES = ['public-repo', 'private-repo', 'github-repo'] as const satisfies readonly ServiceType[];
 
 export interface DueService {
 	id: string;
