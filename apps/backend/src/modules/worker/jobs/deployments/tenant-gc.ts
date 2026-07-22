@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { AppsV1Api, CoreV1Api, NetworkingV1Api, type KubeConfig } from '@kubernetes/client-node';
+import { AppsV1Api, CoreV1Api, CustomObjectsApi, NetworkingV1Api, type KubeConfig } from '@kubernetes/client-node';
 import { db, services } from '@kubwave/db';
 import { LABEL_ENVIRONMENT_ID, LABEL_MANAGED_BY, LABEL_SERVICE_ID, MANAGED_BY_VALUE } from '@kubwave/kube';
 import { deleteIgnoreMissing } from '../../../../shared/cluster/ops.js';
@@ -10,6 +10,7 @@ export async function gcOrphans(kc: KubeConfig): Promise<void> {
 	const appsApi = kc.makeApiClient(AppsV1Api);
 	const coreApi = kc.makeApiClient(CoreV1Api);
 	const netApi = kc.makeApiClient(NetworkingV1Api);
+	const customApi = kc.makeApiClient(CustomObjectsApi);
 
 	const namespaces = await coreApi.listNamespace({ labelSelector: `${LABEL_MANAGED_BY}=${MANAGED_BY_VALUE}` });
 
@@ -36,7 +37,7 @@ export async function gcOrphans(kc: KubeConfig): Promise<void> {
 			if (!serviceId || !name || live.has(serviceId)) continue;
 			console.log(`[reconcile] GC: removing orphaned workload ${name} (service ${serviceId} no longer exists)`);
 			await deleteIgnoreMissing(() => appsApi.deleteNamespacedDeployment({ name, namespace, propagationPolicy: 'Background' }));
-			await teardownNetworking({ coreApi, netApi, namespace, serviceId });
+			await teardownNetworking({ coreApi, netApi, customApi, namespace, serviceId });
 		}
 	}
 }

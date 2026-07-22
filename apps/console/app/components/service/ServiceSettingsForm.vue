@@ -75,10 +75,10 @@ const GROUPS = [
 
 type GroupKey = (typeof GROUPS)[number]['key'];
 
-// Managed databases hide networking and resources/scaling (fixed port, no scaling; storage lives in Source).
+// Managed databases hide resources/scaling (fixed port, no scaling; storage lives in Source); networking shows only their TCP exposure.
 const isDatabase = computed(() => isDatabaseEngine(props.service.type));
-const DATABASE_GROUP_KEYS: GroupKey[] = ['general', 'source', 'variables', 'danger'];
-const visibleGroups = computed(() => (isDatabase.value ? GROUPS.filter(g => DATABASE_GROUP_KEYS.includes(g.key)) : [...GROUPS]));
+const DATABASE_GROUP_KEYS: GroupKey[] = ['general', 'source', 'networking', 'variables', 'danger'];
+const visibleGroups = computed(() => (isDatabase.value ? GROUPS.filter(g => DATABASE_GROUP_KEYS.includes(g.key)) : GROUPS));
 
 const group = ref<GroupKey>('general');
 
@@ -94,7 +94,7 @@ function groupForPath(path: string): GroupKey {
 	const head = path.split('.')[0] ?? '';
 	if (head === 'name' || head === 'description') return 'general';
 	if (head === 'resources' || head === 'autoscaling' || head === 'volumes' || head === 'configFiles') return 'resources';
-	if (head === 'healthCheck' || head === 'domains' || head === 'defaultDomainEnabled') return 'networking';
+	if (head === 'healthCheck' || head === 'domains' || head === 'defaultDomainEnabled' || head === 'exposedPorts') return 'networking';
 	if (head === 'env' || head === 'secrets') return 'variables';
 	return 'source';
 }
@@ -168,6 +168,14 @@ function addDomain() {
 
 function removeDomain(index: number) {
 	state.domains.splice(index, 1);
+}
+
+function addExposedPort() {
+	state.exposedPorts.push({ _id: crypto.randomUUID(), containerPort: state.containerPort || '', publicPort: '' });
+}
+
+function removeExposedPort(index: number) {
+	state.exposedPorts.splice(index, 1);
 }
 
 function addVolume() {
@@ -268,6 +276,7 @@ function buildConfig(values: ServiceSettingsValues) {
 		env: values.env.map(e => ({ key: e.key.trim(), value: e.value })).filter(e => e.key),
 		secrets: values.secrets.filter(s => s.key.trim()).map(s => ({ key: s.key.trim(), value: s.hasValue && s.value === '' ? null : s.value })),
 		domains: values.domains.filter(d => d.host.trim()).map(d => ({ host: d.host.trim(), port: Number(d.port) })),
+		exposedPorts: values.exposedPorts.filter(p => p.containerPort.trim()).map(p => ({ containerPort: Number(p.containerPort) })),
 		volumes: values.volumes
 			.filter(v => v.name.trim())
 			.map(v => ({
@@ -289,6 +298,7 @@ function buildConfig(values: ServiceSettingsValues) {
 		...('username' in props.service.config && props.service.config.username ? { username: props.service.config.username } : {}),
 		env: sharedConfig.env,
 		secrets: sharedConfig.secrets,
+		exposedPorts: sharedConfig.exposedPorts,
 		...(Object.keys(resources).length > 0 ? { resources } : {})
 	};
 
@@ -421,7 +431,15 @@ async function onDelete() {
 				</div>
 
 				<div v-show="group === 'networking'">
-					<ServiceSettingsNetworkingSection :state :saving :service :add-domain="addDomain" :remove-domain="removeDomain" />
+					<ServiceSettingsNetworkingSection
+						:state
+						:saving
+						:service
+						:add-domain="addDomain"
+						:remove-domain="removeDomain"
+						:add-exposed-port="addExposedPort"
+						:remove-exposed-port="removeExposedPort"
+					/>
 				</div>
 
 				<div v-show="group === 'variables'">

@@ -1,4 +1,4 @@
-import { AppsV1Api, AutoscalingV2Api, CoreV1Api, NetworkingV1Api, type V1Deployment } from '@kubernetes/client-node';
+import { AppsV1Api, AutoscalingV2Api, CoreV1Api, CustomObjectsApi, NetworkingV1Api, type V1Deployment } from '@kubernetes/client-node';
 import type { DeploymentLogEntry, RuntimeConfig } from '@kubwave/db';
 import { deploymentRolloutState, LABEL_SERVICE_ID, parseMemoryToBytes, pvcName, resourceName, secretName } from '@kubwave/kube';
 import {
@@ -63,6 +63,7 @@ async function convergePersistentVolumes(
 async function syncRuntimeNetworking(args: {
 	coreApi: CoreV1Api;
 	netApi: NetworkingV1Api;
+	customApi: CustomObjectsApi;
 	autoscalingApi: AutoscalingV2Api;
 	ctx: DeployContext;
 	serviceId: string;
@@ -74,10 +75,13 @@ async function syncRuntimeNetworking(args: {
 	await convergeNetworking({
 		coreApi: args.coreApi,
 		netApi: args.netApi,
+		customApi: args.customApi,
 		namespace: args.ctx.namespace,
 		deployment: args.ctx.deployment,
 		ports: args.ports,
 		domains: args.domains,
+		exposedPorts: args.config.exposedPorts ?? [],
+		tcpRoutesEnabled: env.tcpPortPoolEnabled,
 		ingress: args.ctx.ingress,
 		events: args.events
 	});
@@ -108,6 +112,7 @@ export async function reconcileRuntime(ctx: DeployContext, config: RuntimeConfig
 	const appsApi = ctx.kc.makeApiClient(AppsV1Api);
 	const coreApi = ctx.kc.makeApiClient(CoreV1Api);
 	const netApi = ctx.kc.makeApiClient(NetworkingV1Api);
+	const customApi = ctx.kc.makeApiClient(CustomObjectsApi);
 	const autoscalingApi = ctx.kc.makeApiClient(AutoscalingV2Api);
 	const imagePullSecretName = env.registryPullSecretName || undefined;
 	// Same source the namespace reconciler stamps as the PSS enforce label, so pod hardening and the admission level can't diverge.
@@ -133,6 +138,7 @@ export async function reconcileRuntime(ctx: DeployContext, config: RuntimeConfig
 		await syncRuntimeNetworking({
 			coreApi,
 			netApi,
+			customApi,
 			autoscalingApi,
 			ctx,
 			serviceId,
@@ -192,6 +198,7 @@ export async function teardownRuntime(ctx: TeardownContext): Promise<void> {
 	const appsApi = ctx.kc.makeApiClient(AppsV1Api);
 	const coreApi = ctx.kc.makeApiClient(CoreV1Api);
 	const netApi = ctx.kc.makeApiClient(NetworkingV1Api);
+	const customApi = ctx.kc.makeApiClient(CustomObjectsApi);
 	const autoscalingApi = ctx.kc.makeApiClient(AutoscalingV2Api);
 	await deleteIgnoreMissing(() => autoscalingApi.deleteNamespacedHorizontalPodAutoscaler({ name, namespace: ctx.namespace }));
 	await deleteIgnoreMissing(() => appsApi.deleteNamespacedDeployment({ name, namespace: ctx.namespace, propagationPolicy: 'Background' }));
@@ -211,5 +218,5 @@ export async function teardownRuntime(ctx: TeardownContext): Promise<void> {
 	for (const pvc of pvcs.items) {
 		await deleteIgnoreMissing(() => coreApi.deleteNamespacedPersistentVolumeClaim({ name: pvc.metadata!.name!, namespace: ctx.namespace }));
 	}
-	await teardownNetworking({ coreApi, netApi, namespace: ctx.namespace, serviceId: ctx.serviceId });
+	await teardownNetworking({ coreApi, netApi, customApi, namespace: ctx.namespace, serviceId: ctx.serviceId });
 }

@@ -42,7 +42,8 @@ describe('ensureDependencies', () => {
 		const results = await ensureDependencies(kc, depsState(), 'my-cluster');
 		expect(results.map(r => r.name)).toEqual(['Traefik', 'cert-manager', 'CloudNativePG']);
 		expect(results.every(r => r.alreadyInstalled)).toBe(true);
-		expect(execHelmCalls).toEqual([]);
+		// Only the traefik drift probe runs (unreadable release = no drift, hands-off).
+		expect(execHelmCalls).toEqual([['get', 'values', 'traefik', '-n', 'traefik', '-o', 'json']]);
 	});
 
 	test('installs missing dependencies when confirmed', async () => {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
-import { AppsV1Api, AutoscalingV2Api, BatchV1Api, CoreV1Api, NetworkingV1Api, type KubeConfig } from '@kubernetes/client-node';
+import { AppsV1Api, AutoscalingV2Api, BatchV1Api, CoreV1Api, CustomObjectsApi, NetworkingV1Api, type KubeConfig } from '@kubernetes/client-node';
 import type { DeployContext } from '~/modules/worker/jobs/deployments/deployers/types';
 
 // Replace the env module so the public-repo deployer sees a configured registry + builder images regardless of load order.
@@ -164,6 +164,7 @@ describe('publicRepoDeployer teardown', () => {
 		const apps = { deleteNamespacedDeployment: () => (opts.calls.misc.push('deployment'), Promise.resolve({})) };
 		const autoscaling = { deleteNamespacedHorizontalPodAutoscaler: () => (opts.calls.misc.push('hpa'), Promise.resolve({})) };
 		const net = { deleteNamespacedIngress: () => (opts.calls.misc.push('ingress'), Promise.resolve({})) };
+		const custom = { listNamespacedCustomObject: () => Promise.resolve({ items: [] }) };
 		return {
 			makeApiClient: (klass: unknown) =>
 				klass === BatchV1Api
@@ -176,7 +177,9 @@ describe('publicRepoDeployer teardown', () => {
 								? autoscaling
 								: klass === NetworkingV1Api
 									? net
-									: {}
+									: klass === CustomObjectsApi
+										? custom
+										: {}
 		} as unknown as KubeConfig;
 	}
 

@@ -24,6 +24,7 @@ const service: ServiceView = {
 	autoDeploy: { enabled: false, lastPolledCommit: null, lastPolledAt: null, nextPollAt: null, lastPollError: null },
 	internalDomain: null,
 	defaultUrl: null,
+	exposedEndpoints: [],
 	createdAt: '2026-01-01T00:00:00.000Z',
 	updatedAt: '2026-01-01T00:00:00.000Z'
 };

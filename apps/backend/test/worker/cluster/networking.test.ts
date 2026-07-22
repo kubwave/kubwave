@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import type { CoreV1Api, NetworkingV1Api, V1Ingress, V1Service } from '@kubernetes/client-node';
-import type { Deployment, DeploymentLogEntry, ServiceDomain } from '@kubwave/db';
+import type { CoreV1Api, CustomObjectsApi, NetworkingV1Api, V1Ingress, V1Service } from '@kubernetes/client-node';
+import type { Deployment, DeploymentLogEntry, ServiceDomain, ServicePortExposure } from '@kubwave/db';
 
-// Nothing mocked (real @kubwave/kube + ./ops); fake Core/Networking APIs drive converge/teardown. internalServiceName === resourceName.
+// Nothing mocked (real @kubwave/kube + ./ops); fake Core/Networking/CustomObjects APIs drive converge/teardown. internalServiceName === resourceName.
 import { convergeNetworking, teardownNetworking, type IngressOptions } from '~/shared/cluster/networking';
 
 const SERVICE_ID = 'abc';
@@ -78,21 +78,63 @@ function fakeNet(state: IngressState) {
 	return { api, calls, getCreated: () => created, getReplaced: () => replaced };
 }
 
+interface TcpRoute {
+	metadata?: { name?: string; resourceVersion?: string };
+	spec?: unknown;
+}
+
+// Fake CustomObjectsApi holding IngressRouteTCPs by name; list only ever filters by the service label this harness already scopes.
+function fakeCustom(existing: Record<string, TcpRoute>) {
+	const calls = { create: 0, replace: 0, delete: 0 };
+	const created: Array<Record<string, unknown>> = [];
+	const replaced: Array<Record<string, unknown>> = [];
+	const deleted: string[] = [];
+	const api = {
+		listNamespacedCustomObject: async () => ({ items: Object.keys(existing).map(name => ({ metadata: { name } })) }),
+		getNamespacedCustomObject: async ({ name }: { name: string }) => {
+			const found = existing[name];
+			if (!found) throw { code: 404 };
+			return found;
+		},
+		createNamespacedCustomObject: async ({ body }: { body: Record<string, unknown> }) => {
+			calls.create++;
+			created.push(body);
+			return body;
+		},
+		replaceNamespacedCustomObject: async ({ body }: { body: Record<string, unknown> }) => {
+			calls.replace++;
+			replaced.push(body);
+			return body;
+		},
+		deleteNamespacedCustomObject: async ({ name }: { name: string }) => {
+			calls.delete++;
+			deleted.push(name);
+		}
+	} as unknown as CustomObjectsApi;
+	return { api, calls, created, replaced, deleted };
+}
+
 async function run(args: {
 	core: ReturnType<typeof fakeCore>;
 	net: ReturnType<typeof fakeNet>;
 	ports: number[];
 	domains: ServiceDomain[];
+	exposedPorts?: ServicePortExposure[];
+	tcpRoutesEnabled?: boolean;
+	custom?: ReturnType<typeof fakeCustom>;
 	ingress?: IngressOptions;
 }): Promise<DeploymentLogEntry[]> {
 	const events: DeploymentLogEntry[] = [];
 	await convergeNetworking({
 		coreApi: args.core.api,
 		netApi: args.net.api,
+		customApi: (args.custom ?? fakeCustom({})).api,
 		namespace: 'ns',
 		deployment: deployment(),
 		ports: args.ports,
 		domains: args.domains,
+		exposedPorts: args.exposedPorts ?? [],
+		tcpRoutesEnabled: args.tcpRoutesEnabled ?? true,
 		ingress: args.ingress ?? noIngress,
 		events
 	});
@@ -295,9 +337,20 @@ describe('teardownNetworking', () => {
 	test('deletes both the Service and the Ingress by name, ignoring 404s', async () => {
 		const core = fakeCore({ existing: null });
 		const net = fakeNet({ existing: null });
-		await teardownNetworking({ coreApi: core.api, netApi: net.api, namespace: 'ns', serviceId: SERVICE_ID });
+		await teardownNetworking({ coreApi: core.api, netApi: net.api, customApi: fakeCustom({}).api, namespace: 'ns', serviceId: SERVICE_ID });
 		expect(core.calls.delete).toBe(1);
 		expect(net.calls.delete).toBe(1);
+	});
+
+	test('deletes every IngressRouteTCP labelled for the service', async () => {
+		const core = fakeCore({ existing: null });
+		const net = fakeNet({ existing: null });
+		const custom = fakeCustom({
+			'svc-abc-tcp-30100': { metadata: { name: 'svc-abc-tcp-30100' } },
+			'svc-abc-tcp-30101': { metadata: { name: 'svc-abc-tcp-30101' } }
+		});
+		await teardownNetworking({ coreApi: core.api, netApi: net.api, customApi: custom.api, namespace: 'ns', serviceId: SERVICE_ID });
+		expect(custom.deleted.sort()).toEqual(['svc-abc-tcp-30100', 'svc-abc-tcp-30101']);
 	});
 
 	test('propagates a non-404 delete error', async () => {
@@ -307,6 +360,98 @@ describe('teardownNetworking', () => {
 			}
 		} as unknown as CoreV1Api;
 		const net = fakeNet({ existing: null });
-		await expect(teardownNetworking({ coreApi: core, netApi: net.api, namespace: 'ns', serviceId: SERVICE_ID })).rejects.toMatchObject({ code: 500 });
+		await expect(
+			teardownNetworking({ coreApi: core, netApi: net.api, customApi: fakeCustom({}).api, namespace: 'ns', serviceId: SERVICE_ID })
+		).rejects.toMatchObject({ code: 500 });
+	});
+});
+
+describe('convergeNetworking — TCP routes', () => {
+	const exposure: ServicePortExposure = { containerPort: 5432, publicPort: 30100 };
+
+	test('creates an IngressRouteTCP on the pooled entrypoint and adds the target port to the Service', async () => {
+		const core = fakeCore({ existing: null });
+		const net = fakeNet({ existing: null });
+		const custom = fakeCustom({});
+		const events = await run({ core, net, custom, ports: [], domains: [], exposedPorts: [exposure] });
+
+		expect(core.getCreated()?.spec?.ports).toEqual([{ name: 'p-5432', port: 5432, targetPort: 5432, protocol: 'TCP' }]);
+		expect(custom.calls.create).toBe(1);
+		expect(custom.created[0]).toMatchObject({
+			apiVersion: 'traefik.io/v1alpha1',
+			kind: 'IngressRouteTCP',
+			metadata: { name: 'svc-abc-tcp-30100', labels: { 'kubwave/service-id': SERVICE_ID } },
+			spec: { entryPoints: ['tcp-30100'], routes: [{ match: 'HostSNI(`*`)', services: [{ name: NAME, port: 5432 }] }] }
+		});
+		expect(stepMessages(events, 'tcp-route-converged')).toEqual(['Exposed port 5432 publicly on :30100 (IngressRouteTCP svc-abc-tcp-30100)']);
+	});
+
+	test('is unchanged when the live route already matches', async () => {
+		const core = fakeCore({ existing: { metadata: { name: NAME }, spec: { ports: [{ port: 5432 }] } } as V1Service });
+		const net = fakeNet({ existing: null });
+		const custom = fakeCustom({
+			'svc-abc-tcp-30100': {
+				metadata: { name: 'svc-abc-tcp-30100', resourceVersion: '7' },
+				spec: { entryPoints: ['tcp-30100'], routes: [{ match: 'HostSNI(`*`)', services: [{ name: NAME, port: 5432 }] }] }
+			}
+		});
+		const events = await run({ core, net, custom, ports: [], domains: [], exposedPorts: [exposure] });
+
+		expect(custom.calls).toEqual({ create: 0, replace: 0, delete: 0 });
+		expect(stepMessages(events, 'tcp-route-converged')).toEqual([]);
+	});
+
+	test('replaces on a spec change, carrying the resourceVersion', async () => {
+		const core = fakeCore({ existing: { metadata: { name: NAME }, spec: { ports: [{ port: 5432 }] } } as V1Service });
+		const net = fakeNet({ existing: null });
+		const custom = fakeCustom({
+			'svc-abc-tcp-30100': {
+				metadata: { name: 'svc-abc-tcp-30100', resourceVersion: '7' },
+				spec: { entryPoints: ['tcp-30100'], routes: [{ match: 'HostSNI(`*`)', services: [{ name: NAME, port: 5433 }] }] }
+			}
+		});
+		const events = await run({ core, net, custom, ports: [], domains: [], exposedPorts: [exposure] });
+
+		expect(custom.calls.replace).toBe(1);
+		expect(custom.replaced[0]?.metadata).toMatchObject({ name: 'svc-abc-tcp-30100', resourceVersion: '7' });
+		expect(stepMessages(events, 'tcp-route-converged')).toEqual(['Updated IngressRouteTCP svc-abc-tcp-30100 in ns']);
+	});
+
+	test('deletes routes whose port is no longer exposed', async () => {
+		const core = fakeCore({ existing: null });
+		const net = fakeNet({ existing: null });
+		const custom = fakeCustom({
+			'svc-abc-tcp-30100': { metadata: { name: 'svc-abc-tcp-30100' } }
+		});
+		const events = await run({ core, net, custom, ports: [8080], domains: [], exposedPorts: [] });
+
+		expect(custom.deleted).toEqual(['svc-abc-tcp-30100']);
+		expect(stepMessages(events, 'tcp-route-converged')).toEqual(['Removed IngressRouteTCP svc-abc-tcp-30100 in ns (port no longer exposed)']);
+	});
+
+	test('skips TCP route handling entirely when the pool is disabled', async () => {
+		const core = fakeCore({ existing: null });
+		const net = fakeNet({ existing: null });
+		let listed = 0;
+		const customApi = {
+			listNamespacedCustomObject: async () => {
+				listed++;
+				return { items: [] };
+			}
+		} as unknown as CustomObjectsApi;
+		await convergeNetworking({
+			coreApi: core.api,
+			netApi: net.api,
+			customApi,
+			namespace: 'ns',
+			deployment: deployment(),
+			ports: [8080],
+			domains: [],
+			exposedPorts: [exposure],
+			tcpRoutesEnabled: false,
+			ingress: noIngress,
+			events: []
+		});
+		expect(listed).toBe(0);
 	});
 });

@@ -182,40 +182,61 @@ export function resolveConfigFiles(incoming: DockerImageConfigInput['configFiles
 	return out;
 }
 
-export function buildStoredConfig(input: DockerImageConfigInput, existingSecrets: RuntimeConfig['secrets']): DockerImageServiceConfig {
+function withResolvedSecrets<T extends { secrets: DockerImageConfigInput['secrets'] }>(
+	input: T,
+	existingSecrets: RuntimeConfig['secrets']
+): Omit<T, 'secrets'> & { secrets: Array<{ key: string; value: string }> } {
+	return { ...input, secrets: resolveSecrets(input.secrets, existingSecrets) };
+}
+
+// exposedPorts is handled by the service layer (server-allocated public ports), never by config normalization.
+export function buildStoredConfig(
+	input: Omit<DockerImageConfigInput, 'exposedPorts'>,
+	existingSecrets: RuntimeConfig['secrets']
+): DockerImageServiceConfig {
 	return normalizeDockerConfig({
-		...input,
-		secrets: resolveSecrets(input.secrets, existingSecrets),
+		...withResolvedSecrets(input, existingSecrets),
 		configFiles: resolveConfigFiles(input.configFiles)
 	});
 }
 
-export function buildStoredDockerfileConfig(input: DockerfileConfigInput, existingSecrets: RuntimeConfig['secrets']): DockerfileServiceConfig {
-	return normalizeDockerfileConfig({ ...input, secrets: resolveSecrets(input.secrets, existingSecrets) });
+export function buildStoredDockerfileConfig(
+	input: Omit<DockerfileConfigInput, 'exposedPorts'>,
+	existingSecrets: RuntimeConfig['secrets']
+): DockerfileServiceConfig {
+	return normalizeDockerfileConfig(withResolvedSecrets(input, existingSecrets));
 }
 
-export function buildStoredPublicRepoConfig(input: PublicRepoConfigInput, existingSecrets: RuntimeConfig['secrets']): PublicRepoServiceConfig {
-	return normalizePublicRepoConfig({ ...input, secrets: resolveSecrets(input.secrets, existingSecrets) });
+export function buildStoredPublicRepoConfig(
+	input: Omit<PublicRepoConfigInput, 'exposedPorts'>,
+	existingSecrets: RuntimeConfig['secrets']
+): PublicRepoServiceConfig {
+	return normalizePublicRepoConfig(withResolvedSecrets(input, existingSecrets));
 }
 
-export function buildStoredPrivateRepoConfig(input: PrivateRepoConfigInput, existingSecrets: RuntimeConfig['secrets']): PrivateRepoServiceConfig {
-	return normalizePrivateRepoConfig({ ...input, secrets: resolveSecrets(input.secrets, existingSecrets) });
+export function buildStoredPrivateRepoConfig(
+	input: Omit<PrivateRepoConfigInput, 'exposedPorts'>,
+	existingSecrets: RuntimeConfig['secrets']
+): PrivateRepoServiceConfig {
+	return normalizePrivateRepoConfig(withResolvedSecrets(input, existingSecrets));
 }
 
 // repoUrl isn't client-supplied for github-repo — it's derived from repoFullName so the stored clone URL is always canonical.
-export function buildStoredGithubRepoConfig(input: GithubRepoConfigInput, existingSecrets: RuntimeConfig['secrets']): GithubRepoServiceConfig {
+export function buildStoredGithubRepoConfig(
+	input: Omit<GithubRepoConfigInput, 'exposedPorts'>,
+	existingSecrets: RuntimeConfig['secrets']
+): GithubRepoServiceConfig {
 	const repoFullName = input.repoFullName.trim();
 	const repoUrl = `https://github.com/${repoFullName}.git`;
 	return normalizeGithubRepoConfig({
-		...input,
-		repoUrl,
-		secrets: resolveSecrets(input.secrets, existingSecrets)
+		...withResolvedSecrets(input, existingSecrets),
+		repoUrl
 	} as unknown as GithubRepoServiceConfig);
 }
 
 function normalizeDatabaseConfig(
 	engine: DatabaseEngine,
-	input: DatabaseUpdateConfigInput,
+	input: Omit<DatabaseUpdateConfigInput, 'exposedPorts'>,
 	password: string,
 	existingSecrets: RuntimeConfig['secrets']
 ): DatabaseServiceConfig {
@@ -241,7 +262,7 @@ function normalizeDatabaseConfig(
 
 export function buildStoredDatabaseConfig(
 	engine: DatabaseEngine,
-	input: DatabaseUpdateConfigInput,
+	input: Omit<DatabaseUpdateConfigInput, 'exposedPorts'>,
 	existing: { secrets: RuntimeConfig['secrets']; password: string } | null
 ): DatabaseServiceConfig {
 	const password = existing?.password ?? encryptSecret(generatePassword());

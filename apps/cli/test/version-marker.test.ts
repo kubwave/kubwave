@@ -176,16 +176,33 @@ describe('version marker', () => {
 					registry_host: 'registry.app.example.com',
 					platform_id: 'cloudfleet-hetzner',
 					storage_class: 'fast',
-					node_selector_json: '{"cfke.io/provider":"hetzner"}',
-					dependencies_json:
-						'{"traefik":{"kind":"traefik","namespace":"traefik","releaseName":"traefik","ingressClassName":"traefik","helmValues":{"ingressClass":{"enabled":true,"isDefaultClass":true},"resources":{"requests":{"cpu":"100m","memory":"128Mi"}},"nodeSelector":{"cfke.io/provider":"hetzner"}}},"certManager":{},"cnpg":{}}'
+					node_selector_json: '{"cfke.io/provider":"hetzner"}'
 				}
 			}
 		});
 
-		// Legacy per-dependency keys are no longer written — dependencies_json carries this state
-		// (decodeInstallStateData still reads the old keys for old markers).
+		// Legacy per-dependency keys are no longer written; dependencies_json carries this state (old keys still decode).
 		const writtenData = (calls[0] as { body: { data: Record<string, string> } }).body.data;
+		const dependencies = JSON.parse(writtenData['dependencies_json']!) as {
+			traefik: { helmValues: { ports: Record<string, unknown> } };
+		};
+		expect(dependencies).toMatchObject({
+			traefik: {
+				kind: 'traefik',
+				namespace: 'traefik',
+				releaseName: 'traefik',
+				ingressClassName: 'traefik',
+				helmValues: {
+					ingressClass: { enabled: true, isDefaultClass: true },
+					resources: { requests: { cpu: '100m', memory: '128Mi' } },
+					nodeSelector: { 'cfke.io/provider': 'hetzner' }
+				}
+			},
+			certManager: {},
+			cnpg: {}
+		});
+		// The default TCP pool rides along so updates keep re-applying it to the Traefik release.
+		expect(Object.keys(dependencies.traefik.helmValues.ports)).toHaveLength(20);
 		expect(writtenData['ingress_class_name']).toBeUndefined();
 		expect(writtenData['ingress_controller_namespace']).toBeUndefined();
 		expect(writtenData['traefik_values_json']).toBeUndefined();

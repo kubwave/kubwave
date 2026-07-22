@@ -83,6 +83,7 @@ export class TemplatesService {
 					env: config.env,
 					secrets: config.secrets,
 					domains: config.domains,
+					exposedPorts: config.exposedPorts,
 					volumes: config.volumes,
 					configFiles: config.configFiles,
 					...(config.command ? { command: config.command } : {}),

@@ -36,6 +36,10 @@ export interface ServiceConnectionView {
 	database: string;
 	password: string;
 	uri: string;
+	// Public reachability via a TCP exposure on the engine port; null when not exposed or the ingress IP is unknown.
+	externalHost: string | null;
+	externalPort: number | null;
+	externalUri: string | null;
 }
 
 export interface AutoDeployView {
@@ -44,6 +48,13 @@ export interface AutoDeployView {
 	lastPolledAt: string | null;
 	nextPollAt: string | null;
 	lastPollError: string | null;
+}
+
+export interface ExposedEndpointView {
+	containerPort: number;
+	publicPort: number;
+	// Public ingress IP to connect to; null when the platform hasn't resolved one yet.
+	host: string | null;
 }
 
 export interface ServiceView {
@@ -56,6 +67,7 @@ export interface ServiceView {
 	autoDeploy: AutoDeployView;
 	internalDomain: string | null;
 	defaultUrl: string | null;
+	exposedEndpoints: ExposedEndpointView[];
 	createdAt: string;
 	updatedAt: string;
 }

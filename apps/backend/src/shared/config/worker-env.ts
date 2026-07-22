@@ -71,6 +71,10 @@ export interface WorkerRuntimeConfig {
 	ingressAnnotations: Record<string, string>;
 	ingressLoadBalancerIp?: string;
 	ingressControllerService: string;
+	// Public TCP pool for raw port exposures; when off the worker skips IngressRouteTCP rendering (e.g. non-Traefik controllers).
+	tcpPortPoolEnabled: boolean;
+	tcpPortPoolStart: number;
+	tcpPortPoolSize: number;
 	storageClassName: string;
 	registryEndpoint: string;
 	registryInsecure: boolean;
@@ -114,7 +118,21 @@ export interface WorkerRuntimeConfig {
 	dnsServiceIp?: string;
 }
 
+// An out-of-range pool would allocate ports no ingress entrypoint can serve; fail loudly at config load.
+export function assertValidTcpPortPool(pool: { enabled: boolean; start: number; size: number }): void {
+	if (!pool.enabled) return;
+	if (pool.start < 1 || pool.size < 0 || pool.start + pool.size - 1 > 65535) {
+		throw new Error(`Invalid TCP port pool: start=${pool.start}, size=${pool.size} (must fit 1-65535)`);
+	}
+}
+
 export function resolveWorkerRuntimeConfig(): WorkerRuntimeConfig {
+	const tcpPortPool = {
+		enabled: bool('TCP_PORT_POOL_ENABLED', false),
+		start: num('TCP_PORT_POOL_START', 30100),
+		size: num('TCP_PORT_POOL_SIZE', 0)
+	};
+	assertValidTcpPortPool(tcpPortPool);
 	return {
 		workerId: process.env.WORKER_ID ?? process.env.HOSTNAME ?? 'worker',
 		reconcileIntervalMs: num('RECONCILE_INTERVAL_MS', 5000),
@@ -128,6 +146,9 @@ export function resolveWorkerRuntimeConfig(): WorkerRuntimeConfig {
 		ingressAnnotations: jsonRecord('INGRESS_ANNOTATIONS'),
 		ingressLoadBalancerIp: process.env.INGRESS_LB_IP || undefined,
 		ingressControllerService: process.env.INGRESS_CONTROLLER_SERVICE || 'traefik',
+		tcpPortPoolEnabled: tcpPortPool.enabled,
+		tcpPortPoolStart: tcpPortPool.start,
+		tcpPortPoolSize: tcpPortPool.size,
 		storageClassName: process.env.STORAGE_CLASS_NAME ?? '',
 		registryEndpoint: process.env.REGISTRY_ENDPOINT || '',
 		registryInsecure: bool('REGISTRY_INSECURE', false),

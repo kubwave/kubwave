@@ -86,6 +86,13 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            # Public TCP pool the API allocates exposed service ports from (mirrors the controller's TCP entrypoints).
+            - name: TCP_PORT_POOL_ENABLED
+              value: {{ (.Values.workloadIngress.tcpPortPool.enabled | default false) | quote }}
+            - name: TCP_PORT_POOL_START
+              value: {{ (.Values.workloadIngress.tcpPortPool.start | default 30100) | quote }}
+            - name: TCP_PORT_POOL_SIZE
+              value: {{ (.Values.workloadIngress.tcpPortPool.size | default 0) | quote }}
             # Version from the running image — pod-local so the display follows the
             # actually-serving pod during a rolling update.
             - name: APP_VERSION

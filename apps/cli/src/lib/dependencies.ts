@@ -7,8 +7,15 @@ import { stampHelmReleaseOwnership } from '~/lib/helm-ownership.js';
 import { isNotFoundError } from '~/lib/k8s-errors.js';
 import { parseDurationMs } from '~/lib/duration.js';
 import { mergeDependencyState, type DependencyStateInput, type DependencyStateMap, type TraefikDependencyState } from '~/lib/dependency-state.js';
-import { readRecord, readString } from '~/lib/object-path.js';
-import { TRAEFIK_CHART, TRAEFIK_CHART_NAME, TRAEFIK_CHART_VERSION, TRAEFIK_REPO_URL, writeTraefikValuesFile } from '~/lib/traefik.js';
+import { isRecord, readRecord, readString } from '~/lib/object-path.js';
+import {
+	TRAEFIK_CHART,
+	TRAEFIK_CHART_NAME,
+	TRAEFIK_CHART_VERSION,
+	TRAEFIK_REPO_URL,
+	buildTraefikHelmValues,
+	writeTraefikValuesFile
+} from '~/lib/traefik.js';
 
 // repo/chart for the helm-repo-add path; bare name for the inline --repo form (helm reads repo/chart under --repo literally and fails to find it).
 const CERT_MANAGER_NAMESPACE = 'cert-manager';
@@ -187,6 +194,10 @@ const DEPENDENCIES: ClusterDependency[] = [
 				const list = await api.listIngressClass();
 				const traefik = list.items.find(ic => ic.metadata?.name === config.ingressClassName);
 				if (traefik) {
+					// Installed, but the release may predate newer desired values (e.g. the TCP port pool) — the repair phase re-applies them.
+					if (await traefikReleaseValuesDrifted(config)) {
+						return { installed: false, message: 'Traefik release values differ from the CLI defaults (TCP port pool); an update re-applies them' };
+					}
 					return { installed: true, message: 'Traefik IngressClass found' };
 				}
 				if (list.items.length > 0) {
@@ -332,6 +343,28 @@ export function buildUpdateDependencyValues(state: DependencyStateInput | Depend
 
 export function getDependencies(): ClusterDependency[] {
 	return DEPENDENCIES;
+}
+
+// Drift = a desired key missing/different in the live user-supplied values; extra live keys and unreadable releases don't count.
+async function traefikReleaseValuesDrifted(config: TraefikDependencyState): Promise<boolean> {
+	const { stdout, exitCode } = await execHelm(['get', 'values', config.releaseName, '-n', config.namespace, '-o', 'json']);
+	if (exitCode !== 0) return false;
+	try {
+		return !valuesSubsetOf(JSON.parse(stdout), buildTraefikHelmValues(config));
+	} catch {
+		return false;
+	}
+}
+
+function valuesSubsetOf(live: unknown, desired: unknown): boolean {
+	if (isRecord(desired)) {
+		if (!isRecord(live)) return false;
+		return Object.entries(desired).every(([key, value]) => valuesSubsetOf(live[key], value));
+	}
+	if (Array.isArray(desired)) {
+		return Array.isArray(live) && live.length === desired.length && desired.every((item, i) => valuesSubsetOf(live[i], item));
+	}
+	return live === desired;
 }
 
 export async function checkDependencies(

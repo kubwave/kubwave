@@ -87,6 +87,8 @@ export const serviceSettingsSchema = z
 		// `value`: new plaintext typed; `hasValue`: secret exists on server (value never sent back). Blank on hasValue → keep unchanged.
 		secrets: z.array(z.object({ _id: z.string(), key: z.string(), value: z.string(), hasValue: z.boolean() })),
 		domains: z.array(z.object({ _id: z.string(), host: z.string(), port: z.string() })),
+		// Public TCP exposures; publicPort is server-allocated on save (read-only display, '' for unsaved rows).
+		exposedPorts: z.array(z.object({ _id: z.string(), containerPort: z.string(), publicPort: z.string() })),
 		// `subPath` (optional) mounts a subdirectory of the volume; backend validates it, so it's loose here like name/mountPath.
 		volumes: z.array(z.object({ _id: z.string(), name: z.string(), mountPath: z.string(), size: z.string(), subPath: z.string().optional() })),
 		// docker-image only: files rendered + mounted into the container; `content` may be large/multiline (and may hold secrets).
@@ -118,6 +120,16 @@ export const serviceSettingsSchema = z
 			if (d.host.trim() && !isValidPort(d.port.trim())) {
 				ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Use a port between 1 and 65535.', path: ['domains', i, 'port'] });
 			}
+		});
+		const seenExposedPorts = new Set<string>();
+		val.exposedPorts.forEach((p, i) => {
+			const port = p.containerPort.trim();
+			if (!isValidPort(port)) {
+				ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Use a port between 1 and 65535.', path: ['exposedPorts', i, 'containerPort'] });
+			} else if (seenExposedPorts.has(port)) {
+				ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Each exposed port must be different.', path: ['exposedPorts', i, 'containerPort'] });
+			}
+			seenExposedPorts.add(port);
 		});
 		if (val.healthCheck.enabled && val.healthCheck.type === 'http' && !val.healthCheck.path.trim()) {
 			ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Path is required for HTTP health checks.', path: ['healthCheck', 'path'] });
@@ -306,6 +318,11 @@ export function snapshot(service: Service): ServiceSettingsValues {
 		env: service.config.env.map(entry => ({ _id: crypto.randomUUID(), key: entry.key, value: entry.value })),
 		secrets: (service.config.secrets ?? []).map(entry => ({ _id: crypto.randomUUID(), key: entry.key, value: '', hasValue: entry.hasValue })),
 		domains: (service.config.domains ?? []).map(entry => ({ _id: crypto.randomUUID(), host: entry.host, port: String(entry.port) })),
+		exposedPorts: (service.config.exposedPorts ?? []).map(entry => ({
+			_id: crypto.randomUUID(),
+			containerPort: String(entry.containerPort),
+			publicPort: String(entry.publicPort)
+		})),
 		volumes: (service.config.volumes ?? []).map(entry => ({
 			_id: crypto.randomUUID(),
 			name: entry.name,

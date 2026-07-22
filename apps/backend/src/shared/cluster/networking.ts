@@ -1,7 +1,7 @@
-import type { CoreV1Api, NetworkingV1Api, V1Ingress, V1Service } from '@kubernetes/client-node';
-import type { Deployment, DeploymentLogEntry, ServiceDomain } from '@kubwave/db';
+import type { CoreV1Api, CustomObjectsApi, NetworkingV1Api, V1Ingress, V1Service } from '@kubernetes/client-node';
+import type { Deployment, DeploymentLogEntry, ServiceDomain, ServicePortExposure } from '@kubwave/db';
 import { LABEL_MANAGED_BY, LABEL_NAME, LABEL_SERVICE_ID, MANAGED_BY_VALUE, internalServiceName, resourceName, selectorLabels } from '@kubwave/kube';
-import { deleteIgnoreMissing, readIngressOrNull, readServiceOrNull, replaceWithRetry } from './ops.js';
+import { deleteIgnoreMissing, isNotFound, notFoundToNull, readIngressOrNull, readServiceOrNull, replaceWithRetry } from './ops.js';
 
 // Per-cluster Ingress knobs from worker env, threaded through the deploy context so deployers stay free of process.env reads.
 export interface IngressOptions {
@@ -31,9 +31,13 @@ type ResourceAction = 'created' | 'replaced' | 'deleted' | 'unchanged';
 function pushServiceEvent(events: DeploymentLogEntry[], namespace: string, serviceId: string, ports: number[], action: ResourceAction): void {
 	const portList = normalizePorts(ports).join(', ') || 'none';
 	const name = internalServiceName(serviceId);
-	if (action === 'created') events.push(stepEvent('service-converged', `Created Service ${name} in ${namespace} (ports: ${portList})`));
-	else if (action === 'replaced') events.push(stepEvent('service-converged', `Updated Service ${name} in ${namespace} (ports: ${portList})`));
-	else if (action === 'deleted') events.push(stepEvent('service-converged', `Removed Service ${name} in ${namespace} (no ports exposed)`));
+	const messages: Partial<Record<ResourceAction, string>> = {
+		created: `Created Service ${name} in ${namespace} (ports: ${portList})`,
+		replaced: `Updated Service ${name} in ${namespace} (ports: ${portList})`,
+		deleted: `Removed Service ${name} in ${namespace} (no ports exposed)`
+	};
+	const message = messages[action];
+	if (message) events.push(stepEvent('service-converged', message));
 }
 
 function pushIngressEvent(
@@ -46,13 +50,124 @@ function pushIngressEvent(
 	const hosts = domains.map(domain => domain.host).sort();
 	const name = resourceName(serviceId);
 	const hostList = hosts.join(', ') || 'none';
-	if (action === 'created') events.push(stepEvent('ingress-converged', `Created Ingress ${name} in ${namespace} (hosts: ${hostList})`));
-	else if (action === 'replaced') events.push(stepEvent('ingress-converged', `Updated Ingress ${name} in ${namespace} (hosts: ${hostList})`));
-	else if (action === 'deleted') events.push(stepEvent('ingress-converged', `Removed Ingress ${name} in ${namespace} (no domains)`));
+	const messages: Partial<Record<ResourceAction, string>> = {
+		created: `Created Ingress ${name} in ${namespace} (hosts: ${hostList})`,
+		replaced: `Updated Ingress ${name} in ${namespace} (hosts: ${hostList})`,
+		deleted: `Removed Ingress ${name} in ${namespace} (no domains)`
+	};
+	const message = messages[action];
+	if (message) events.push(stepEvent('ingress-converged', message));
 }
 
 function normalizePorts(ports: number[]): number[] {
 	return Array.from(new Set(ports)).sort((a, b) => a - b);
+}
+
+// Traefik CRD wiring for public TCP exposures: one IngressRouteTCP per exposed port onto the pooled `tcp-<publicPort>` entrypoint.
+const TCP_ROUTE_GROUP = 'traefik.io';
+const TCP_ROUTE_VERSION = 'v1alpha1';
+const TCP_ROUTE_PLURAL = 'ingressroutetcps';
+
+interface IngressRouteTcpObject {
+	metadata?: { name?: string; namespace?: string; resourceVersion?: string; labels?: Record<string, string> };
+	spec?: { entryPoints?: string[]; routes?: Array<{ match?: string; services?: Array<{ name?: string; port?: number }> }> };
+}
+
+function tcpRouteName(serviceId: string, publicPort: number): string {
+	return `${resourceName(serviceId)}-tcp-${publicPort}`;
+}
+
+function tcpRouteRequest(namespace: string) {
+	return { group: TCP_ROUTE_GROUP, version: TCP_ROUTE_VERSION, namespace, plural: TCP_ROUTE_PLURAL };
+}
+
+function buildTcpRoute(serviceId: string, namespace: string, exposure: ServicePortExposure): IngressRouteTcpObject {
+	return {
+		metadata: { name: tcpRouteName(serviceId, exposure.publicPort), namespace, labels: commonLabels(serviceId) },
+		spec: {
+			entryPoints: [`tcp-${exposure.publicPort}`],
+			// HostSNI(`*`) is Traefik's documented way to forward raw TCP (matches non-TLS too); the CRD requires `match`.
+			routes: [{ match: 'HostSNI(`*`)', services: [{ name: internalServiceName(serviceId), port: exposure.containerPort }] }]
+		}
+	};
+}
+
+interface IngressRouteTcpBody extends IngressRouteTcpObject {
+	apiVersion: string;
+	kind: string;
+}
+
+// The CRD body we send carries apiVersion/kind/namespace; the fingerprint only needs the routing-relevant spec.
+function tcpRouteBody(desired: IngressRouteTcpObject): IngressRouteTcpBody {
+	return { apiVersion: `${TCP_ROUTE_GROUP}/${TCP_ROUTE_VERSION}`, kind: 'IngressRouteTCP', ...desired };
+}
+
+function tcpRouteFingerprint(obj: IngressRouteTcpObject): string {
+	return JSON.stringify(obj.spec ?? {});
+}
+
+async function listTcpRouteNames(customApi: CustomObjectsApi, namespace: string, serviceId: string): Promise<string[]> {
+	try {
+		const list = (await customApi.listNamespacedCustomObject({
+			...tcpRouteRequest(namespace),
+			labelSelector: `${LABEL_SERVICE_ID}=${serviceId}`
+		})) as { items?: IngressRouteTcpObject[] };
+		return (list.items ?? []).map(item => item.metadata?.name).filter((name): name is string => Boolean(name));
+	} catch (err) {
+		// Cluster without the Traefik CRDs has no routes to report.
+		if (isNotFound(err)) return [];
+		throw err;
+	}
+}
+
+async function convergeTcpRoutes(args: {
+	customApi: CustomObjectsApi;
+	namespace: string;
+	serviceId: string;
+	exposedPorts: ServicePortExposure[];
+	events: DeploymentLogEntry[];
+}): Promise<void> {
+	const { customApi, namespace, serviceId, exposedPorts, events } = args;
+	const desiredNames = new Set(exposedPorts.map(exposure => tcpRouteName(serviceId, exposure.publicPort)));
+
+	for (const name of await listTcpRouteNames(customApi, namespace, serviceId)) {
+		if (desiredNames.has(name)) continue;
+		await deleteIgnoreMissing(() => customApi.deleteNamespacedCustomObject({ ...tcpRouteRequest(namespace), name }));
+		events.push(stepEvent('tcp-route-converged', `Removed IngressRouteTCP ${name} in ${namespace} (port no longer exposed)`));
+	}
+
+	for (const exposure of exposedPorts) {
+		const name = tcpRouteName(serviceId, exposure.publicPort);
+		const desired = buildTcpRoute(serviceId, namespace, exposure);
+		const existing = (await notFoundToNull(() =>
+			customApi.getNamespacedCustomObject({ ...tcpRouteRequest(namespace), name })
+		)) as IngressRouteTcpObject | null;
+
+		if (!existing) {
+			await customApi.createNamespacedCustomObject({
+				...tcpRouteRequest(namespace),
+				body: tcpRouteBody(desired)
+			});
+			events.push(
+				stepEvent('tcp-route-converged', `Exposed port ${exposure.containerPort} publicly on :${exposure.publicPort} (IngressRouteTCP ${name})`)
+			);
+			continue;
+		}
+		if (tcpRouteFingerprint(existing) === tcpRouteFingerprint(desired)) continue;
+
+		await replaceWithRetry<IngressRouteTcpBody>({
+			label: `IngressRouteTCP ${name}`,
+			read: async () =>
+				(await notFoundToNull(() => customApi.getNamespacedCustomObject({ ...tcpRouteRequest(namespace), name }))) as IngressRouteTcpBody | null,
+			build: () => tcpRouteBody(desired),
+			carryOver: (fresh, body) => {
+				body.metadata = { ...body.metadata, resourceVersion: fresh.metadata?.resourceVersion };
+				return body;
+			},
+			replace: body => customApi.replaceNamespacedCustomObject({ ...tcpRouteRequest(namespace), name, body })
+		});
+		events.push(stepEvent('tcp-route-converged', `Updated IngressRouteTCP ${name} in ${namespace}`));
+	}
 }
 
 function samePorts(a: number[], b: number[]): boolean {
@@ -197,26 +312,42 @@ async function convergeIngress(
 export async function convergeNetworking(args: {
 	coreApi: CoreV1Api;
 	netApi: NetworkingV1Api;
+	customApi: CustomObjectsApi;
 	namespace: string;
 	deployment: Deployment;
 	// Ports the workload's containers expose (e.g. the docker-image containerPort).
 	ports: number[];
 	domains: ServiceDomain[];
+	// TCP exposures publicly routed via pooled ingress entrypoints; skipped entirely when the pool is disabled (e.g. non-Traefik controller).
+	exposedPorts: ServicePortExposure[];
+	tcpRoutesEnabled: boolean;
 	ingress: IngressOptions;
 	events: DeploymentLogEntry[];
 }): Promise<void> {
-	const { coreApi, netApi, namespace, deployment, ports, domains, ingress, events } = args;
+	const { coreApi, netApi, customApi, namespace, deployment, ports, domains, exposedPorts, tcpRoutesEnabled, ingress, events } = args;
 	const serviceId = deployment.serviceId;
-	// The Service must expose container ports AND every port a domain routes to.
-	const servicePorts = [...ports, ...domains.map(domain => domain.port)];
+	// The Service must expose container ports, every port a domain routes to, and every exposed TCP target.
+	const servicePorts = [...ports, ...domains.map(domain => domain.port), ...exposedPorts.map(exposure => exposure.containerPort)];
 	pushServiceEvent(events, namespace, serviceId, servicePorts, await convergeService(coreApi, namespace, serviceId, servicePorts));
 	pushIngressEvent(events, namespace, serviceId, domains, await convergeIngress(netApi, namespace, serviceId, domains, ingress));
+	if (tcpRoutesEnabled) {
+		await convergeTcpRoutes({ customApi, namespace, serviceId, exposedPorts, events });
+	}
 }
 
-export async function teardownNetworking(args: { coreApi: CoreV1Api; netApi: NetworkingV1Api; namespace: string; serviceId: string }): Promise<void> {
-	const { coreApi, netApi, namespace, serviceId } = args;
+export async function teardownNetworking(args: {
+	coreApi: CoreV1Api;
+	netApi: NetworkingV1Api;
+	customApi: CustomObjectsApi;
+	namespace: string;
+	serviceId: string;
+}): Promise<void> {
+	const { coreApi, netApi, customApi, namespace, serviceId } = args;
 	const serviceName = internalServiceName(serviceId);
 	const ingressName = resourceName(serviceId);
 	await deleteIgnoreMissing(() => coreApi.deleteNamespacedService({ name: serviceName, namespace }));
 	await deleteIgnoreMissing(() => netApi.deleteNamespacedIngress({ name: ingressName, namespace }));
+	for (const name of await listTcpRouteNames(customApi, namespace, serviceId)) {
+		await deleteIgnoreMissing(() => customApi.deleteNamespacedCustomObject({ ...tcpRouteRequest(namespace), name }));
+	}
 }

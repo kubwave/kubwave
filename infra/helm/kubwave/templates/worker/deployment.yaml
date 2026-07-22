@@ -108,6 +108,13 @@ spec:
               value: {{ .Values.workloadIngress.loadBalancerIp | quote }}
             - name: INGRESS_CONTROLLER_SERVICE
               value: {{ .Values.workloadIngress.controllerServiceName | default "traefik" | quote }}
+            # Public TCP pool the worker renders IngressRouteTCPs against (mirrors the controller's TCP entrypoints).
+            - name: TCP_PORT_POOL_ENABLED
+              value: {{ (.Values.workloadIngress.tcpPortPool.enabled | default false) | quote }}
+            - name: TCP_PORT_POOL_START
+              value: {{ (.Values.workloadIngress.tcpPortPool.start | default 30100) | quote }}
+            - name: TCP_PORT_POOL_SIZE
+              value: {{ (.Values.workloadIngress.tcpPortPool.size | default 0) | quote }}
             # Default StorageClass for tenant PVCs (provider-specific, see workloadStorage).
             - name: STORAGE_CLASS_NAME
               value: {{ .Values.workloadStorage.storageClassName | quote }}

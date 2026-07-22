@@ -89,6 +89,7 @@ const deploymentInProgress = computed(
 
 const env = computed(() => props.service.config.env);
 const domains = computed(() => props.service.config.domains ?? []);
+const exposedEndpoints = computed(() => props.service.exposedEndpoints ?? []);
 const hasPort = computed(() => Boolean(props.service.config.containerPort));
 
 interface Stat {
@@ -242,6 +243,30 @@ function copyUrl() {
 					<span class="text-muted-foreground">:{{ d.port }}</span>
 				</div>
 				<p v-if="domains.length > 3" class="text-xs text-muted-foreground">+{{ domains.length - 3 }} more domains</p>
+			</div>
+		</div>
+
+		<div v-if="exposedEndpoints.length > 0" class="rounded-xl bg-muted/30 px-4 py-3">
+			<p class="mb-2 text-xs font-medium text-muted-foreground">Exposed TCP ports</p>
+			<div class="flex flex-col gap-1.5">
+				<div v-for="endpoint in exposedEndpoints" :key="endpoint.publicPort" class="flex items-center gap-2 font-mono text-xs">
+					<Cable class="size-3 shrink-0 text-muted-foreground" />
+					<span class="min-w-0 flex-1 truncate text-foreground/80">
+						{{ endpoint.host ?? 'public ip pending' }}:{{ endpoint.publicPort }}
+						<span class="text-muted-foreground"> → :{{ endpoint.containerPort }}</span>
+					</span>
+					<Button
+						v-if="endpoint.host"
+						type="button"
+						variant="ghost"
+						size="icon"
+						class="size-7 shrink-0 text-muted-foreground"
+						aria-label="Copy public address"
+						@click="copyText(`${endpoint.host}:${endpoint.publicPort}`, 'Public address')"
+					>
+						<Copy />
+					</Button>
+				</div>
 			</div>
 		</div>
 	</div>

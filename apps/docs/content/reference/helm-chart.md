@@ -172,6 +172,9 @@ onto every tenant Ingress.
 | `workloadIngress.controllerNamespace`   | `kube-system` | Ingress controller namespace.       |
 | `workloadIngress.controllerServiceName` | `traefik`     | Controller Service name.            |
 | `workloadIngress.loadBalancerIp`        | `""`          | Explicit LB IP for auto-domain.     |
+| `workloadIngress.tcpPortPool.enabled`   | `true`        | Public TCP exposures on/off.        |
+| `workloadIngress.tcpPortPool.start`     | `30100`       | First public TCP pool port.         |
+| `workloadIngress.tcpPortPool.size`      | `20`          | Number of TCP pool ports.           |
 
 ---
 

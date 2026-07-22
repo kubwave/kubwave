@@ -27,6 +27,7 @@ function ghostLike(overrides: Partial<Template['services'][number]['config']> = 
 					env: [],
 					secrets: [{ key: 'MYSQL_PASSWORD', value: '{{ secrets.db_password }}' }],
 					domains: [],
+					exposedPorts: [],
 					volumes: [],
 					configFiles: []
 				}
@@ -45,6 +46,7 @@ function ghostLike(overrides: Partial<Template['services'][number]['config']> = 
 					],
 					secrets: [{ key: 'database__connection__password', value: '{{ secrets.db_password }}' }],
 					domains: [],
+					exposedPorts: [],
 					volumes: [],
 					configFiles: [],
 					...overrides

@@ -9,6 +9,18 @@ export const TRAEFIK_CHART = 'traefik/traefik';
 export const TRAEFIK_CHART_NAME = 'traefik';
 export const TRAEFIK_REPO_URL = 'https://traefik.github.io/charts';
 
+// Public TCP pool: one Traefik entrypoint (`tcp-<port>`) per allocatable port; the worker routes tenant IngressRouteTCPs onto them.
+export const TCP_PORT_POOL = { start: 30100, size: 20 } as const;
+
+function buildTcpPoolPorts(): Record<string, unknown> {
+	const ports: Record<string, unknown> = {};
+	for (let i = 0; i < TCP_PORT_POOL.size; i++) {
+		const port = TCP_PORT_POOL.start + i;
+		ports[`tcp-${port}`] = { port, expose: { default: true }, exposedPort: port, protocol: 'TCP' };
+	}
+	return ports;
+}
+
 const BASE_TRAEFIK_VALUES = {
 	ingressClass: {
 		enabled: true,
@@ -17,7 +29,8 @@ const BASE_TRAEFIK_VALUES = {
 	// Resource requests so CFKE's node auto-provisioner can size nodes for the ingress controller.
 	resources: {
 		requests: { cpu: '100m', memory: '128Mi' }
-	}
+	},
+	ports: buildTcpPoolPorts()
 };
 
 export function defaultTraefikIngressControllerConfig(): TraefikDependencyState {

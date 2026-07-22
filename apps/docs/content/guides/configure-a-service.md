@@ -28,6 +28,26 @@ Traefik ingress route and **cert-manager** issues a Let's Encrypt certificate au
 Point an `A` record for the hostname at your cluster's load-balancer IP first — the certificate is issued once DNS resolves.
 ::
 
+## Public TCP ports
+
+Expose a raw TCP container port on the platform's **public IP** — no HTTP, no hostname, no TLS
+termination. The platform allocates a public port from its TCP pool and routes it straight to your
+container via a Traefik TCP route. This is what you reach for when a protocol client needs direct
+access, e.g. pushing [Supabase](/templates/) database migrations from your machine:
+
+```bash
+supabase db push --db-url "postgresql://postgres:<password>@<public-ip>:<public-port>/postgres"
+```
+
+::callout{type="caution"}
+An exposed port is reachable by **anyone** without extra authentication — open it only as long as you
+need it (run the migration, then remove the exposure again). The pool is finite (default 20 ports),
+so free ports you no longer use.
+::
+
+For managed databases the connection card shows the ready-made external connection string once the
+engine port is exposed.
+
 ## Resources
 
 Set CPU and memory **requests** (what the scheduler reserves) and **limits** (the hard ceiling), e.g.

@@ -17,6 +17,7 @@ function dockerInput(configFiles: DockerImageConfigInput['configFiles']): Docker
 		env: [],
 		secrets: [],
 		domains: [],
+		exposedPorts: [],
 		volumes: [],
 		configFiles
 	} as DockerImageConfigInput;

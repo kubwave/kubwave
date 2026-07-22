@@ -157,6 +157,10 @@ fi
 echo "↑ Waiting for nodes to be Ready..."
 kubectl wait --for=condition=Ready nodes --all --timeout=120s
 
+echo "↑ Applying Traefik TCP port pool config (HelmChartConfig)..."
+# Applied before the Traefik wait; the helm-controller merges these values into the traefik release and rolls it once.
+kubectl apply -f infra/k3d/traefik-tcp-ports.yaml
+
 echo "↑ Waiting for k3d-bundled Traefik install job to register the deployment..."
 # k3d installs Traefik via the helm-controller's HelmChart CR; the deployment
 # and CRDs appear asynchronously after the cluster starts. We MUST wait for
@@ -175,7 +179,7 @@ echo "↑ Waiting for Traefik deployment to be Available..."
 kubectl -n kube-system wait --for=condition=Available deployment/traefik --timeout=180s
 
 echo "↑ Waiting for Traefik CRDs to be Established..."
-for crd in middlewares.traefik.io ingressroutes.traefik.io; do
+for crd in middlewares.traefik.io ingressroutes.traefik.io ingressroutetcps.traefik.io; do
   deadline=$((SECONDS + 60))
   until kubectl get crd "$crd" >/dev/null 2>&1; do
     if (( SECONDS > deadline )); then
@@ -186,6 +190,9 @@ for crd in middlewares.traefik.io ingressroutes.traefik.io; do
   done
   kubectl wait --for=condition=Established "crd/$crd" --timeout=60s
 done
+
+echo "↑ Waiting for Traefik rollout (TCP entrypoints applied)..."
+kubectl -n kube-system rollout status deployment/traefik --timeout=180s
 
 echo "↑ Installing CloudNativePG operator (cnpg-system)..."
 # The chart's Postgres `Cluster` CR needs the CNPG operator + its CRDs to exist before

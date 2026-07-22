@@ -187,6 +187,7 @@ export type {
 	EnvironmentsUpdateData,
 	EnvironmentsUpdateResponse,
 	EnvironmentsUpdateResponses,
+	ExposedEndpointViewDto,
 	ExternalRegistrySettingsDto,
 	ExternalRegistrySettingsDtoWritable,
 	FlowLayoutDto,
