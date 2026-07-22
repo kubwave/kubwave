@@ -63,6 +63,7 @@
             }
           ],
           "domains": [],
+          "exposedPorts": [],
           "volumes": [
             {
               "name": "data",
@@ -115,6 +116,7 @@
             }
           ],
           "domains": [],
+          "exposedPorts": [],
           "volumes": [],
           "configFiles": []
         }
@@ -242,6 +244,7 @@
             }
           ],
           "domains": [],
+          "exposedPorts": [],
           "volumes": [
             {
               "name": "data",
@@ -307,6 +310,7 @@
             }
           ],
           "domains": [],
+          "exposedPorts": [],
           "volumes": [],
           "configFiles": []
         }
@@ -388,6 +392,7 @@
             }
           ],
           "domains": [],
+          "exposedPorts": [],
           "volumes": [],
           "configFiles": []
         }
@@ -429,6 +434,7 @@
             }
           ],
           "domains": [],
+          "exposedPorts": [],
           "volumes": [],
           "configFiles": []
         }
@@ -510,6 +516,7 @@
             }
           ],
           "domains": [],
+          "exposedPorts": [],
           "volumes": [],
           "configFiles": []
         }
@@ -575,6 +582,7 @@
             }
           ],
           "domains": [],
+          "exposedPorts": [],
           "volumes": [
             {
               "name": "data",
@@ -654,6 +662,7 @@
             }
           ],
           "domains": [],
+          "exposedPorts": [],
           "volumes": [],
           "configFiles": []
         }
@@ -699,6 +708,7 @@
               "port": 8000
             }
           ],
+          "exposedPorts": [],
           "volumes": [],
           "configFiles": [
             {
@@ -740,6 +750,7 @@
           "env": [],
           "secrets": [],
           "domains": [],
+          "exposedPorts": [],
           "volumes": [
             {
               "name": "data",
