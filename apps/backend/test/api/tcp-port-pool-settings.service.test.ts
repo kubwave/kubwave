@@ -20,7 +20,8 @@ function selectFrom(table: unknown) {
 		return { where: () => ({ limit: async () => (activeRun ? [{ id: 'active-run' }] : []) }) };
 	}
 	if (table === exposuresTable) {
-		return { orderBy: async () => exposedPorts.map(publicPort => ({ publicPort })) };
+		const exposures = { orderBy: async () => exposedPorts.map(publicPort => ({ publicPort })) };
+		return { ...exposures, where: () => exposures };
 	}
 	return { where: () => ({ limit: async () => (savedSetting === null ? [] : [{ value: savedSetting }]) }) };
 }
@@ -64,7 +65,15 @@ mock.module('@kubwave/db', () => ({
 	servicePortExposures: exposuresTable,
 	updateRuns: updateRunsTable
 }));
-mock.module('drizzle-orm', () => ({ asc: () => undefined, eq: () => undefined, inArray: () => undefined, desc: () => undefined }));
+mock.module('drizzle-orm', () => ({
+	asc: () => undefined,
+	desc: () => undefined,
+	eq: () => undefined,
+	gt: () => undefined,
+	inArray: () => undefined,
+	lt: () => undefined,
+	or: () => undefined
+}));
 
 const { PlatformTcpPortPoolSettingsService } = await import('~/modules/platform/settings/tcp-port-pool/platform-tcp-port-pool-settings.service');
 const { UpdateConcurrentError } = await import('~/modules/platform/updates/platform-updates.errors');

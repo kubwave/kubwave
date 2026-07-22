@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DEFAULT_TCP_PORT_POOL, TCP_PORT_POOL_SETTINGS_KEY, resolveTcpPortPoolSettings, type TcpPortPoolSettings } from '@kubwave/kube';
 import { db, servicePortExposures, settings, updateRuns } from '@kubwave/db';
-import { asc, eq, inArray } from 'drizzle-orm';
+import { asc, eq, gt, inArray, lt, or } from 'drizzle-orm';
 import { ApiError } from '../../../../shared/errors/api-error.js';
 import { UpdateConcurrentError } from '../../updates/platform-updates.errors.js';
 import { serializeUpdateRun } from '../../updates/platform-updates.service.js';
@@ -55,10 +55,13 @@ export class PlatformTcpPortPoolSettingsService {
 	}
 
 	private async findConflictingPorts(pool: TcpPortPoolSettings, database: Pick<typeof db, 'select'> = db): Promise<number[]> {
-		const rows = await database
-			.select({ publicPort: servicePortExposures.publicPort })
-			.from(servicePortExposures)
-			.orderBy(asc(servicePortExposures.publicPort));
+		const end = pool.start + pool.size - 1;
+		const query = database.select({ publicPort: servicePortExposures.publicPort }).from(servicePortExposures);
+		const rows = pool.enabled
+			? await query
+					.where(or(lt(servicePortExposures.publicPort, pool.start), gt(servicePortExposures.publicPort, end)))
+					.orderBy(asc(servicePortExposures.publicPort))
+			: await query.orderBy(asc(servicePortExposures.publicPort));
 		return tcpPortPoolConflicts(
 			pool,
 			rows.map(row => row.publicPort)
