@@ -33,7 +33,7 @@ const emit = defineEmits<{ viewLogs: [runId: string] }>();
 
 					<div class="min-w-0 flex-1">
 						<div class="flex flex-wrap items-center gap-2">
-							<span class="font-mono text-sm">{{ run.fromVersion }} → {{ run.toVersion }}</span>
+							<span class="font-mono text-sm">{{ run.kind === 'tcp_port_pool' ? 'TCP port pool' : `${run.fromVersion} → ${run.toVersion}` }}</span>
 							<Badge :variant="updateRunStatusMeta(run.status).variant">{{ updateRunStatusMeta(run.status).label }}</Badge>
 						</div>
 						<p class="mt-0.5 text-xs text-muted-foreground">{{ updateRunDateLabel(run) }}</p>

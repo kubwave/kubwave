@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Gauge, Plug, ServerCog } from 'lucide-vue-next';
+import { Gauge, Network, Plug, ServerCog } from 'lucide-vue-next';
 
 // Pure tab bar with v-if panels below; the original sections are grouped into three themed tabs.
 const tab = ref('system');
@@ -17,6 +17,10 @@ const tab = ref('system');
 					<Gauge class="size-4" />
 					Scaling & storage
 				</TabsTrigger>
+				<TabsTrigger value="network">
+					<Network class="size-4" />
+					Network
+				</TabsTrigger>
 				<TabsTrigger value="integrations">
 					<Plug class="size-4" />
 					Integrations
@@ -30,6 +34,10 @@ const tab = ref('system');
 
 		<div v-else-if="tab === 'scaling'">
 			<AdminScalingStorageSettings />
+		</div>
+
+		<div v-else-if="tab === 'network'">
+			<AdminNetworkSettings />
 		</div>
 
 		<div v-else-if="tab === 'integrations'">

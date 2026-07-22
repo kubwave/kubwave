@@ -200,7 +200,8 @@ describe('dependency checks and installation orchestration', () => {
 			{ name: 'cert-manager', alreadyInstalled: true, installed: false, message: 'cert-manager controller ready' },
 			{ name: 'CloudNativePG', alreadyInstalled: true, installed: false, message: 'CloudNativePG CRDs found' }
 		]);
-		const valuesFile = execHelmCalls[2]![execHelmCalls[2]!.indexOf('-f') + 1]!;
+		const upgradeCall = execHelmCalls.find(args => args[0] === 'upgrade')!;
+		const valuesFile = upgradeCall[upgradeCall.indexOf('-f') + 1]!;
 		const values = parse(readFileSync(valuesFile, 'utf8'));
 		expect(values).toMatchObject({
 			ingressClass: { enabled: true, isDefaultClass: true },
@@ -256,11 +257,42 @@ describe('dependency checks and installation orchestration', () => {
 		expect(results[0]).toEqual({ name: 'Traefik', alreadyInstalled: false, installed: true, message: 'Traefik successfully installed' });
 		const upgradeCall = execHelmCalls.find(args => args[0] === 'upgrade')!;
 		expect(upgradeCall).toContain('traefik/traefik');
-		expect(upgradeCall).toContain('--reuse-values');
+		expect(upgradeCall).toContain('--reset-values');
 		const valuesFile = upgradeCall[upgradeCall.indexOf('-f') + 1]!;
 		const values = parse(readFileSync(valuesFile, 'utf8'));
 		// The drifted (pre-pool) release gets the TCP entrypoints overlaid.
 		expect(values.ports['tcp-30100']).toEqual({ port: 30100, expose: { default: true }, exposedPort: 30100, protocol: 'TCP' });
+		expect(Object.keys(values.ports)).toHaveLength(20);
+	});
+
+	test('preserves existing Traefik overrides while replacing managed TCP ports', async () => {
+		execHelmCalls.length = 0;
+		helmGetValuesStdout = JSON.stringify({
+			additionalArguments: ['--providers.kubernetesingress.allowemptyservices=true'],
+			ports: { 'tcp-30100': { port: 30100 }, stale: { port: 30999 } }
+		});
+		execHelmResults = [
+			{ stdout: '', stderr: '', exitCode: 0 },
+			{ stdout: '', stderr: '', exitCode: 0 },
+			{ stdout: '', stderr: '', exitCode: 0 }
+		];
+		const reporter = recordingReporter();
+		const kc = createKubeConfigStub({
+			ingressClasses: [{ metadata: { name: 'traefik' } }],
+			deployment: readyDeployment(),
+			ingressClass: {},
+			service: { spec: { type: 'LoadBalancer' }, status: { loadBalancer: { ingress: [] } } },
+			crd: establishedCrd(),
+			deployments: certManagerDeployments()
+		});
+
+		await ensureDependenciesSilent(kc, reporter, createDependencyStateStub());
+
+		const upgradeCall = execHelmCalls.find(args => args[0] === 'upgrade')!;
+		const valuesFile = upgradeCall[upgradeCall.indexOf('-f') + 1]!;
+		const values = parse(readFileSync(valuesFile, 'utf8'));
+		expect(values.additionalArguments).toEqual(['--providers.kubernetesingress.allowemptyservices=true']);
+		expect(values.ports.stale).toBeUndefined();
 		expect(Object.keys(values.ports)).toHaveLength(20);
 	});
 

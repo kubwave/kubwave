@@ -7,6 +7,7 @@ import type { DependencyStateInput, DependencyStateMap } from '~/lib/dependency-
 import { isRecord, readBool, readRecord, readString, readStringMap } from '~/lib/object-path.js';
 import type { InstallConfig } from '~/lib/helm.js';
 import type { UpcloudNodeGroup } from '~/lib/platforms.js';
+import { DEFAULT_TCP_PORT_POOL, resolveTcpPortPoolSettings, type TcpPortPoolSettings } from '@kubwave/kube';
 
 export interface InstallState {
 	domain: string;
@@ -32,6 +33,7 @@ export interface InstallState {
 	registryClusterIssuer?: string;
 	clusterIssuerName?: string;
 	upcloudAutoscaling?: { enabled: boolean; clusterUuid: string; nodeGroups?: UpcloudNodeGroup[] };
+	tcpPortPool?: TcpPortPoolSettings;
 }
 
 export type PartialInstallState = Partial<InstallState>;
@@ -67,7 +69,8 @@ export function buildInstallState(config: InstallConfig, platformId: string = 'u
 		registryIngressEnabled: buildRegistry.mode === 'platform',
 		...(buildRegistry.mode === 'platform' ? { registryClusterIssuer: clusterIssuerName } : {}),
 		clusterIssuerName,
-		...(config.upcloudAutoscaling ? { upcloudAutoscaling: config.upcloudAutoscaling } : {})
+		...(config.upcloudAutoscaling ? { upcloudAutoscaling: config.upcloudAutoscaling } : {}),
+		tcpPortPool: config.tcpPortPool ?? DEFAULT_TCP_PORT_POOL
 	};
 }
 
@@ -91,7 +94,8 @@ export function encodeInstallStateData(state: PartialInstallState | undefined): 
 		...(state.registryClusterIssuer ? { registry_cluster_issuer: state.registryClusterIssuer } : {}),
 		...(state.clusterIssuerName ? { cluster_issuer_name: state.clusterIssuerName } : {}),
 		...(dependencies ? { dependencies_json: JSON.stringify(dependencies) } : {}),
-		...(state.upcloudAutoscaling ? { upcloud_autoscaling_json: JSON.stringify(state.upcloudAutoscaling) } : {})
+		...(state.upcloudAutoscaling ? { upcloud_autoscaling_json: JSON.stringify(state.upcloudAutoscaling) } : {}),
+		...(state.tcpPortPool ? { tcp_port_pool_json: JSON.stringify(state.tcpPortPool) } : {})
 	};
 }
 
@@ -117,6 +121,7 @@ export function decodeInstallStateData(data: Record<string, string> | undefined)
 			})
 		: undefined;
 	const upcloudAutoscaling = parseUpcloudAutoscaling(data['upcloud_autoscaling_json']);
+	const tcpPortPool = parseTcpPortPool(data['tcp_port_pool_json']);
 	const registryMode = parseRegistryMode(data['registry_mode']);
 	const state: PartialInstallState = {
 		...(data['domain'] ? { domain: data['domain'] } : {}),
@@ -137,7 +142,8 @@ export function decodeInstallStateData(data: Record<string, string> | undefined)
 		...(data['cluster_issuer_name'] ? { clusterIssuerName: data['cluster_issuer_name'] } : {}),
 		...(traefikValues ? { traefikValues } : {}),
 		...(dependencies ? { dependencies } : {}),
-		...(upcloudAutoscaling ? { upcloudAutoscaling } : {})
+		...(upcloudAutoscaling ? { upcloudAutoscaling } : {}),
+		...(tcpPortPool ? { tcpPortPool } : {})
 	};
 	return Object.keys(state).length > 0 ? state : undefined;
 }
@@ -162,7 +168,8 @@ function hasInstallStateData(data: Record<string, string>): boolean {
 		'cluster_issuer_name',
 		'traefik_values_json',
 		'dependencies_json',
-		'upcloud_autoscaling_json'
+		'upcloud_autoscaling_json',
+		'tcp_port_pool_json'
 	].some(key => data[key] !== undefined);
 }
 
@@ -234,6 +241,7 @@ export async function resolveInstallState(
 	// Marker first, then live release value: readString drops '' (off), but the marker preserves it so the off level survives.
 	const tenantPodSecurity = marker.tenantPodSecurity ?? readString(values, ['tenants', 'podSecurity']);
 	const tenantRuntimeClass = marker.tenantRuntimeClass ?? readString(values, ['tenants', 'runtimeClass', 'default']);
+	const tcpPortPool = marker.tcpPortPool ?? resolveTcpPortPoolSettings(readRecord(values, ['workloadIngress', 'tcpPortPool']), DEFAULT_TCP_PORT_POOL);
 
 	return {
 		domain,
@@ -259,7 +267,8 @@ export async function resolveInstallState(
 		registryIngressEnabled,
 		...(registryClusterIssuer ? { registryClusterIssuer } : {}),
 		...(clusterIssuerName ? { clusterIssuerName } : {}),
-		...(marker.upcloudAutoscaling ? { upcloudAutoscaling: marker.upcloudAutoscaling } : {})
+		...(marker.upcloudAutoscaling ? { upcloudAutoscaling: marker.upcloudAutoscaling } : {}),
+		tcpPortPool
 	};
 }
 
@@ -405,6 +414,11 @@ function parseUpcloudAutoscaling(raw: string | undefined): InstallState['upcloud
 	if (typeof parsed.clusterUuid !== 'string' || !parsed.clusterUuid.trim()) return undefined;
 	const nodeGroups = parseUpcloudNodeGroups(parsed.nodeGroups);
 	return { enabled: parsed.enabled, clusterUuid: parsed.clusterUuid, ...(nodeGroups ? { nodeGroups } : {}) };
+}
+
+function parseTcpPortPool(raw: string | undefined): TcpPortPoolSettings | undefined {
+	const parsed = parseObject(raw);
+	return parsed ? resolveTcpPortPoolSettings(parsed, DEFAULT_TCP_PORT_POOL) : undefined;
 }
 
 function parseUpcloudNodeGroups(raw: unknown): UpcloudNodeGroup[] | undefined {

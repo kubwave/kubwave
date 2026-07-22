@@ -111,6 +111,8 @@ describe('Nest OpenAPI contract', () => {
 		expect(operation('/api/platform/settings/pr-previews', 'put').operationId).toBe('platformSettingsPrPreviewsUpdate');
 		expect(operation('/api/platform/settings/ha', 'get').operationId).toBe('platformSettingsHaGet');
 		expect(operation('/api/platform/settings/ha', 'put').operationId).toBe('platformSettingsHaUpdate');
+		expect(operation('/api/platform/settings/tcp-port-pool', 'get').operationId).toBe('platformSettingsTcpPortPoolGet');
+		expect(operation('/api/platform/settings/tcp-port-pool', 'put').operationId).toBe('platformSettingsTcpPortPoolUpdate');
 		expect(operation('/api/platform/settings/deployment-concurrency', 'get').operationId).toBe('platformSettingsDeploymentConcurrencyGet');
 		expect(operation('/api/platform/settings/deployment-concurrency', 'put').operationId).toBe('platformSettingsDeploymentConcurrencyUpdate');
 		expect(operation('/api/platform/settings/volume-autoscaling', 'get').operationId).toBe('platformSettingsVolumeAutoscalingGet');
@@ -171,6 +173,7 @@ describe('Nest OpenAPI contract', () => {
 		expect(operation('/api/platform/settings/metrics', 'put').security).toEqual([{ bearerAuth: [] }]);
 		expect(operation('/api/platform/settings/pr-previews', 'put').security).toEqual([{ bearerAuth: [] }]);
 		expect(operation('/api/platform/settings/ha', 'put').security).toEqual([{ bearerAuth: [] }]);
+		expect(operation('/api/platform/settings/tcp-port-pool', 'put').security).toEqual([{ bearerAuth: [] }]);
 		expect(operation('/api/platform/settings/deployment-concurrency', 'put').security).toEqual([{ bearerAuth: [] }]);
 		expect(operation('/api/platform/settings/volume-autoscaling', 'put').security).toEqual([{ bearerAuth: [] }]);
 		expect(operation('/api/platform/settings/platform-volumes', 'get').security).toEqual([{ bearerAuth: [] }]);

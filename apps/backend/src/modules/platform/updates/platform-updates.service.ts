@@ -13,9 +13,10 @@ import type { UpdateRunDto } from './platform-updates.dto.js';
 
 const ACTIVE_UPDATE_RUN_STATUSES = ['pending', 'running'];
 
-function serializeUpdateRun(run: UpdateRun): UpdateRunDto {
+export function serializeUpdateRun(run: UpdateRun): UpdateRunDto {
 	return {
 		id: run.id,
+		kind: run.kind === 'tcp_port_pool' ? 'tcp_port_pool' : 'version',
 		fromVersion: run.fromVersion,
 		toVersion: run.toVersion,
 		status: run.status,

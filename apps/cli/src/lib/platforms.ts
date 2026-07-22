@@ -5,10 +5,11 @@ import { UserCancelledError } from '~/lib/errors.js';
 import { cloudfleetHetznerDescriptor } from '~/platforms/cloudfleet/hetzner/descriptor.js';
 import { cloudfleetGcpDescriptor } from '~/platforms/cloudfleet/gcp/descriptor.js';
 import { upcloudUksDescriptor } from '~/platforms/upcloud/descriptor.js';
-import type { DependencyStateInput } from '~/lib/dependency-state.js';
+import { mergeDependencyState, withTcpPortPool, type DependencyStateInput, type DependencyStateMap } from '~/lib/dependency-state.js';
 import { buildUpcloudTraefikValues } from '~/platforms/upcloud/traefik-values.js';
 import { buildGcpTraefikValues } from '~/platforms/cloudfleet/gcp/traefik-overrides.js';
 import { buildCloudfleetTraefikValues } from '~/platforms/cloudfleet/traefik-values.js';
+import type { TcpPortPoolSettings } from '@kubwave/kube';
 
 export type StorageOpts = {
 	storageMode: 'auto' | 'skip';
@@ -86,10 +87,14 @@ export async function selectPlatform(opts: { platform?: string } & PlatformBuild
 // Rebuild the default Traefik helm values for a known platform. Upgrades use this so fixes to
 // platform-specific service annotations (e.g. UpCloud TCP passthrough) are applied even when the
 // marker was created by an older CLI version. Existing Hetzner annotations are preserved.
-export function defaultTraefikValuesForPlatform(platformId: string, existingValues?: Record<string, unknown>): Record<string, unknown> | undefined {
+export function defaultTraefikValuesForPlatform(
+	platformId: string,
+	existingValues?: Record<string, unknown>,
+	tcpPortPool?: TcpPortPoolSettings
+): Record<string, unknown> | undefined {
 	switch (platformId) {
 		case 'upcloud-uks':
-			return buildUpcloudTraefikValues();
+			return buildUpcloudTraefikValues(tcpPortPool);
 		case 'cloudfleet-gcp':
 			return buildGcpTraefikValues();
 		case 'cloudfleet-hetzner': {
@@ -103,6 +108,18 @@ export function defaultTraefikValuesForPlatform(platformId: string, existingValu
 		default:
 			return undefined;
 	}
+}
+
+export function withPlatformTcpPortPool(
+	dependencies: DependencyStateInput | DependencyStateMap,
+	platformId: string,
+	pool: TcpPortPoolSettings
+): DependencyStateMap {
+	const resolved = mergeDependencyState(dependencies);
+	const current = resolved.traefik.helmValues;
+	const platformValues = defaultTraefikValuesForPlatform(platformId, current, pool);
+	const withPlatformValues = platformValues ? { ...resolved, traefik: { ...resolved.traefik, helmValues: platformValues } } : resolved;
+	return withTcpPortPool(withPlatformValues, pool);
 }
 
 async function pickDescriptor(opts: { platform?: string }): Promise<PlatformDescriptor> {

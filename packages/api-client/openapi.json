@@ -2682,6 +2682,64 @@
 				"tags": ["platform-settings"]
 			}
 		},
+		"/api/platform/settings/tcp-port-pool": {
+			"get": {
+				"operationId": "platformSettingsTcpPortPoolGet",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/TcpPortPoolSettingsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get public TCP port pool settings",
+				"tags": ["platform-settings"]
+			},
+			"put": {
+				"operationId": "platformSettingsTcpPortPoolUpdate",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/TcpPortPoolSettingsDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/TcpPortPoolSettingsUpdateDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Update public TCP port pool settings",
+				"tags": ["platform-settings"]
+			}
+		},
 		"/api/platform/updates": {
 			"get": {
 				"operationId": "platformUpdatesList",
@@ -5084,12 +5142,35 @@
 				},
 				"required": ["sampledAt", "volumes"]
 			},
+			"TcpPortPoolSettingsDto": {
+				"type": "object",
+				"properties": {
+					"enabled": {
+						"type": "boolean"
+					},
+					"start": {
+						"type": "number",
+						"minimum": 1024,
+						"maximum": 65535
+					},
+					"size": {
+						"type": "number",
+						"minimum": 1,
+						"maximum": 100
+					}
+				},
+				"required": ["enabled", "start", "size"]
+			},
 			"UpdateRunDto": {
 				"type": "object",
 				"properties": {
 					"id": {
 						"type": "string",
 						"format": "uuid"
+					},
+					"kind": {
+						"type": "string",
+						"enum": ["version", "tcp_port_pool"]
 					},
 					"fromVersion": {
 						"type": "string"
@@ -5136,6 +5217,7 @@
 				},
 				"required": [
 					"id",
+					"kind",
 					"fromVersion",
 					"toVersion",
 					"status",
@@ -5148,6 +5230,28 @@
 					"triggeredByUserId",
 					"createdAt"
 				]
+			},
+			"TcpPortPoolSettingsUpdateDto": {
+				"type": "object",
+				"properties": {
+					"enabled": {
+						"type": "boolean"
+					},
+					"start": {
+						"type": "number",
+						"minimum": 1024,
+						"maximum": 65535
+					},
+					"size": {
+						"type": "number",
+						"minimum": 1,
+						"maximum": 100
+					},
+					"updateRun": {
+						"$ref": "#/components/schemas/UpdateRunDto"
+					}
+				},
+				"required": ["enabled", "start", "size", "updateRun"]
 			},
 			"TriggerUpdateDto": {
 				"type": "object",

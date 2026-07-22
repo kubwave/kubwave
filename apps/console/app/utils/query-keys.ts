@@ -29,6 +29,7 @@ export const queryKeys = {
 	smtp: ['admin', 'smtp'] as const,
 	metricsSettings: ['admin', 'metrics'] as const,
 	haSettings: ['admin', 'ha'] as const,
+	tcpPortPoolSettings: ['admin', 'tcp-port-pool'] as const,
 	volumeAutoscalingSettings: ['admin', 'volume-autoscaling'] as const,
 	platformVolumes: ['admin', 'platform-volumes'] as const,
 	deploymentConcurrency: ['admin', 'deployment-concurrency'] as const,

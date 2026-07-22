@@ -16,7 +16,7 @@ import { execHelm } from '~/lib/helm-exec.js';
 
 // Re-exported so existing `import { execHelm } from '~/lib/helm.js'` call sites keep working.
 export { execHelm };
-import { buildRegistryNetworkPolicyEgressPorts, platformRegistryHost } from '@kubwave/kube';
+import { buildRegistryNetworkPolicyEgressPorts, platformRegistryHost, type TcpPortPoolSettings } from '@kubwave/kube';
 import { HelmCommandError } from '~/lib/errors.js';
 import { TCP_PORT_POOL } from '~/lib/traefik.js';
 import type { CertManagerClusterIssuerConfig } from '~/lib/cert-manager.js';
@@ -46,6 +46,7 @@ export interface InstallConfig {
 	// Sandbox runtime for tenant pods ('' = runc). Set by --tenant-runtime-class, persisted; 'gvisor' auto-installs the runtimeClass on all Linux nodes.
 	tenantRuntimeClass?: string;
 	upcloudAutoscaling?: { enabled: boolean; clusterUuid: string; nodeGroups?: UpcloudNodeGroup[] };
+	tcpPortPool?: TcpPortPoolSettings;
 	dnsPolicy?: DnsPolicy;
 }
 
@@ -68,6 +69,7 @@ export interface ProductionValuesInput {
 	storageClass?: string;
 	nodeSelector?: Record<string, string>;
 	dependencies: DependencyStateMap;
+	tcpPortPool?: TcpPortPoolSettings;
 	ha: boolean;
 	clusterIssuerName?: string;
 	// PSS enforce level for tenant namespaces. Undefined → omit (chart default 'baseline'); '' explicitly disables the PSS labels.
@@ -186,6 +188,7 @@ export function buildProductionValues(input: ProductionValuesInput): Record<stri
 	const dnsPolicy = input.dnsPolicy ?? defaultDnsPolicy;
 	const ingressClassName = input.ingressClassName;
 	const clusterIssuerName = input.clusterIssuerName ?? input.certManagerClusterIssuer?.name ?? '';
+	const tcpPortPool = input.tcpPortPool ?? TCP_PORT_POOL;
 	const image = (app: string) => ({
 		repository: `${input.imageRegistry}/${app}`,
 		tag: input.version,
@@ -244,7 +247,7 @@ export function buildProductionValues(input: ProductionValuesInput): Record<stri
 			// Empty → worker reads the controller Service LB status and sslip-encodes the real IPv4; a literal (e.g. 127.0.0.1) pins every auto-domain to that IP.
 			loadBalancerIp: '',
 			// Same pool the Traefik dependency exposes as TCP entrypoints (see traefik.ts); the API allocates from it.
-			tcpPortPool: { enabled: true, start: TCP_PORT_POOL.start, size: TCP_PORT_POOL.size }
+			tcpPortPool
 		},
 		// Install-only: on upgrade cert-manager is already configured and helm reuses existing values (--reset-then-reuse-values), so we must not re-emit it.
 		...(input.certManagerClusterIssuer
@@ -310,6 +313,7 @@ export function buildValues(config: InstallConfig): Record<string, unknown> {
 		...(config.storageClass ? { storageClass: config.storageClass } : {}),
 		...(config.nodeSelector && Object.keys(config.nodeSelector).length > 0 ? { nodeSelector: config.nodeSelector } : {}),
 		dependencies,
+		tcpPortPool: config.tcpPortPool ?? TCP_PORT_POOL,
 		ha: config.ha,
 		// buildProductionValues drops these when undefined, so the omit-contract lives in one place there.
 		tenantPodSecurity: config.tenantPodSecurity,

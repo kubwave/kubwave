@@ -155,7 +155,7 @@ export function buildTraefikDependencyHelmArgs(config: TraefikDependencyState = 
 		'--namespace',
 		config.namespace,
 		'--create-namespace',
-		'--reuse-values',
+		'--reset-values',
 		'--version',
 		TRAEFIK_CHART_VERSION,
 		...(valuesFilePath ? ['-f', valuesFilePath] : [])
@@ -211,14 +211,15 @@ const DEPENDENCIES: ClusterDependency[] = [
 		},
 		install: async (kc, state, context) => {
 			const config = state.traefik;
-			const valuesFile = writeTraefikValuesFile(config);
+			const existingValues = await readTraefikReleaseValues(config);
+			const valuesFile = writeTraefikValuesFile(config, existingValues);
 			await helmRepoAddAndInstall(
 				{ name: 'traefik', url: TRAEFIK_REPO_URL },
 				TRAEFIK_CHART,
 				config.releaseName,
 				config.namespace,
-				// Pin the validated chart version + --reuse-values so a partial pre-existing release keeps operator overrides; the rendered values file overlays last.
-				['--version', TRAEFIK_CHART_VERSION, '--reuse-values', '-f', valuesFile],
+				// Reset chart values so shrinking a managed TCP pool removes obsolete Traefik Service ports and entrypoints.
+				['--version', TRAEFIK_CHART_VERSION, '--reset-values', '-f', valuesFile],
 				{ wait: false, context }
 			);
 			await stampHelmReleaseOwnership(kc, config.releaseName, config.namespace);
@@ -347,13 +348,42 @@ export function getDependencies(): ClusterDependency[] {
 
 // Drift = a desired key missing/different in the live user-supplied values; extra live keys and unreadable releases don't count.
 async function traefikReleaseValuesDrifted(config: TraefikDependencyState): Promise<boolean> {
-	const { stdout, exitCode } = await execHelm(['get', 'values', config.releaseName, '-n', config.namespace, '-o', 'json']);
-	if (exitCode !== 0) return false;
+	const values = await tryReadTraefikReleaseValues(config);
+	if (!values) return false;
 	try {
-		return !valuesSubsetOf(JSON.parse(stdout), buildTraefikHelmValues(config));
+		return !valuesSubsetOf(values, buildTraefikHelmValues(config));
 	} catch {
 		return false;
 	}
+}
+
+async function readTraefikReleaseValues(config: TraefikDependencyState): Promise<Record<string, unknown>> {
+	const { stdout, stderr, exitCode } = await execHelm(['get', 'values', config.releaseName, '-n', config.namespace, '-o', 'json']);
+	if (exitCode !== 0) {
+		if (/release: not found/i.test(stderr)) return {};
+		throw new FatalCliError(`Could not read existing Traefik Helm values; refusing to reset them:\n${stderr}`);
+	}
+	if (!stdout.trim()) return {};
+	try {
+		const values: unknown = JSON.parse(stdout);
+		if (isRecord(values)) return values;
+	} catch {
+		// The error below provides the same safe failure for malformed Helm output.
+	}
+	throw new FatalCliError('Could not parse existing Traefik Helm values; refusing to reset them.');
+}
+
+async function tryReadTraefikReleaseValues(config: TraefikDependencyState): Promise<Record<string, unknown> | undefined> {
+	const { stdout, exitCode } = await execHelm(['get', 'values', config.releaseName, '-n', config.namespace, '-o', 'json']);
+	if (exitCode !== 0) return undefined;
+	if (!stdout.trim()) return {};
+	try {
+		const values: unknown = JSON.parse(stdout);
+		if (isRecord(values)) return values;
+	} catch {
+		return undefined;
+	}
+	return undefined;
 }
 
 function valuesSubsetOf(live: unknown, desired: unknown): boolean {

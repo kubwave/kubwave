@@ -95,6 +95,10 @@ import type {
 	PlatformSettingsSmtpTestResponses,
 	PlatformSettingsSmtpUpdateData,
 	PlatformSettingsSmtpUpdateResponses,
+	PlatformSettingsTcpPortPoolGetData,
+	PlatformSettingsTcpPortPoolGetResponses,
+	PlatformSettingsTcpPortPoolUpdateData,
+	PlatformSettingsTcpPortPoolUpdateResponses,
 	PlatformSettingsVolumeAutoscalingGetData,
 	PlatformSettingsVolumeAutoscalingGetResponses,
 	PlatformSettingsVolumeAutoscalingUpdateData,
@@ -1259,6 +1263,34 @@ export const platformSettingsPlatformVolumesGet = <ThrowOnError extends boolean 
 		security: [{ scheme: 'bearer', type: 'http' }],
 		url: '/api/platform/settings/platform-volumes',
 		...options
+	});
+
+/**
+ * Get public TCP port pool settings
+ */
+export const platformSettingsTcpPortPoolGet = <ThrowOnError extends boolean = false>(
+	options?: Options<PlatformSettingsTcpPortPoolGetData, ThrowOnError>
+): RequestResult<PlatformSettingsTcpPortPoolGetResponses, unknown, ThrowOnError> =>
+	(options?.client ?? client).get<PlatformSettingsTcpPortPoolGetResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/platform/settings/tcp-port-pool',
+		...options
+	});
+
+/**
+ * Update public TCP port pool settings
+ */
+export const platformSettingsTcpPortPoolUpdate = <ThrowOnError extends boolean = false>(
+	options: Options<PlatformSettingsTcpPortPoolUpdateData, ThrowOnError>
+): RequestResult<PlatformSettingsTcpPortPoolUpdateResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).put<PlatformSettingsTcpPortPoolUpdateResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/platform/settings/tcp-port-pool',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
 	});
 
 /**
