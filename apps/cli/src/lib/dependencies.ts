@@ -363,6 +363,7 @@ async function readTraefikReleaseValues(config: TraefikDependencyState): Promise
 		if (/release: not found/i.test(stderr)) return {};
 		throw new FatalCliError(`Could not read existing Traefik Helm values; refusing to reset them:\n${stderr}`);
 	}
+	if (!stdout.trim()) return {};
 	try {
 		const values: unknown = JSON.parse(stdout);
 		if (isRecord(values)) return values;
@@ -375,6 +376,7 @@ async function readTraefikReleaseValues(config: TraefikDependencyState): Promise
 async function tryReadTraefikReleaseValues(config: TraefikDependencyState): Promise<Record<string, unknown> | undefined> {
 	const { stdout, exitCode } = await execHelm(['get', 'values', config.releaseName, '-n', config.namespace, '-o', 'json']);
 	if (exitCode !== 0) return undefined;
+	if (!stdout.trim()) return {};
 	try {
 		const values: unknown = JSON.parse(stdout);
 		if (isRecord(values)) return values;
