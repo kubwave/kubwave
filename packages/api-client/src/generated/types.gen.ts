@@ -624,8 +624,15 @@ export type PlatformVolumesDto = {
 	volumes: Array<PlatformVolumeDto>;
 };
 
+export type TcpPortPoolSettingsDto = {
+	enabled: boolean;
+	start: number;
+	size: number;
+};
+
 export type UpdateRunDto = {
 	id: string;
+	kind: 'version' | 'tcp_port_pool';
 	fromVersion: string;
 	toVersion: string;
 	status: string;
@@ -639,6 +646,13 @@ export type UpdateRunDto = {
 	} | null;
 	triggeredByUserId: string | null;
 	createdAt: string;
+};
+
+export type TcpPortPoolSettingsUpdateDto = {
+	enabled: boolean;
+	start: number;
+	size: number;
+	updateRun: UpdateRunDto;
 };
 
 export type TriggerUpdateDto = {
@@ -1886,6 +1900,32 @@ export type PlatformSettingsPlatformVolumesGetResponses = {
 
 export type PlatformSettingsPlatformVolumesGetResponse =
 	PlatformSettingsPlatformVolumesGetResponses[keyof PlatformSettingsPlatformVolumesGetResponses];
+
+export type PlatformSettingsTcpPortPoolGetData = {
+	body?: never;
+	path?: never;
+	query?: never;
+	url: '/api/platform/settings/tcp-port-pool';
+};
+
+export type PlatformSettingsTcpPortPoolGetResponses = {
+	200: TcpPortPoolSettingsDto;
+};
+
+export type PlatformSettingsTcpPortPoolGetResponse = PlatformSettingsTcpPortPoolGetResponses[keyof PlatformSettingsTcpPortPoolGetResponses];
+
+export type PlatformSettingsTcpPortPoolUpdateData = {
+	body: TcpPortPoolSettingsDto;
+	path?: never;
+	query?: never;
+	url: '/api/platform/settings/tcp-port-pool';
+};
+
+export type PlatformSettingsTcpPortPoolUpdateResponses = {
+	200: TcpPortPoolSettingsUpdateDto;
+};
+
+export type PlatformSettingsTcpPortPoolUpdateResponse = PlatformSettingsTcpPortPoolUpdateResponses[keyof PlatformSettingsTcpPortPoolUpdateResponses];
 
 export type PlatformUpdatesListData = {
 	body?: never;

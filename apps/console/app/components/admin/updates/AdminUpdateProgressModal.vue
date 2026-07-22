@@ -12,7 +12,7 @@ const props = withDefaults(
 );
 
 const open = defineModel<boolean>('open', { default: false });
-const emit = defineEmits<{ finished: [] }>();
+const emit = defineEmits<{ finished: []; failed: [] }>();
 
 const { run, finished, succeeded, isFailed, logs } = useUpdateRunProgress(() => props.runId, open);
 
@@ -24,6 +24,7 @@ watch(
 		if (!finished.value || !props.runId || notifiedRunId.value === props.runId) return;
 		notifiedRunId.value = props.runId;
 		emit('finished');
+		if (isFailed.value) emit('failed');
 		if (succeeded.value && props.autoReloadOnSuccess) {
 			setTimeout(() => window.location.reload(), 3000);
 		}
@@ -65,13 +66,13 @@ function preventWhileRunning(event: Event) {
 					<CheckCircle2 v-if="succeeded" class="size-4" :class="statusColor" />
 					<XCircle v-else-if="isFailed" class="size-4" :class="statusColor" />
 					<Loader2 v-else class="size-4 animate-spin" :class="statusColor" />
-					Platform update
+					{{ run?.kind === 'tcp_port_pool' ? 'Network reconciliation' : 'Platform update' }}
 				</DialogTitle>
 			</DialogHeader>
 
 			<div class="flex flex-col gap-4">
 				<div v-if="run" class="flex items-center justify-between gap-2">
-					<span class="font-mono text-sm">{{ run.fromVersion }} → {{ run.toVersion }}</span>
+					<span class="font-mono text-sm">{{ run.kind === 'tcp_port_pool' ? 'TCP port pool' : `${run.fromVersion} → ${run.toVersion}` }}</span>
 					<Badge :variant="badgeVariant">{{ updateRunStatusLabel(run) }}</Badge>
 				</div>
 

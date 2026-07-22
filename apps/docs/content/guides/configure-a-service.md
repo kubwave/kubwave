@@ -48,6 +48,17 @@ so free ports you no longer use.
 For managed databases the connection card shows the ready-made external connection string once the
 engine port is exposed.
 
+### Configure the TCP pool
+
+Platform administrators set the pool in **Admin → Settings → Network**. They can enable or disable
+it and choose the first port and pool size (up to 100 ports). Saving starts an infrastructure
+reconciliation: Traefik, its LoadBalancer and the platform workloads receive the complete new port
+set. This can take a few minutes.
+
+The change is rejected when an existing public service port would fall outside the new range. Disable
+the pool only after removing every service exposure; kubwave never silently closes or renumbers an
+endpoint. Adding a port range alone does not expose any service — each service must opt in above.
+
 ## Resources
 
 Set CPU and memory **requests** (what the scheduler reserves) and **limits** (the hard ceiling), e.g.

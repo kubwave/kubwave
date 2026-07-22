@@ -37,6 +37,11 @@ describe('buildTraefikHelmValues', () => {
 		expect(Object.keys(values.ports ?? {})).toHaveLength(20);
 	});
 
+	test('removes every TCP entrypoint when the pool is disabled', () => {
+		const values = buildTraefikHelmValues(traefikConfig({ ports: {} })) as { ports?: Record<string, unknown> };
+		expect(values.ports).toEqual({});
+	});
+
 	test('operator helmValues still override the base', () => {
 		const values = buildTraefikHelmValues(traefikConfig({ resources: { requests: { cpu: '200m', memory: '256Mi' } } })) as {
 			resources?: { requests?: Record<string, string> };

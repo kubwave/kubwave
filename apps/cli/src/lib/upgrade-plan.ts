@@ -3,19 +3,16 @@ import { stringify } from 'yaml';
 import { APP_NAMESPACE, HELM_RELEASE_NAME } from '~/lib/constants.js';
 import { buildProductionValues, dnsPolicyForPlatform } from '~/lib/helm.js';
 import { writeValuesFile } from '~/lib/values-file.js';
-import { defaultTraefikValuesForPlatform } from '~/lib/platforms.js';
+import { withPlatformTcpPortPool } from '~/lib/platforms.js';
+import { TCP_PORT_POOL } from '~/lib/traefik.js';
 import type { InstallState } from '~/lib/install-state.js';
 
 // Maps InstallState onto the shared production values builder; omitting certManagerClusterIssuer keeps the existing issuer (--reset-then-reuse-values).
 export function buildUpgradeValues(state: InstallState, targetVersion: string): Record<string, unknown> {
+	const tcpPortPool = state.tcpPortPool ?? TCP_PORT_POOL;
 	// Re-apply platform-specific Traefik defaults so upgrades pick up fixes like the UpCloud
 	// TCP-passthrough annotation even when the marker was written by an older CLI version.
-	const platformTraefikValues = state.platformId
-		? defaultTraefikValuesForPlatform(state.platformId, state.dependencies.traefik.helmValues)
-		: undefined;
-	const dependencies = platformTraefikValues
-		? { ...state.dependencies, traefik: { ...state.dependencies.traefik, helmValues: platformTraefikValues } }
-		: state.dependencies;
+	const dependencies = withPlatformTcpPortPool(state.dependencies, state.platformId, tcpPortPool);
 	return buildProductionValues({
 		domain: state.domain,
 		imageRegistry: state.imageRegistry,
@@ -37,6 +34,7 @@ export function buildUpgradeValues(state: InstallState, targetVersion: string): 
 		...(state.storageClass ? { storageClass: state.storageClass } : {}),
 		...(state.nodeSelector && Object.keys(state.nodeSelector).length > 0 ? { nodeSelector: state.nodeSelector } : {}),
 		dependencies,
+		tcpPortPool,
 		dnsPolicy: dnsPolicyForPlatform(state.platformId),
 		// Preserve HA: the marker (worker-mirrored on toggle) is authoritative for replicas/affinity.
 		ha: state.ha,

@@ -1,6 +1,7 @@
 import { TRAEFIK_NAMESPACE } from '~/lib/constants.js';
-import { TRAEFIK_RELEASE, buildTraefikHelmValues } from '~/lib/traefik.js';
+import { TRAEFIK_RELEASE, buildTcpPoolPorts, buildTraefikHelmValues } from '~/lib/traefik.js';
 import { mergeObjects } from '~/lib/object-path.js';
+import type { TcpPortPoolSettings } from '@kubwave/kube';
 
 export interface TraefikDependencyState {
 	kind: 'traefik';
@@ -60,6 +61,24 @@ function mergeTraefikState(base: TraefikDependencyState, input: Partial<TraefikD
 		namespace: input.namespace ?? base.namespace,
 		releaseName: input.releaseName ?? base.releaseName,
 		ingressClassName: input.ingressClassName ?? base.ingressClassName,
-		helmValues: mergeObjects(base.helmValues, input.helmValues ?? {})
+		helmValues: mergeHelmValues(base.helmValues, input.helmValues)
+	};
+}
+
+function mergeHelmValues(base: Record<string, unknown>, input: Record<string, unknown> | undefined): Record<string, unknown> {
+	if (!input) return base;
+	const merged = mergeObjects(base, input);
+	if ('ports' in input) merged.ports = input.ports;
+	return merged;
+}
+
+export function withTcpPortPool(state: DependencyStateInput | DependencyStateMap, pool: TcpPortPoolSettings): DependencyStateMap {
+	const resolved = mergeDependencyState(state);
+	return {
+		...resolved,
+		traefik: {
+			...resolved.traefik,
+			helmValues: { ...resolved.traefik.helmValues, ports: buildTcpPoolPorts(pool) }
+		}
 	};
 }

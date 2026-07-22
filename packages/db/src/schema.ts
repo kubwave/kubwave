@@ -519,6 +519,7 @@ export type Setting = typeof settings.$inferSelect;
 // NOTE: partial unique index `update_runs_single_active` (at most one active run) can't be expressed in drizzle, so it lives in migration 0007, not here.
 export const updateRuns = pgTable('update_runs', {
 	id: uuid('id').primaryKey().defaultRandom(),
+	kind: text('kind').notNull().default('version'),
 	fromVersion: text('from_version').notNull(),
 	toVersion: text('to_version').notNull(),
 	status: text('status').notNull(),

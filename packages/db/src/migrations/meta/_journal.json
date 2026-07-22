@@ -176,6 +176,13 @@
 			"when": 1784674136855,
 			"tag": "0024_complete_the_enforcers",
 			"breakpoints": true
+		},
+		{
+			"idx": 25,
+			"version": "7",
+			"when": 1784713669379,
+			"tag": "0025_curly_stryfe",
+			"breakpoints": true
 		}
 	]
 }

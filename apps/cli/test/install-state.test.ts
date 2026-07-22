@@ -141,7 +141,7 @@ describe('install state resolution', () => {
 	});
 });
 
-describe('ha persistence', () => {
+describe('install state persistence', () => {
 	test('decodeInstallStateData ignores malformed JSON fields', () => {
 		expect(
 			decodeInstallStateData({
@@ -157,6 +157,12 @@ describe('ha persistence', () => {
 		expect(encodeInstallStateData({ ha: false })).toMatchObject({ ha_enabled: 'false' });
 		expect(decodeInstallStateData({ ha_enabled: 'true' })).toMatchObject({ ha: true });
 		expect(decodeInstallStateData({ ha_enabled: 'false' })).toMatchObject({ ha: false });
+	});
+
+	test('round-trips the TCP port pool through the marker encode/decode', () => {
+		const tcpPortPool = { enabled: true, start: 31000, size: 5 };
+		expect(encodeInstallStateData({ tcpPortPool })).toMatchObject({ tcp_port_pool_json: JSON.stringify(tcpPortPool) });
+		expect(decodeInstallStateData({ tcp_port_pool_json: JSON.stringify(tcpPortPool) })).toMatchObject({ tcpPortPool });
 	});
 
 	test('round-trips the tenant Pod Security level through the marker encode/decode', () => {
@@ -179,6 +185,12 @@ describe('ha persistence', () => {
 		helmValues = { ingress: { host: 'app.example.com' }, ha: { enabled: true } };
 		const state = await resolveInstallState(kubeConfig(), { registryOverride: 'r.example.com/app' });
 		expect(state.ha).toBe(true);
+	});
+
+	test('resolveInstallState reads the TCP port pool from the live release values', async () => {
+		helmValues = { ingress: { host: 'app.example.com' }, workloadIngress: { tcpPortPool: { enabled: true, start: 31000, size: 5 } } };
+		const state = await resolveInstallState(kubeConfig(), { registryOverride: 'r.example.com/app' });
+		expect(state.tcpPortPool).toEqual({ enabled: true, start: 31000, size: 5 });
 	});
 
 	test('resolveInstallState defaults ha to false when neither marker nor values set it', async () => {

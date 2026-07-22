@@ -1,0 +1,1 @@
+ALTER TABLE "update_runs" ADD COLUMN "kind" text DEFAULT 'version' NOT NULL;
