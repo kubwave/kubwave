@@ -33,7 +33,7 @@ mock.module('@kubwave/db', () => ({
 	sshKeys: { id: 'id', privateKeyCiphertext: 'privateKeyCiphertext' }
 }));
 // decrypt is identity for the test — we only care the secret carries the (newline-terminated) value.
-mock.module('@kubwave/crypto', () => ({ decryptSecret: (s: string) => s }));
+mock.module('@kubwave/crypto', () => ({ decryptSecret: (s: string) => s, generateHtpasswd: (u: string, p: string) => `${u}:{SHA}${p}` }));
 // Stub teardownRuntime so the teardown test exercises only the private-repo reaping (Jobs + Secrets).
 mock.module('~/modules/worker/jobs/deployments/deployers/runtime/runtime.service', () => ({
 	teardownRuntime: async () => {},

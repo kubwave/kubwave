@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronRight, Globe, Plus, X } from 'lucide-vue-next';
+import { ChevronDown, ChevronRight, Globe, Lock, Plus, X } from 'lucide-vue-next';
 import type { Service } from '~/utils/types';
 import { isDatabaseEngine } from '~/utils/database-engines';
 import type { ServiceSettingsValues } from '~/composables/use-service-settings-schema';
@@ -118,6 +118,42 @@ const healthTypeModel = computed<string>({
 					</label>
 				</div>
 				<p v-if="!state.containerPort.trim()" class="text-sm text-muted-foreground">Set a container port first.</p>
+			</section>
+
+			<Separator />
+
+			<section class="flex flex-col gap-3">
+				<div class="flex items-start justify-between gap-3">
+					<div>
+						<h3 class="text-sm font-medium">Basic authentication</h3>
+						<p class="text-xs text-muted-foreground">Protect all domains of this service with HTTP basic auth (Traefik).</p>
+					</div>
+					<label class="flex flex-row items-center gap-2">
+						<span class="text-xs font-medium text-muted-foreground">Enabled</span>
+						<Switch v-model="state.basicAuth.enabled" :disabled="saving" />
+					</label>
+				</div>
+				<div v-if="state.basicAuth.enabled" class="flex flex-col gap-4">
+					<div class="grid gap-4 sm:grid-cols-2">
+						<ServiceSettingsField name="basicAuth.username" label="Username">
+							<div class="relative">
+								<Lock class="pointer-events-none absolute top-1/2 left-2.5 z-10 size-3.5 -translate-y-1/2 text-muted-foreground" />
+								<Input v-model="state.basicAuth.username" placeholder="admin" class="w-full pl-8" :disabled="saving" />
+							</div>
+						</ServiceSettingsField>
+						<ServiceSettingsField name="basicAuth.password" label="Password">
+							<Input
+								v-model="state.basicAuth.password"
+								type="password"
+								:placeholder="state.basicAuth.hasPassword ? '•••••••• (unchanged)' : 'Enter a password'"
+								class="w-full font-mono text-xs"
+								:disabled="saving"
+							/>
+						</ServiceSettingsField>
+					</div>
+					<p v-if="state.basicAuth.hasPassword" class="text-xs text-muted-foreground">Leave the password field empty to keep the current password.</p>
+				</div>
+				<p v-else class="text-sm text-muted-foreground">Disabled.</p>
 			</section>
 
 			<Separator />

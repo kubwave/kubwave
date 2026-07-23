@@ -164,7 +164,10 @@ describe('publicRepoDeployer teardown', () => {
 		const apps = { deleteNamespacedDeployment: () => (opts.calls.misc.push('deployment'), Promise.resolve({})) };
 		const autoscaling = { deleteNamespacedHorizontalPodAutoscaler: () => (opts.calls.misc.push('hpa'), Promise.resolve({})) };
 		const net = { deleteNamespacedIngress: () => (opts.calls.misc.push('ingress'), Promise.resolve({})) };
-		const custom = { listNamespacedCustomObject: () => Promise.resolve({ items: [] }) };
+		const custom = {
+			listNamespacedCustomObject: () => Promise.resolve({ items: [] }),
+			deleteNamespacedCustomObject: () => (opts.calls.misc.push('custom-object'), Promise.resolve({}))
+		};
 		return {
 			makeApiClient: (klass: unknown) =>
 				klass === BatchV1Api

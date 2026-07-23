@@ -92,6 +92,12 @@ export interface AutoscalingConfig {
 	targetMemoryUtilizationPercentage?: number;
 }
 
+export interface BasicAuthConfig {
+	username: string;
+	// Ciphertext (AES-256-GCM); worker decrypts into an htpasswd Secret for the ingress controller.
+	password: string;
+}
+
 export interface RuntimeConfig {
 	containerPort: number | null;
 	// Only true enables the platform-generated public default domain. Absent/false stays internal-only.
@@ -111,6 +117,8 @@ export interface RuntimeConfig {
 	healthCheck?: HealthCheckConfig;
 	resources?: ResourceConfig;
 	autoscaling?: AutoscalingConfig;
+	// HTTP basic auth enforced at the ingress (Traefik Middleware). Absent = disabled.
+	basicAuth?: BasicAuthConfig;
 }
 
 export interface DockerImageServiceConfig extends RuntimeConfig {

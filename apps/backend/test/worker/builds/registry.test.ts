@@ -20,7 +20,11 @@ mock.module('~/shared/config/worker-env', () => ({
 	}
 }));
 mock.module('@kubwave/db', () => ({ db: {}, sshKeys: {}, gitAppConnections: {}, gitInstallations: {} }));
-mock.module('@kubwave/crypto', () => ({ decryptSecret: (s: string) => s, signJwtRs256: () => 'jwt' }));
+mock.module('@kubwave/crypto', () => ({
+	decryptSecret: (s: string) => s,
+	signJwtRs256: () => 'jwt',
+	generateHtpasswd: (u: string, p: string) => `${u}:{SHA}${p}`
+}));
 
 const { getDeployer } = await import('~/modules/worker/jobs/deployments/deployers/registry');
 

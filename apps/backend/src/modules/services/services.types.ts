@@ -13,13 +13,21 @@ import type {
 
 type SecretsView = Array<{ key: string; hasValue: boolean }>;
 
+export interface BasicAuthView {
+	enabled: boolean;
+	username: string;
+	hasPassword: boolean;
+}
+
+type SensitiveRuntime = 'secrets' | 'basicAuth';
+
 // Config-file content is decrypted in toConfigView, so the view keeps `configFiles` (unlike `secrets`).
-export type DockerImageConfigView = Omit<DockerImageServiceConfig, 'secrets'> & { secrets: SecretsView };
-export type DockerfileConfigView = Omit<DockerfileServiceConfig, 'secrets'> & { secrets: SecretsView };
-export type PublicRepoConfigView = Omit<PublicRepoServiceConfig, 'secrets'> & { secrets: SecretsView };
-export type PrivateRepoConfigView = Omit<PrivateRepoServiceConfig, 'secrets'> & { secrets: SecretsView };
-export type GithubRepoConfigView = Omit<GithubRepoServiceConfig, 'secrets'> & { secrets: SecretsView };
-export type DatabaseConfigView = Omit<DatabaseServiceConfig, 'secrets' | 'password'> & { secrets: SecretsView };
+export type DockerImageConfigView = Omit<DockerImageServiceConfig, SensitiveRuntime> & { secrets: SecretsView; basicAuth?: BasicAuthView };
+export type DockerfileConfigView = Omit<DockerfileServiceConfig, SensitiveRuntime> & { secrets: SecretsView; basicAuth?: BasicAuthView };
+export type PublicRepoConfigView = Omit<PublicRepoServiceConfig, SensitiveRuntime> & { secrets: SecretsView; basicAuth?: BasicAuthView };
+export type PrivateRepoConfigView = Omit<PrivateRepoServiceConfig, SensitiveRuntime> & { secrets: SecretsView; basicAuth?: BasicAuthView };
+export type GithubRepoConfigView = Omit<GithubRepoServiceConfig, SensitiveRuntime> & { secrets: SecretsView; basicAuth?: BasicAuthView };
+export type DatabaseConfigView = Omit<DatabaseServiceConfig, SensitiveRuntime | 'password'> & { secrets: SecretsView; basicAuth?: BasicAuthView };
 export type ServiceConfigView =
 	| DockerImageConfigView
 	| DockerfileConfigView
