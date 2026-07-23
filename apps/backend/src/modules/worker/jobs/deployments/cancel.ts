@@ -129,5 +129,7 @@ export async function reconcileCanceling(kc: KubeConfig, row: Deployment, enviro
 		return;
 	}
 
-	await updateCancelingProgress(row, result.phase, events);
+	if (result.state === 'progressing') {
+		await updateCancelingProgress(row, result.phase, events);
+	}
 }
