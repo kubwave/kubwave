@@ -47,7 +47,7 @@ mock.module('drizzle-orm', () => {
 	};
 });
 
-const { claimDueServices } = await import('~/modules/worker/jobs/git-poll/claim');
+const { claimDueServices, POLLABLE_TYPES } = await import('~/modules/worker/jobs/git-poll/claim');
 
 const now = new Date('2026-06-14T12:00:00.000Z');
 
@@ -67,6 +67,10 @@ describe('claimDueServices', () => {
 			expect(u.set.nextPollAt).toBeInstanceOf(Date);
 			expect((u.set.nextPollAt as Date).getTime()).toBeGreaterThan(now.getTime());
 		}
+	});
+
+	test('github-repo services are pollable (GitHub App auto-deploy)', () => {
+		expect(POLLABLE_TYPES).toContain('github-repo');
 	});
 
 	test('claims nothing and writes no lease when no service is due', async () => {
