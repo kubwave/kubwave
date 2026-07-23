@@ -11,10 +11,19 @@ import { deleteBuildArtifactsForDeployment, hasRunningBuildJobForDeployment } fr
 import { finalize, insertLogs, logEntry, phaseEntry } from './logs.js';
 
 const MAX_CANCEL_ROLLBACK_ATTEMPTS = 3;
-const BUILD_SERVICE_TYPES = new Set<Deployment['type']>(['dockerfile', 'public-repo', 'private-repo']);
+const BUILD_SERVICE_TYPES = new Set<Deployment['type']>(['dockerfile', 'public-repo', 'private-repo', 'github-repo']);
 
 function isBuildDeployment(row: Deployment): boolean {
 	return BUILD_SERVICE_TYPES.has(row.type);
+}
+
+// Runtime reports CrashLoop/ImagePull as progressing with an `error:` phase until the progress
+// deadline fires. Cancel must not wait on that forever — it blocks every newer pending deploy.
+function cancelRollbackError(result: { state: 'failed'; error: string } | { state: 'progressing'; phase: string }): string | null {
+	if (result.state === 'failed') return result.error;
+	if (!result.phase.startsWith('error:')) return null;
+	const detail = result.phase.slice('error:'.length).trim();
+	return detail || result.phase;
 }
 
 async function previousSuccessfulDeployment(row: Deployment): Promise<Deployment | null> {
@@ -102,18 +111,23 @@ export async function reconcileCanceling(kc: KubeConfig, row: Deployment, enviro
 			logEntry('info', 'restored', `Restored previous successful deployment ${previous.id}`),
 			logEntry('warn', 'canceled', 'Deployment canceled')
 		]);
-	} else if (result.state === 'failed') {
+		return;
+	}
+
+	const rollbackError = cancelRollbackError(result);
+	if (rollbackError) {
 		const attempt = (row.rollbackAttempts ?? 0) + 1;
-		const message = `Cancel rollback failed: ${result.error}`;
+		const message = `Cancel rollback failed: ${rollbackError}`;
 		if (attempt >= MAX_CANCEL_ROLLBACK_ATTEMPTS) {
 			await finalize(row.id, 'canceling', { status: 'failed', phase: 'failed', lastError: message, rollbackAttempts: attempt }, [
 				...events,
 				logEntry('error', 'failed', message)
 			]);
 		} else {
-			await recordRollbackFailure(row, result.error, events, attempt);
+			await recordRollbackFailure(row, rollbackError, events, attempt);
 		}
-	} else {
-		await updateCancelingProgress(row, result.phase, events);
+		return;
 	}
+
+	await updateCancelingProgress(row, result.phase, events);
 }
