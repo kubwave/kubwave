@@ -203,7 +203,7 @@ export function resolveBasicAuth(
 	if (!incoming?.enabled) return undefined;
 	const username = incoming.username?.trim();
 	if (!username) {
-		throw new ApiError(400, 'A username is required when basic auth is enabled.');
+		throw new ApiError(400, 'A username is required when enabling basic auth.');
 	}
 
 	if (incoming.password != null) return { username, password: encryptSecret(incoming.password) };
