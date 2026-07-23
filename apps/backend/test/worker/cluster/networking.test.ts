@@ -43,7 +43,13 @@ function fakeCore(state: ServiceState) {
 		},
 		deleteNamespacedService: async () => {
 			calls.delete++;
-		}
+		},
+		readNamespacedSecret: async () => {
+			throw { code: 404 };
+		},
+		createNamespacedSecret: async () => {},
+		replaceNamespacedSecret: async () => {},
+		deleteNamespacedSecret: async () => {}
 	} as unknown as CoreV1Api;
 	return { api, calls, getCreated: () => created, getReplaced: () => replaced };
 }
@@ -350,7 +356,7 @@ describe('teardownNetworking', () => {
 			'svc-abc-tcp-30101': { metadata: { name: 'svc-abc-tcp-30101' } }
 		});
 		await teardownNetworking({ coreApi: core.api, netApi: net.api, customApi: custom.api, namespace: 'ns', serviceId: SERVICE_ID });
-		expect(custom.deleted.sort()).toEqual(['svc-abc-tcp-30100', 'svc-abc-tcp-30101']);
+		expect(custom.deleted.sort()).toEqual(['svc-abc-basic-auth', 'svc-abc-tcp-30100', 'svc-abc-tcp-30101']);
 	});
 
 	test('propagates a non-404 delete error', async () => {
@@ -397,7 +403,8 @@ describe('convergeNetworking — TCP routes', () => {
 		});
 		const events = await run({ core, net, custom, ports: [], domains: [], exposedPorts: [exposure] });
 
-		expect(custom.calls).toEqual({ create: 0, replace: 0, delete: 0 });
+		expect(custom.calls.create).toBe(0);
+		expect(custom.calls.replace).toBe(0);
 		expect(stepMessages(events, 'tcp-route-converged')).toEqual([]);
 	});
 
@@ -425,7 +432,7 @@ describe('convergeNetworking — TCP routes', () => {
 		});
 		const events = await run({ core, net, custom, ports: [8080], domains: [], exposedPorts: [] });
 
-		expect(custom.deleted).toEqual(['svc-abc-tcp-30100']);
+		expect(custom.deleted).toContain('svc-abc-tcp-30100');
 		expect(stepMessages(events, 'tcp-route-converged')).toEqual(['Removed IngressRouteTCP svc-abc-tcp-30100 in ns (port no longer exposed)']);
 	});
 
@@ -437,7 +444,11 @@ describe('convergeNetworking — TCP routes', () => {
 			listNamespacedCustomObject: async () => {
 				listed++;
 				return { items: [] };
-			}
+			},
+			getNamespacedCustomObject: async () => {
+				throw { code: 404 };
+			},
+			deleteNamespacedCustomObject: async () => {}
 		} as unknown as CustomObjectsApi;
 		await convergeNetworking({
 			coreApi: core.api,

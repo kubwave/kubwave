@@ -89,6 +89,19 @@ export const serviceVolumeSchema = z.object({
 		.optional()
 });
 
+export const basicAuthInputSchema = z.object({
+	enabled: z.boolean(),
+	username: z
+		.string()
+		.trim()
+		.min(1)
+		.max(128)
+		.regex(/^[^\s:]+$/, 'Username cannot contain spaces or colons.')
+		.optional(),
+	// null = keep the stored password (same pattern as secrets); a string sets a new one.
+	password: z.string().min(1).max(256).nullable().optional()
+});
+
 export const autoscalingConfigSchema = z.object({
 	enabled: z.boolean(),
 	minReplicas: z.number().int().min(1).max(100).optional(),
@@ -130,7 +143,8 @@ const runtimeConfigBase = z.object({
 	volumes: z.array(serviceVolumeSchema).max(10).default([]),
 	healthCheck: healthCheckSchema.optional(),
 	resources: resourceConfigSchema.optional(),
-	autoscaling: autoscalingConfigSchema.optional()
+	autoscaling: autoscalingConfigSchema.optional(),
+	basicAuth: basicAuthInputSchema.optional()
 });
 
 const dockerImageConfigBase = runtimeConfigBase.extend({
@@ -160,6 +174,11 @@ function refineRuntimeConfig(val: z.infer<typeof runtimeConfigBase>, ctx: z.Refi
 			message: 'Autoscaling cannot be enabled for a service with a persistent volume.',
 			path: ['autoscaling', 'enabled']
 		});
+	}
+
+	const basicAuth = val.basicAuth;
+	if (basicAuth?.enabled && !basicAuth.username?.trim()) {
+		ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'A username is required when basic auth is enabled.', path: ['basicAuth', 'username'] });
 	}
 
 	if (!autoscaling?.enabled) return;

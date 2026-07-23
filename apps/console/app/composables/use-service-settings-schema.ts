@@ -110,12 +110,24 @@ export const serviceSettingsSchema = z
 			targetCpuUtilizationPercentage: z.string(),
 			targetMemoryUtilizationPercentage: z.string()
 		}),
+		basicAuth: z.object({
+			enabled: z.boolean(),
+			username: z.string(),
+			password: z.string(),
+			hasPassword: z.boolean()
+		}),
 		// Repo types only (ignored otherwise); just the toggle — the poll cadence is a global worker setting.
 		autoDeploy: z.object({
 			enabled: z.boolean()
 		})
 	})
 	.superRefine((val, ctx) => {
+		if (val.basicAuth.enabled && !val.basicAuth.username.trim()) {
+			ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'A username is required when basic auth is enabled.', path: ['basicAuth', 'username'] });
+		}
+		if (val.basicAuth.enabled && !val.basicAuth.hasPassword && !val.basicAuth.password) {
+			ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'A password is required when basic auth is enabled.', path: ['basicAuth', 'password'] });
+		}
 		val.domains.forEach((d, i) => {
 			if (d.host.trim() && !isValidPort(d.port.trim())) {
 				ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Use a port between 1 and 65535.', path: ['domains', i, 'port'] });
@@ -293,6 +305,7 @@ export function snapshot(service: Service): ServiceSettingsValues {
 	const hc = service.config.healthCheck;
 	const res = service.config.resources;
 	const as = service.config.autoscaling;
+	const ba = (service.config as { basicAuth?: { enabled?: boolean; username?: string; hasPassword?: boolean } }).basicAuth;
 
 	return {
 		name: service.name,
@@ -363,6 +376,12 @@ export function snapshot(service: Service): ServiceSettingsValues {
 			maxReplicas: as?.maxReplicas?.toString() ?? '',
 			targetCpuUtilizationPercentage: as?.targetCpuUtilizationPercentage?.toString() ?? '',
 			targetMemoryUtilizationPercentage: as?.targetMemoryUtilizationPercentage?.toString() ?? ''
+		},
+		basicAuth: {
+			enabled: ba?.enabled ?? false,
+			username: ba?.username ?? '',
+			password: '',
+			hasPassword: ba?.hasPassword ?? false
 		},
 		autoDeploy: {
 			enabled: service.autoDeploy?.enabled ?? false

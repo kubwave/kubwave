@@ -321,6 +321,7 @@ export class ServicesService {
 			const incomingVolumes = 'volumes' in input.config ? input.config.volumes : [];
 
 			for (const volume of incomingVolumes ?? []) {
+				if (!volume?.name) continue;
 				const liveSize = liveSizes.get(volume.name.trim());
 				if (!liveSize) continue;
 
@@ -336,18 +337,18 @@ export class ServicesService {
 
 			if (service.type === 'dockerfile') {
 				if (!('dockerfile' in incoming)) throw new ServiceConfigTypeMismatchError();
-				values.config = buildStoredDockerfileConfig(incoming, service.config.secrets);
+				values.config = buildStoredDockerfileConfig(incoming, service.config.secrets, service.config.basicAuth);
 			} else if (service.type === 'private-repo') {
 				if (!('sshKeyId' in incoming)) throw new ServiceConfigTypeMismatchError();
 				await this.assertSshKeyForTeam(service.teamId, incoming.sshKeyId);
-				values.config = buildStoredPrivateRepoConfig(incoming, service.config.secrets);
+				values.config = buildStoredPrivateRepoConfig(incoming, service.config.secrets, service.config.basicAuth);
 			} else if (service.type === 'public-repo') {
 				if (!('repoUrl' in incoming) || 'sshKeyId' in incoming) throw new ServiceConfigTypeMismatchError();
-				values.config = buildStoredPublicRepoConfig(incoming, service.config.secrets);
+				values.config = buildStoredPublicRepoConfig(incoming, service.config.secrets, service.config.basicAuth);
 			} else if (service.type === 'github-repo') {
 				if (!('installationId' in incoming) || !('repoFullName' in incoming)) throw new ServiceConfigTypeMismatchError();
 				await this.assertInstallationForTeam(service.teamId, incoming.installationId);
-				values.config = buildStoredGithubRepoConfig(incoming, service.config.secrets);
+				values.config = buildStoredGithubRepoConfig(incoming, service.config.secrets, service.config.basicAuth);
 			} else if (isDatabaseEngine(service.type)) {
 				if (!('version' in incoming) || !('storage' in incoming)) throw new ServiceConfigTypeMismatchError();
 				if (!isAllowedDatabaseVersion(service.type, incoming.version)) throw new InvalidDatabaseVersionError(incoming.version);
@@ -360,7 +361,7 @@ export class ServicesService {
 				values.config = buildStoredDatabaseConfig(service.type, incoming, { secrets: stored.secrets, password: stored.password });
 			} else {
 				if (!('image' in incoming)) throw new ServiceConfigTypeMismatchError();
-				values.config = buildStoredConfig(incoming, service.config.secrets);
+				values.config = buildStoredConfig(incoming, service.config.secrets, service.config.basicAuth);
 			}
 		}
 

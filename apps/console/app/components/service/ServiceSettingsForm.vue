@@ -94,7 +94,8 @@ function groupForPath(path: string): GroupKey {
 	const head = path.split('.')[0] ?? '';
 	if (head === 'name' || head === 'description') return 'general';
 	if (head === 'resources' || head === 'autoscaling' || head === 'volumes' || head === 'configFiles') return 'resources';
-	if (head === 'healthCheck' || head === 'domains' || head === 'defaultDomainEnabled' || head === 'exposedPorts') return 'networking';
+	if (head === 'healthCheck' || head === 'domains' || head === 'defaultDomainEnabled' || head === 'exposedPorts' || head === 'basicAuth')
+		return 'networking';
 	if (head === 'env' || head === 'secrets') return 'variables';
 	return 'source';
 }
@@ -287,7 +288,14 @@ function buildConfig(values: ServiceSettingsValues) {
 			})),
 		healthCheck,
 		...(Object.keys(resources).length > 0 ? { resources } : {}),
-		autoscaling
+		autoscaling,
+		basicAuth: values.basicAuth.enabled
+			? {
+					enabled: true,
+					username: values.basicAuth.username.trim(),
+					password: values.basicAuth.password || null
+				}
+			: { enabled: false }
 	};
 
 	// Narrow DB config: database/username are immutable post-create and pass through unchanged; version + storage come from the form.

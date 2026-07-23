@@ -1,4 +1,5 @@
 import type {
+	BasicAuthConfig,
 	DatabaseEngine,
 	DatabaseServiceConfig,
 	DockerfileServiceConfig,
@@ -12,6 +13,7 @@ import type {
 } from '@kubwave/db';
 import { DATABASE_ENGINE_CATALOG } from '@kubwave/db/database-engines';
 import { decryptSecret, encryptSecret, generatePassword } from '@kubwave/crypto';
+import { ApiError } from '../../shared/errors/api-error';
 import type {
 	DatabaseUpdateConfigInput,
 	DockerfileConfigInput,
@@ -20,16 +22,23 @@ import type {
 	PrivateRepoConfigInput,
 	PublicRepoConfigInput
 } from './services.dto.js';
-import type { ServiceConfigView } from './services.types.js';
+import type { BasicAuthView, ServiceConfigView } from './services.types.js';
+
+function toBasicAuthView(stored: BasicAuthConfig | undefined): BasicAuthView | undefined {
+	if (!stored) return undefined;
+	return { enabled: true, username: stored.username, hasPassword: true };
+}
 
 export function toConfigView(stored: ServiceConfig): ServiceConfigView {
-	const { secrets, configFiles, ...rest } = stored;
+	const { secrets, configFiles, basicAuth, ...rest } = stored;
+	const basicAuthView = toBasicAuthView(basicAuth);
 	const view = {
 		...rest,
 		domains: stored.domains ?? [],
 		secrets: (secrets ?? []).map(secret => ({ key: secret.key, hasValue: true })),
 		// Config files are decrypted for display so users can read/author their own configs.
-		...(configFiles ? { configFiles: configFiles.map(file => ({ path: file.path, content: decryptSecret(file.content) })) } : {})
+		...(configFiles ? { configFiles: configFiles.map(file => ({ path: file.path, content: decryptSecret(file.content) })) } : {}),
+		...(basicAuthView ? { basicAuth: basicAuthView } : {})
 	};
 
 	delete (view as { password?: string }).password;
@@ -71,25 +80,30 @@ function normalizeRuntime(config: RuntimeConfig): RuntimeConfig {
 	const healthCheck = config.healthCheck;
 	const resources = normalizeResources(config.resources);
 	const autoscaling = normalizeAutoscaling(config.autoscaling);
-	const secrets = (config.secrets ?? []).map(item => ({ key: item.key.trim(), value: item.value }));
+	const secrets = (config.secrets ?? []).filter(item => item?.key != null).map(item => ({ key: item.key.trim(), value: item.value }));
 	// Content is already ciphertext here (encrypted by resolveConfigFiles before normalize); just pass it through.
-	const configFiles = (config.configFiles ?? []).map(file => ({ path: file.path.trim(), content: file.content }));
+	const configFiles = (config.configFiles ?? []).filter(file => file?.path != null).map(file => ({ path: file.path.trim(), content: file.content }));
 
 	return {
 		containerPort: config.containerPort,
 		...(config.defaultDomainEnabled === true ? { defaultDomainEnabled: true } : {}),
-		env: config.env.map(item => ({ key: item.key.trim(), value: item.value.trim() })),
+		env: (config.env ?? [])
+			.filter(item => item?.key != null && item?.value != null)
+			.map(item => ({ key: item.key.trim(), value: item.value.trim() })),
 		...(secrets.length > 0 ? { secrets } : {}),
-		domains: (config.domains ?? []).map(domain => ({ host: domain.host.trim(), port: domain.port })),
-		volumes: (config.volumes ?? []).map(volume => ({
-			name: volume.name.trim(),
-			mountPath: volume.mountPath.trim(),
-			size: volume.size.trim(),
-			...(volume.subPath ? { subPath: volume.subPath.trim() } : {})
-		})),
+		domains: (config.domains ?? []).filter(domain => domain?.host != null).map(domain => ({ host: domain.host.trim(), port: domain.port })),
+		volumes: (config.volumes ?? [])
+			.filter(volume => volume?.name != null && volume?.mountPath != null && volume?.size != null)
+			.map(volume => ({
+				name: volume.name.trim(),
+				mountPath: volume.mountPath.trim(),
+				size: volume.size.trim(),
+				...(volume.subPath ? { subPath: volume.subPath.trim() } : {})
+			})),
 		...(configFiles.length > 0 ? { configFiles } : {}),
 		...(config.command && config.command.length > 0 ? { command: config.command } : {}),
 		...(config.args && config.args.length > 0 ? { args: config.args } : {}),
+		...(config.basicAuth?.username != null ? { basicAuth: { username: config.basicAuth.username.trim(), password: config.basicAuth.password } } : {}),
 		...(healthCheck?.enabled
 			? {
 					healthCheck: {
@@ -182,54 +196,76 @@ export function resolveConfigFiles(incoming: DockerImageConfigInput['configFiles
 	return out;
 }
 
-function withResolvedSecrets<T extends { secrets: DockerImageConfigInput['secrets'] }>(
+export function resolveBasicAuth(
+	incoming: { enabled: boolean; username?: string; password?: string | null } | undefined,
+	existing: BasicAuthConfig | undefined
+): BasicAuthConfig | undefined {
+	if (!incoming?.enabled) return undefined;
+	const username = incoming.username?.trim();
+	if (!username) return undefined;
+
+	if (incoming.password != null) return { username, password: encryptSecret(incoming.password) };
+	if (existing) return { username, password: existing.password };
+	throw new ApiError(400, 'A password is required when enabling basic auth.');
+}
+
+function withResolvedSensitive<
+	T extends { secrets: DockerImageConfigInput['secrets']; basicAuth?: { enabled: boolean; username?: string; password?: string | null } }
+>(
 	input: T,
-	existingSecrets: RuntimeConfig['secrets']
-): Omit<T, 'secrets'> & { secrets: Array<{ key: string; value: string }> } {
-	return { ...input, secrets: resolveSecrets(input.secrets, existingSecrets) };
+	existingSecrets: RuntimeConfig['secrets'],
+	existingBasicAuth: BasicAuthConfig | undefined
+): Omit<T, 'secrets' | 'basicAuth'> & { secrets: Array<{ key: string; value: string }>; basicAuth?: BasicAuthConfig } {
+	const basicAuth = resolveBasicAuth(input.basicAuth, existingBasicAuth);
+	return { ...input, secrets: resolveSecrets(input.secrets, existingSecrets), basicAuth };
 }
 
 // exposedPorts is handled by the service layer (server-allocated public ports), never by config normalization.
 export function buildStoredConfig(
 	input: Omit<DockerImageConfigInput, 'exposedPorts'>,
-	existingSecrets: RuntimeConfig['secrets']
+	existingSecrets: RuntimeConfig['secrets'],
+	existingBasicAuth?: BasicAuthConfig
 ): DockerImageServiceConfig {
 	return normalizeDockerConfig({
-		...withResolvedSecrets(input, existingSecrets),
+		...withResolvedSensitive(input, existingSecrets, existingBasicAuth),
 		configFiles: resolveConfigFiles(input.configFiles)
 	});
 }
 
 export function buildStoredDockerfileConfig(
 	input: Omit<DockerfileConfigInput, 'exposedPorts'>,
-	existingSecrets: RuntimeConfig['secrets']
+	existingSecrets: RuntimeConfig['secrets'],
+	existingBasicAuth?: BasicAuthConfig
 ): DockerfileServiceConfig {
-	return normalizeDockerfileConfig(withResolvedSecrets(input, existingSecrets));
+	return normalizeDockerfileConfig(withResolvedSensitive(input, existingSecrets, existingBasicAuth));
 }
 
 export function buildStoredPublicRepoConfig(
 	input: Omit<PublicRepoConfigInput, 'exposedPorts'>,
-	existingSecrets: RuntimeConfig['secrets']
+	existingSecrets: RuntimeConfig['secrets'],
+	existingBasicAuth?: BasicAuthConfig
 ): PublicRepoServiceConfig {
-	return normalizePublicRepoConfig(withResolvedSecrets(input, existingSecrets));
+	return normalizePublicRepoConfig(withResolvedSensitive(input, existingSecrets, existingBasicAuth));
 }
 
 export function buildStoredPrivateRepoConfig(
 	input: Omit<PrivateRepoConfigInput, 'exposedPorts'>,
-	existingSecrets: RuntimeConfig['secrets']
+	existingSecrets: RuntimeConfig['secrets'],
+	existingBasicAuth?: BasicAuthConfig
 ): PrivateRepoServiceConfig {
-	return normalizePrivateRepoConfig(withResolvedSecrets(input, existingSecrets));
+	return normalizePrivateRepoConfig(withResolvedSensitive(input, existingSecrets, existingBasicAuth));
 }
 
 // repoUrl isn't client-supplied for github-repo — it's derived from repoFullName so the stored clone URL is always canonical.
 export function buildStoredGithubRepoConfig(
 	input: Omit<GithubRepoConfigInput, 'exposedPorts'>,
-	existingSecrets: RuntimeConfig['secrets']
+	existingSecrets: RuntimeConfig['secrets'],
+	existingBasicAuth?: BasicAuthConfig
 ): GithubRepoServiceConfig {
 	const repoFullName = input.repoFullName.trim();
 	const repoUrl = `https://github.com/${repoFullName}.git`;
 	return normalizeGithubRepoConfig({
-		...withResolvedSecrets(input, existingSecrets),
+		...withResolvedSensitive(input, existingSecrets, existingBasicAuth),
 		repoUrl
 	} as unknown as GithubRepoServiceConfig);
 }
@@ -247,7 +283,7 @@ function normalizeDatabaseConfig(
 
 	return {
 		containerPort: DATABASE_ENGINE_CATALOG[engine].port,
-		env: input.env.map(item => ({ key: item.key.trim(), value: item.value.trim() })),
+		env: (input.env ?? []).filter(item => item?.key != null && item?.value != null).map(item => ({ key: item.key.trim(), value: item.value.trim() })),
 		...(secrets.length > 0 ? { secrets } : {}),
 		domains: [],
 		volumes: [],

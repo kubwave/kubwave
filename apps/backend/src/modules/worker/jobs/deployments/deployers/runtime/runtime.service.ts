@@ -10,7 +10,8 @@ import {
 	rolloutFailureMessage,
 	unhealthyReason
 } from '../../../../../../shared/cluster/ops.js';
-import { convergeNetworking, stepEvent, teardownNetworking } from '../../../../../../shared/cluster/networking.js';
+import { type BasicAuthSpec, convergeNetworking, stepEvent, teardownNetworking } from '../../../../../../shared/cluster/networking.js';
+import { decryptSecret } from '@kubwave/crypto';
 import { env } from '../../../../../../shared/config/worker-env.js';
 import { tenantIsolation } from '../../../../../../shared/cluster/isolation.js';
 import type { DeployContext, ReconcileResult, TeardownContext } from '../types.js';
@@ -21,6 +22,11 @@ import { convergePullSecret } from './pull-secret.js';
 import { convergeSecret } from './secrets.js';
 import { convergeConfigFiles, filesSecretName } from './config-files.js';
 import { buildPVC } from './storage.js';
+
+function resolveBasicAuthSpec(config: RuntimeConfig): BasicAuthSpec | undefined {
+	if (!config.basicAuth) return undefined;
+	return { username: config.basicAuth.username, password: decryptSecret(config.basicAuth.password) };
+}
 
 async function convergePersistentVolumes(
 	coreApi: CoreV1Api,
@@ -83,6 +89,7 @@ async function syncRuntimeNetworking(args: {
 		exposedPorts: args.config.exposedPorts ?? [],
 		tcpRoutesEnabled: env.tcpPortPoolEnabled,
 		ingress: args.ctx.ingress,
+		basicAuth: resolveBasicAuthSpec(args.config),
 		events: args.events
 	});
 	await convergeHPA(args.autoscalingApi, args.ctx.namespace, args.serviceId, args.config, args.events);
