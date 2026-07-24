@@ -1,7 +1,6 @@
 import { and, desc, eq, lt } from 'drizzle-orm';
 import { CoreV1Api, NetworkingV1Api, type KubeConfig } from '@kubernetes/client-node';
 import { db, deployments, type Deployment, type DeploymentLogEntry } from '@kubwave/db';
-import { environmentNamespace } from '@kubwave/kube';
 import { env } from '../../../../shared/config/worker-env.js';
 import { ensureEnvironmentNamespace } from '../../../../shared/cluster/namespaces.js';
 import { tenantIsolation } from '../../../../shared/cluster/isolation.js';
@@ -80,15 +79,6 @@ export async function reconcileCanceling(kc: KubeConfig, row: Deployment, enviro
 	const previous = await previousSuccessfulDeployment(row);
 	const deployer = getDeployer(row.type);
 
-	if (!previous) {
-		await deployer.teardown({ kc, namespace: environmentNamespace(environmentId), serviceId: row.serviceId });
-		await finalize(row.id, 'canceling', { status: 'canceled', phase: 'canceled', lastError: null }, [
-			logEntry('warn', 'cleanup', 'Removed deployment resources because no previous successful deployment exists'),
-			logEntry('warn', 'canceled', 'Deployment canceled')
-		]);
-		return;
-	}
-
 	const coreApi = kc.makeApiClient(CoreV1Api);
 	const netApi = kc.makeApiClient(NetworkingV1Api);
 	const namespace = await ensureEnvironmentNamespace({
@@ -98,6 +88,15 @@ export async function reconcileCanceling(kc: KubeConfig, row: Deployment, enviro
 		ingressControllerNamespace: env.ingressControllerNamespace,
 		isolation: tenantIsolation
 	});
+
+	if (!previous) {
+		await deployer.teardown({ kc, namespace, serviceId: row.serviceId });
+		await finalize(row.id, 'canceling', { status: 'canceled', phase: 'canceled', lastError: null }, [
+			logEntry('warn', 'cleanup', 'Removed deployment resources because no previous successful deployment exists'),
+			logEntry('warn', 'canceled', 'Deployment canceled')
+		]);
+		return;
+	}
 
 	const result = await getDeployer(previous.type).reconcile({
 		kc,
