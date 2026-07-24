@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Box, Braces, Cpu, Globe, Settings2, ShieldAlert } from 'lucide-vue-next';
 import type { Service } from '~/utils/types';
+import { watchPathConfigFields } from '~/utils/repo-watch-paths';
 import { snapshot, makeServiceSettingsSchema, type ServiceSettingsValues } from '~/composables/use-service-settings-schema';
 import { isDatabaseEngine } from '~/utils/database-engines';
 import { SERVICE_SETTINGS_ERRORS } from '~/components/service/settings/service-settings-context';
@@ -229,6 +230,7 @@ function repoBuildFields(values: ServiceSettingsValues) {
 		...(values.builder === 'dockerfile' && values.dockerfilePath.trim() ? { dockerfilePath: values.dockerfilePath.trim() } : {}),
 		...(values.commit.trim() ? { commit: values.commit.trim() } : {}),
 		...(values.rootDirectory.trim() ? { rootDirectory: values.rootDirectory.trim() } : {}),
+		...watchPathConfigFields(values.watchPaths, values.watchEntireRepo),
 		...(values.builder !== 'dockerfile' && values.buildCommand.trim() ? { buildCommand: values.buildCommand.trim() } : {}),
 		...(values.builder !== 'dockerfile' && values.startCommand.trim() ? { startCommand: values.startCommand.trim() } : {})
 	};

@@ -67,6 +67,8 @@ export const serviceSettingsSchema = z
 		branch: z.string(),
 		commit: z.string(),
 		rootDirectory: z.string(),
+		watchPaths: z.string(),
+		watchEntireRepo: z.boolean(),
 		buildCommand: z.string(),
 		startCommand: z.string(),
 		// private-repo only: the team deploy key id. Empty for every other type.
@@ -317,6 +319,8 @@ export function snapshot(service: Service): ServiceSettingsValues {
 		branch: 'branch' in service.config ? service.config.branch : '',
 		commit: 'commit' in service.config ? (service.config.commit ?? '') : '',
 		rootDirectory: 'rootDirectory' in service.config ? (service.config.rootDirectory ?? '') : '',
+		watchPaths: 'watchPaths' in service.config ? (service.config.watchPaths ?? []).join('\n') : '',
+		watchEntireRepo: 'watchEntireRepo' in service.config ? service.config.watchEntireRepo === true : false,
 		buildCommand: 'buildCommand' in service.config ? (service.config.buildCommand ?? '') : '',
 		startCommand: 'startCommand' in service.config ? (service.config.startCommand ?? '') : '',
 		sshKeyId: 'sshKeyId' in service.config ? service.config.sshKeyId : '',

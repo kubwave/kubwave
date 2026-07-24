@@ -98,6 +98,7 @@ export interface WorkerRuntimeConfig {
 	gitPollBatch: number;
 	gitPollServiceIntervalSeconds: number;
 	gitLsRemoteTimeoutMs: number;
+	gitDiffTimeoutMs: number;
 	gitPollErrorBackoffSeconds: number;
 	templateCatalogUrl: string;
 	templateCatalogPollIntervalMs: number;
@@ -172,6 +173,7 @@ export function resolveWorkerRuntimeConfig(): WorkerRuntimeConfig {
 		gitPollBatch: num('GIT_POLL_BATCH', 20),
 		gitPollServiceIntervalSeconds: num('GIT_POLL_SERVICE_INTERVAL_SECONDS', 60),
 		gitLsRemoteTimeoutMs: num('GIT_LS_REMOTE_TIMEOUT_MS', 20_000),
+		gitDiffTimeoutMs: num('GIT_DIFF_TIMEOUT_MS', 30_000),
 		gitPollErrorBackoffSeconds: num('GIT_POLL_ERROR_BACKOFF_SECONDS', 300),
 		templateCatalogUrl: process.env.TEMPLATE_CATALOG_URL ?? 'https://raw.githubusercontent.com/kubwave/kubwave/main/packages/templates/catalog.json',
 		templateCatalogPollIntervalMs: num('TEMPLATE_CATALOG_POLL_INTERVAL_MS', 1_800_000),

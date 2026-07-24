@@ -135,6 +135,10 @@ export interface PublicRepoServiceConfig extends RuntimeConfig {
 	branch: string;
 	commit?: string;
 	rootDirectory?: string;
+	// Extra repo-relative prefixes that also trigger auto-deploy (shared packages). Used with rootDirectory unless watchEntireRepo.
+	watchPaths?: string[];
+	// When true, auto-deploy ignores rootDirectory/watchPaths and reacts to any commit on the branch.
+	watchEntireRepo?: boolean;
 	buildCommand?: string;
 	startCommand?: string;
 	// 'nixpacks' (default) auto-generates a Dockerfile from the source; 'dockerfile' uses the repo's own. buildCommand/startCommand apply to nixpacks only.
@@ -147,6 +151,8 @@ export interface PrivateRepoServiceConfig extends RuntimeConfig {
 	branch: string;
 	commit?: string;
 	rootDirectory?: string;
+	watchPaths?: string[];
+	watchEntireRepo?: boolean;
 	buildCommand?: string;
 	startCommand?: string;
 	// FK → ssh_keys.id (scope='team'). The API validates it belongs to the service's team.
@@ -162,6 +168,8 @@ export interface GithubRepoServiceConfig extends RuntimeConfig {
 	branch: string;
 	commit?: string;
 	rootDirectory?: string;
+	watchPaths?: string[];
+	watchEntireRepo?: boolean;
 	buildCommand?: string;
 	startCommand?: string;
 	// FK → git_installations.id. The API validates it belongs to the service's team.

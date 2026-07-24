@@ -287,6 +287,19 @@ const publicRepoConfigBase = runtimeConfigBase.extend({
 		.regex(gitRefRegex, 'Enter a valid sub-directory.')
 		.refine(noTraversal, 'Sub-directory cannot traverse outside the repo.')
 		.optional(),
+	watchPaths: z
+		.array(
+			z
+				.string()
+				.trim()
+				.max(255)
+				.regex(gitRefRegex, 'Enter a valid watch path.')
+				.refine(noTraversal, 'Watch path cannot traverse outside the repo.')
+				.refine(value => !value.startsWith('/'), 'Watch path must be relative to the repo root.')
+		)
+		.max(20)
+		.optional(),
+	watchEntireRepo: z.boolean().optional(),
 	buildCommand: z.string().trim().max(4000).optional(),
 	startCommand: z.string().trim().max(4000).optional(),
 	builder: z.enum(['nixpacks', 'dockerfile']).default('nixpacks'),
