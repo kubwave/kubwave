@@ -1,12 +1,6 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { eq } from 'drizzle-orm';
-import { db, sshKeys } from '@kubwave/db';
-import { decryptSecret } from '@kubwave/crypto';
 import { errorMessage } from '../../../../shared/worker-common/errors.js';
-import { gitTokenAuthEnv } from '../../../git/git-clone-auth.js';
+import { prepareGitAuthEnv } from './git-auth.js';
 
 // Resolve branch HEAD via git ls-remote; private repos auth with the team deploy key decrypted into a 0600 temp file, removed afterwards.
 
@@ -45,41 +39,13 @@ export function parseLsRemote(stdout: string, ref: string): string | null {
 	return parseLsRemoteRefs(stdout).get(wanted) ?? null;
 }
 
-// BatchMode stops an interactive prompt from hanging the subprocess; accept-new + /dev/null known_hosts means host keys aren't pinned yet.
-function sshCommand(keyPath: string): string {
-	return `ssh -i ${keyPath} -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR`;
-}
-
-async function decryptDeployKey(sshKeyId: string): Promise<string> {
-	const [row] = await db.select({ ciphertext: sshKeys.privateKeyCiphertext }).from(sshKeys).where(eq(sshKeys.id, sshKeyId)).limit(1);
-	if (!row) throw new Error('Deploy key not found — it may have been deleted. Reattach a key in the service settings.');
-	const key = decryptSecret(row.ciphertext);
-	return key.endsWith('\n') ? key : `${key}\n`;
-}
-
 // Branch HEAD SHA, or null if the branch is gone; throws on auth/network/timeout (caller records last_poll_error).
 export async function resolveRemoteHead(opts: ResolveHeadOptions): Promise<string | null> {
-	let keyDir: string | undefined;
-	const gitEnv: Record<string, string> = {
-		...process.env,
-		// Never let git prompt for credentials — a private HTTPS URL without auth must fail fast.
-		GIT_TERMINAL_PROMPT: '0'
-	};
+	const auth = await prepareGitAuthEnv(opts);
 
 	try {
-		if (opts.sshKeyId) {
-			keyDir = await mkdtemp(join(tmpdir(), 'gitpoll-'));
-			const keyPath = join(keyDir, 'id');
-			await writeFile(keyPath, await decryptDeployKey(opts.sshKeyId), { mode: 0o600 });
-			gitEnv.GIT_SSH_COMMAND = sshCommand(keyPath);
-		} else if (opts.installationId) {
-			// Lazy import keeps the installation-token module (and its db/crypto deps) out of the static graph, so the pure parse tests stay stub-free.
-			const { getInstallationToken } = await import('../../../git/installation-token.js');
-			Object.assign(gitEnv, gitTokenAuthEnv(opts.repoUrl, await getInstallationToken(opts.installationId)));
-		}
-
 		const wantedRef = toRemoteRef(opts.branch);
-		const proc = spawn('git', ['ls-remote', opts.repoUrl, wantedRef], { env: gitEnv });
+		const proc = spawn('git', ['ls-remote', opts.repoUrl, wantedRef], { env: auth.env });
 
 		// Surface the timeout as an error: a signal-killed git otherwise looks like a clean empty exit, misread as "branch deleted".
 		let timedOut = false;
@@ -117,6 +83,6 @@ export async function resolveRemoteHead(opts: ResolveHeadOptions): Promise<strin
 	} catch (err) {
 		throw new Error(errorMessage(err));
 	} finally {
-		if (keyDir) await rm(keyDir, { recursive: true, force: true }).catch(() => {});
+		await auth.cleanup();
 	}
 }

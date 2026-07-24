@@ -14,6 +14,7 @@ import type {
 import { DATABASE_ENGINE_CATALOG } from '@kubwave/db/database-engines';
 import { decryptSecret, encryptSecret, generatePassword } from '@kubwave/crypto';
 import { ApiError } from '../../shared/errors/api-error';
+import { normalizeRepoRelativePath, normalizeWatchPaths } from '../../shared/git/repo-relative-path.js';
 import type {
 	DatabaseUpdateConfigInput,
 	DockerfileConfigInput,
@@ -134,7 +135,9 @@ export function normalizeDockerfileConfig(config: DockerfileServiceConfig): Dock
 
 export function normalizePublicRepoConfig(config: PublicRepoServiceConfig): PublicRepoServiceConfig {
 	const commit = config.commit?.trim();
-	const rootDirectory = config.rootDirectory?.trim();
+	const rootDirectory = config.rootDirectory ? normalizeRepoRelativePath(config.rootDirectory) : '';
+	const watchEntireRepo = config.watchEntireRepo === true;
+	const watchPaths = watchEntireRepo ? undefined : normalizeWatchPaths(config.watchPaths);
 	const isDockerfile = config.builder === 'dockerfile';
 	const dockerfilePath = config.dockerfilePath?.trim();
 	const buildCommand = config.buildCommand?.trim();
@@ -146,6 +149,8 @@ export function normalizePublicRepoConfig(config: PublicRepoServiceConfig): Publ
 		builder: config.builder,
 		...(commit ? { commit } : {}),
 		...(rootDirectory ? { rootDirectory } : {}),
+		...(watchPaths ? { watchPaths } : {}),
+		...(watchEntireRepo ? { watchEntireRepo: true } : {}),
 		...(isDockerfile && dockerfilePath ? { dockerfilePath } : {}),
 		...(!isDockerfile && buildCommand ? { buildCommand } : {}),
 		...(!isDockerfile && startCommand ? { startCommand } : {}),

@@ -136,6 +136,7 @@ The Backend Worker orchestrates tenant workloads through a Nest application cont
 | `GIT_POLL_BATCH`                    | No       | `20`    | Max repos to poll per tick.                         |
 | `GIT_POLL_SERVICE_INTERVAL_SECONDS` | No       | `60`    | Minimum interval between polls of the same service. |
 | `GIT_LS_REMOTE_TIMEOUT_MS`          | No       | `20000` | Timeout for `git ls-remote` calls.                  |
+| `GIT_DIFF_TIMEOUT_MS`               | No       | `30000` | Timeout for path-filter `git diff` between commits. |
 | `GIT_POLL_ERROR_BACKOFF_SECONDS`    | No       | `300`   | Backoff after a poll error (5 min).                 |
 
 ### PR preview environments

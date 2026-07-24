@@ -97,6 +97,8 @@ const sourceIsDockerfile = computed(() => props.state.builder === 'dockerfile');
 		</div>
 		<p v-if="!state.autoDeploy.enabled" class="text-sm text-muted-foreground">Disabled — deploy manually or pin a commit above.</p>
 
+		<ServiceAutoDeployWatchFields :state="state" :saving="saving" />
+
 		<dl
 			v-if="state.autoDeploy.enabled && (service.autoDeploy.lastPolledAt || service.autoDeploy.lastPollError)"
 			class="flex flex-col gap-1 rounded-md border bg-accent/30 px-3 py-2 text-xs"

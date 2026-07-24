@@ -97,6 +97,8 @@ export interface PublicRepoServiceConfig<TSecret = SecretView> extends RuntimeCo
 	branch: string;
 	commit?: string;
 	rootDirectory?: string;
+	watchPaths?: string[];
+	watchEntireRepo?: boolean;
 	buildCommand?: string;
 	startCommand?: string;
 	builder: 'nixpacks' | 'dockerfile';
