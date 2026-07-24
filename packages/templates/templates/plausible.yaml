@@ -1,0 +1,122 @@
+id: plausible
+name: Plausible
+description: Privacy-friendly web analytics — lightweight, open-source, and cookie-free.
+category: analytics
+tags: [analytics, privacy, stats]
+logo: plausible.svg
+documentation: https://github.com/plausible/community-edition/wiki
+schemaVersion: 1
+version: 1
+inputs:
+  - key: domain
+    label: Public domain
+    type: string
+    required: true
+    placeholder: plausible.example.com
+secrets:
+  - { key: db_password, generate: password }
+  - { key: secret_key_base, generate: password }
+  - { key: secret_key_base2, generate: password }
+services:
+  - name: db
+    primary: false
+    type: docker-image
+    config:
+      image: postgres
+      tag: '16-alpine'
+      containerPort: 5432
+      env:
+        - { key: POSTGRES_DB, value: plausible_db }
+      secrets:
+        - { key: POSTGRES_PASSWORD, value: '{{ secrets.db_password }}' }
+      domains: []
+      volumes:
+        - { name: data, mountPath: /var/lib/postgresql/data, size: 1Gi, subPath: pgdata }
+  - name: clickhouse
+    primary: false
+    type: docker-image
+    config:
+      image: clickhouse/clickhouse-server
+      tag: 24.12-alpine
+      containerPort: 8123
+      env:
+        - { key: CLICKHOUSE_SKIP_USER_SETUP, value: '1' }
+      domains: []
+      volumes:
+        - { name: data, mountPath: /var/lib/clickhouse, size: 5Gi }
+        - { name: logs, mountPath: /var/log/clickhouse-server, size: 1Gi }
+      configFiles:
+        - path: /etc/clickhouse-server/config.d/logs.xml
+          content: |
+            <clickhouse>
+                <logger>
+                    <level>warning</level>
+                    <console>true</console>
+                </logger>
+
+                <query_log replace="1">
+                    <database>system</database>
+                    <table>query_log</table>
+                    <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+                    <engine>
+                        ENGINE = MergeTree
+                        PARTITION BY event_date
+                        ORDER BY (event_time)
+                        TTL event_date + interval 30 day
+                        SETTINGS ttl_only_drop_parts=1
+                    </engine>
+                </query_log>
+
+                <metric_log remove="remove" />
+                <asynchronous_metric_log remove="remove" />
+                <query_thread_log remove="remove" />
+                <text_log remove="remove" />
+                <trace_log remove="remove" />
+                <session_log remove="remove" />
+                <part_log remove="remove" />
+            </clickhouse>
+        - path: /etc/clickhouse-server/config.d/ipv4-only.xml
+          content: |
+            <clickhouse>
+                <listen_host>0.0.0.0</listen_host>
+            </clickhouse>
+        - path: /etc/clickhouse-server/config.d/low-resources.xml
+          content: |
+            <clickhouse>
+                <mark_cache_size>524288000</mark_cache_size>
+            </clickhouse>
+        - path: /etc/clickhouse-server/users.d/default-profile-low-resources-overrides.xml
+          content: |
+            <clickhouse>
+                <profiles>
+                    <default>
+                        <max_threads>1</max_threads>
+                        <max_block_size>8192</max_block_size>
+                        <max_download_threads>1</max_download_threads>
+                        <input_format_parallel_parsing>0</input_format_parallel_parsing>
+                        <output_format_parallel_formatting>0</output_format_parallel_formatting>
+                    </default>
+                </profiles>
+            </clickhouse>
+  - name: plausible
+    primary: true
+    type: docker-image
+    config:
+      image: ghcr.io/plausible/community-edition
+      tag: v3.2.1
+      containerPort: 8000
+      command:
+        - sh
+        - -c
+        - /entrypoint.sh db createdb && /entrypoint.sh db migrate && /entrypoint.sh run
+      env:
+        - { key: BASE_URL, value: 'https://{{ inputs.domain }}' }
+        - { key: TMPDIR, value: /var/lib/plausible/tmp }
+        - { key: DATABASE_URL, value: 'postgres://postgres:{{ secrets.db_password }}@{{ services.db.host }}:5432/plausible_db' }
+        - { key: CLICKHOUSE_DATABASE_URL, value: 'http://{{ services.clickhouse.host }}:8123/plausible_events_db' }
+      secrets:
+        - { key: SECRET_KEY_BASE, value: '{{ secrets.secret_key_base }}{{ secrets.secret_key_base2 }}' }
+      domains:
+        - { host: '{{ inputs.domain }}', port: 8000 }
+      volumes:
+        - { name: data, mountPath: /var/lib/plausible, size: 1Gi }
