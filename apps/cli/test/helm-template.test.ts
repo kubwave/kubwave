@@ -116,6 +116,7 @@ describe('helm chart rendering', () => {
 	});
 
 	for (const optionalValue of optionalTopLevelValues) {
+		// First helm template in this file pays cold-start cost in CI (chart parse); 15s was flaky.
 		test(`renders when ${optionalValue.key} is missing from old release values`, () => {
 			const objects = renderObjects(['--set-json', `${optionalValue.key}=null`]);
 
@@ -124,7 +125,7 @@ describe('helm chart rendering', () => {
 					false
 				);
 			}
-		}, 15000);
+		}, 60_000);
 	}
 
 	test('configures node containerd trust for the in-cluster HTTP registry', () => {
