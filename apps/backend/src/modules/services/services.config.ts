@@ -30,7 +30,7 @@ function toBasicAuthView(stored: BasicAuthConfig | undefined): BasicAuthView | u
 }
 
 export function toConfigView(stored: ServiceConfig): ServiceConfigView {
-	const { secrets, configFiles, basicAuth, ...rest } = stored;
+	const { secrets, configFiles, basicAuth, password: _password, ...rest } = stored;
 	const basicAuthView = toBasicAuthView(basicAuth);
 	const view = {
 		...rest,
@@ -41,7 +41,6 @@ export function toConfigView(stored: ServiceConfig): ServiceConfigView {
 		...(basicAuthView ? { basicAuth: basicAuthView } : {})
 	};
 
-	delete (view as { password?: string }).password;
 	return view as ServiceConfigView;
 }
 
