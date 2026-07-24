@@ -1,9 +1,9 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 
 // Kill the whole process group (git + SSH children). Requires spawn({ detached: true }).
-export function killGitProcessGroup(proc: ChildProcess): void {
+export function killGitProcessGroup(proc: ChildProcess): NodeJS.Timeout | undefined {
 	const pid = proc.pid;
-	if (pid == null) return;
+	if (pid == null) return undefined;
 	try {
 		process.kill(-pid, 'SIGTERM');
 	} catch {
@@ -13,7 +13,7 @@ export function killGitProcessGroup(proc: ChildProcess): void {
 			// already exited
 		}
 	}
-	setTimeout(() => {
+	return setTimeout(() => {
 		try {
 			process.kill(-pid, 'SIGKILL');
 		} catch {
@@ -29,9 +29,10 @@ export function killGitProcessGroup(proc: ChildProcess): void {
 export async function runGit(args: string[], opts: { cwd?: string; env: NodeJS.ProcessEnv; timeoutMs: number }): Promise<string> {
 	const proc = spawn('git', args, { cwd: opts.cwd, env: opts.env, detached: true });
 	let timedOut = false;
+	let killFallbackTimer: NodeJS.Timeout | undefined;
 	const timer = setTimeout(() => {
 		timedOut = true;
-		killGitProcessGroup(proc);
+		killFallbackTimer = killGitProcessGroup(proc);
 	}, opts.timeoutMs);
 	try {
 		const { stdout, stderr, code, signal } = await new Promise<{
@@ -59,5 +60,6 @@ export async function runGit(args: string[], opts: { cwd?: string; env: NodeJS.P
 		return stdout;
 	} finally {
 		clearTimeout(timer);
+		if (killFallbackTimer) clearTimeout(killFallbackTimer);
 	}
 }
