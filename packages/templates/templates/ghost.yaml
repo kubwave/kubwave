@@ -33,7 +33,7 @@ services:
       domains: []
       volumes:
         - { name: data, mountPath: /var/lib/mysql, size: 1Gi }
-      resources: { cpuRequest: 100m, cpuLimit: 500m, memoryRequest: 512Mi, memoryLimit: 1Gi }
+      resources: { cpuRequest: 100m, cpuLimit: 500m, memoryRequest: 768Mi, memoryLimit: 1Gi }
   - name: ghost
     primary: true
     type: docker-image

@@ -75,7 +75,7 @@ services:
         - path: /docker-entrypoint-initdb.d/zz-30-realtime.sql
           content: |
             CREATE SCHEMA IF NOT EXISTS _realtime AUTHORIZATION supabase_admin;
-      resources: { cpuRequest: 200m, cpuLimit: 1000m, memoryRequest: 512Mi, memoryLimit: 1Gi }
+      resources: { cpuRequest: 200m, cpuLimit: 1000m, memoryRequest: 768Mi, memoryLimit: 1Gi }
   # postgres-meta: powers Studio's database browser.
   - name: meta
     primary: false
@@ -234,6 +234,7 @@ services:
         - { key: KONG_PLUGINS, value: 'request-transformer,cors,key-auth,acl,basic-auth' }
         - { key: KONG_NGINX_PROXY_PROXY_BUFFER_SIZE, value: 160k }
         - { key: KONG_NGINX_PROXY_PROXY_BUFFERS, value: '64 160k' }
+        - { key: KONG_NGINX_WORKER_PROCESSES, value: '2' }
       domains:
         - { host: '{{ inputs.domain }}', port: 8000 }
       configFiles:

@@ -23,4 +23,4 @@ services:
       domains: []
       volumes:
         - { name: data, mountPath: /app/data, size: 1Gi }
-      resources: { cpuRequest: 50m, cpuLimit: 250m, memoryRequest: 128Mi, memoryLimit: 256Mi }
+      resources: { cpuRequest: 50m, cpuLimit: 250m, memoryRequest: 128Mi, memoryLimit: 512Mi }

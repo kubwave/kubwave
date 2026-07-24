@@ -75,7 +75,7 @@
           "resources": {
             "cpuRequest": "100m",
             "cpuLimit": "500m",
-            "memoryRequest": "512Mi",
+            "memoryRequest": "768Mi",
             "memoryLimit": "1Gi"
           }
         }
@@ -208,7 +208,7 @@
           "resources": {
             "cpuRequest": "100m",
             "cpuLimit": "500m",
-            "memoryRequest": "256Mi",
+            "memoryRequest": "384Mi",
             "memoryLimit": "512Mi"
           }
         }
@@ -263,7 +263,7 @@
           "resources": {
             "cpuRequest": "200m",
             "cpuLimit": "1000m",
-            "memoryRequest": "512Mi",
+            "memoryRequest": "1Gi",
             "memoryLimit": "2Gi"
           }
         }
@@ -477,7 +477,7 @@
           "resources": {
             "cpuRequest": "200m",
             "cpuLimit": "1000m",
-            "memoryRequest": "512Mi",
+            "memoryRequest": "768Mi",
             "memoryLimit": "1Gi"
           }
         }
@@ -948,6 +948,10 @@
             {
               "key": "KONG_NGINX_PROXY_PROXY_BUFFERS",
               "value": "64 160k"
+            },
+            {
+              "key": "KONG_NGINX_WORKER_PROCESSES",
+              "value": "2"
             }
           ],
           "secrets": [],
@@ -1018,7 +1022,7 @@
             "cpuRequest": "50m",
             "cpuLimit": "250m",
             "memoryRequest": "128Mi",
-            "memoryLimit": "256Mi"
+            "memoryLimit": "512Mi"
           }
         }
       }
