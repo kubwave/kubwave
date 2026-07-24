@@ -19,11 +19,15 @@ function isBuildDeployment(row: Deployment): boolean {
 
 // Runtime reports CrashLoop/ImagePull as progressing with an `error:` phase until the progress
 // deadline fires. Cancel must not wait on that forever — it blocks every newer pending deploy.
-function cancelRollbackError(result: { state: 'failed'; error: string } | { state: 'progressing'; phase: string }): string | null {
-	if (result.state === 'failed') return result.error;
+function cancelRollbackError(
+	result: { state: 'failed'; error: string } | { state: 'progressing'; phase: string }
+): { failed: true; error: string } | null {
+	if (result.state === 'failed') {
+		return { failed: true, error: result.error || 'unknown error' };
+	}
 	if (!result.phase.startsWith('error:')) return null;
 	const detail = result.phase.slice('error:'.length).trim();
-	return detail || result.phase;
+	return { failed: true, error: detail || result.phase };
 }
 
 async function previousSuccessfulDeployment(row: Deployment): Promise<Deployment | null> {
@@ -114,17 +118,17 @@ export async function reconcileCanceling(kc: KubeConfig, row: Deployment, enviro
 		return;
 	}
 
-	const rollbackError = cancelRollbackError(result);
-	if (rollbackError) {
+	const rollback = cancelRollbackError(result);
+	if (rollback) {
 		const attempt = (row.rollbackAttempts ?? 0) + 1;
-		const message = `Cancel rollback failed: ${rollbackError}`;
+		const message = `Cancel rollback failed: ${rollback.error}`;
 		if (attempt >= MAX_CANCEL_ROLLBACK_ATTEMPTS) {
 			await finalize(row.id, 'canceling', { status: 'failed', phase: 'failed', lastError: message, rollbackAttempts: attempt }, [
 				...events,
 				logEntry('error', 'failed', message)
 			]);
 		} else {
-			await recordRollbackFailure(row, rollbackError, events, attempt);
+			await recordRollbackFailure(row, rollback.error, events, attempt);
 		}
 		return;
 	}

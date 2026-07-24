@@ -161,6 +161,18 @@ describe('reconcileCanceling', () => {
 		expect(insertLogsCalls).toHaveLength(1);
 	});
 
+	test('failed rollback with an empty error still records a retry (does not stay canceling forever)', async () => {
+		previousRow = [{ id: 'dep-1', serviceId: 'svc-1', type: 'docker-image', status: 'succeeded' }];
+		reconcileOutcome = { state: 'failed', error: '' };
+		await reconcileCanceling(kc, cancelingRow, 'env-1', 'svc.example.com');
+		expect(finalizeCalls).toEqual([]);
+		expect(updateSets[0]).toMatchObject({
+			rollbackAttempts: 1,
+			phase: 'rollback-retrying',
+			lastError: 'Cancel rollback failed: unknown error'
+		});
+	});
+
 	test('with a previous whose rollback fails for the third time: finalizes failed', async () => {
 		previousRow = [{ id: 'dep-1', serviceId: 'svc-1', type: 'docker-image', status: 'succeeded' }];
 		reconcileOutcome = { state: 'failed', error: 'bad image' };
