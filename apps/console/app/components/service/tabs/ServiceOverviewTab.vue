@@ -8,6 +8,7 @@ const props = defineProps<{
 	runtime?: ServiceRuntime;
 	latestDeployment?: Deployment | null;
 }>();
+const emit = defineEmits<{ openSettings: [] }>();
 
 const toast = useToast();
 
@@ -199,7 +200,10 @@ function copyUrl() {
 					<Copy />
 				</Button>
 			</template>
-			<span v-else class="text-xs text-muted-foreground">Set a port to create an internal service name</span>
+			<span v-else class="flex min-w-0 flex-1 items-center justify-between gap-2">
+				<span class="text-xs text-muted-foreground">Set a port to create an internal service name</span>
+				<Button type="button" variant="link" size="sm" class="h-auto shrink-0 p-0 text-xs" @click="emit('openSettings')">Set port</Button>
+			</span>
 		</div>
 
 		<div v-if="service.defaultUrl" class="flex items-center gap-3 rounded-xl bg-muted/30 px-4 py-3">

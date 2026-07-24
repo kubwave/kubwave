@@ -4,10 +4,12 @@ import { AuthGuard } from '../../shared/auth/auth.guard.js';
 import { CurrentUserId } from '../../shared/auth/current-user.decorator.js';
 import { ZodValidationPipe } from '../../shared/validation/zod-validation.pipe.js';
 import { serviceIdParamSchema, type ServiceIdParam } from '../services/services.dto.js';
+import { teamIdParamSchema, type TeamIdParam } from '../teams/teams.dto.js';
 import {
 	DeploymentBuildLogsDto,
 	DeploymentEventLogsDto,
 	DeploymentViewDto,
+	TeamDeploymentViewDto,
 	deploymentIdParamSchema,
 	type DeploymentIdParam
 } from './deployments.dto.js';
@@ -19,6 +21,16 @@ import { DeploymentsService } from './deployments.service.js';
 @Controller()
 export class DeploymentsController {
 	constructor(private readonly deployments: DeploymentsService) {}
+
+	@Get('teams/:teamId/deployments')
+	@ApiOperation({ operationId: 'teamDeploymentsList', summary: 'List recent deployments across a team' })
+	@ApiOkResponse({ type: [TeamDeploymentViewDto] })
+	listTeamDeployments(
+		@CurrentUserId() userId: string,
+		@Param(new ZodValidationPipe(teamIdParamSchema)) params: TeamIdParam
+	): Promise<TeamDeploymentViewDto[]> {
+		return this.deployments.listTeamDeployments(userId, params.teamId);
+	}
 
 	@Get('services/:serviceId/deployments')
 	@ApiOperation({ operationId: 'serviceDeploymentsList', summary: 'List deployment history for a service' })

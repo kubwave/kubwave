@@ -1588,6 +1588,43 @@
 				"tags": ["services"]
 			}
 		},
+		"/api/teams/{teamId}/deployments": {
+			"get": {
+				"operationId": "teamDeploymentsList",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/TeamDeploymentViewDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "List recent deployments across a team",
+				"tags": ["deployments"]
+			}
+		},
 		"/api/services/{serviceId}/deployments": {
 			"get": {
 				"operationId": "serviceDeploymentsList",
@@ -4417,6 +4454,64 @@
 					}
 				},
 				"required": ["mode", "available", "sampledAt", "replicas", "current", "limits", "series"]
+			},
+			"TeamDeploymentViewDto": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"status": {
+						"type": "string",
+						"enum": ["pending", "deploying", "canceling", "succeeded", "failed", "superseded", "canceled"]
+					},
+					"trigger": {
+						"type": "string",
+						"enum": ["manual", "auto", "preview"]
+					},
+					"createdAt": {
+						"type": "string"
+					},
+					"finishedAt": {
+						"type": "string",
+						"nullable": true
+					},
+					"serviceId": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"serviceName": {
+						"type": "string"
+					},
+					"environmentId": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"environmentName": {
+						"type": "string"
+					},
+					"projectId": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"projectName": {
+						"type": "string"
+					}
+				},
+				"required": [
+					"id",
+					"status",
+					"trigger",
+					"createdAt",
+					"finishedAt",
+					"serviceId",
+					"serviceName",
+					"environmentId",
+					"environmentName",
+					"projectId",
+					"projectName"
+				]
 			},
 			"DeploymentViewDto": {
 				"type": "object",

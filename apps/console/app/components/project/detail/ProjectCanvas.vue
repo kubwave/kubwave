@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { useQueryClient } from '@tanstack/vue-query';
-import { FlowLayoutConflict, removeFlowLayoutNode, saveFlowNodePosition, upsertFlowLayoutNode } from '~/composables/use-flow-layout';
+import {
+	FlowLayoutConflict,
+	fallbackFlowPosition,
+	removeFlowLayoutNode,
+	saveFlowNodePosition,
+	upsertFlowLayoutNode
+} from '~/composables/use-flow-layout';
 import { queryKeys } from '~/utils/query-keys';
 import type { FlowLayout, FlowLayoutNode, FlowNodePosition, Service } from '~/utils/types';
 
@@ -97,6 +103,28 @@ function onNodeDragStart({ serviceId }: { serviceId: string }) {
 	setDragBaseRevision(serviceId, flowLayoutById.value[serviceId]?.revision ?? null);
 }
 
+// Grid-arrange all services (same spacing as the fallback layout) and persist each position.
+// Best-effort: a conflicting node is skipped, the refetch restores the truth.
+async function onTidyLayout() {
+	const environmentId = selectedEnvId.value;
+	if (!environmentId) return;
+
+	for (const [index, service] of services.value.entries()) {
+		const position = fallbackFlowPosition(index);
+		try {
+			const saved = await saveFlowNodePosition(api, environmentId, service.id, {
+				position,
+				baseRevision: flowLayoutById.value[service.id]?.revision ?? null,
+				clientMutationId: crypto.randomUUID()
+			});
+			setFlowLayoutNode(saved);
+		} catch (err) {
+			if (!(err instanceof FlowLayoutConflict)) throw err;
+		}
+	}
+	void flowLayoutQuery.refetch();
+}
+
 async function onNodePositionChange({ serviceId, position }: { serviceId: string; position: FlowNodePosition }) {
 	if (!selectedEnvId.value) return;
 
@@ -141,6 +169,7 @@ async function onNodePositionChange({ serviceId, position }: { serviceId: string
 			@select="onSelectService"
 			@create="createOpen = true"
 			@delete="onDeleteService"
+			@tidy="onTidyLayout"
 			@node-drag-start="onNodeDragStart"
 			@node-position-change="onNodePositionChange"
 		/>

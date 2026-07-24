@@ -109,6 +109,7 @@ import type {
 	SetupInitializeData,
 	SetupInitializeResponses,
 	SetupStatusResponses,
+	TeamDeploymentsListResponses,
 	TeamGitConnectionGetResponses,
 	TeamGitInstallationReposListResponses,
 	TeamGitInstallationReposSyncResponses,
@@ -521,10 +522,15 @@ export type KubwaveTeamsResource = {
 export type KubwaveTeamsTeamIdResource = {
 	patch(body: TeamsRenameData['body']): OperationResult<TeamsRenameResponses>;
 	delete(): OperationResult<TeamsDeleteResponses>;
+	deployments: KubwaveTeamsTeamIdDeploymentsResource;
 	git: KubwaveTeamsTeamIdGitResource;
 	members: KubwaveTeamsTeamIdMembersResource;
 	projects: KubwaveTeamsTeamIdProjectsResource;
 	sshKeys: KubwaveTeamsTeamIdSshKeysResource;
+};
+
+export type KubwaveTeamsTeamIdDeploymentsResource = {
+	get(): OperationResult<TeamDeploymentsListResponses>;
 };
 
 export type KubwaveTeamsTeamIdGitResource = {
@@ -835,6 +841,9 @@ export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClie
 			(teamId: string) => ({
 				patch: (body: TeamsRenameData['body']) => apiResult(raw.teamsRename({ path: { teamId: teamId }, body })),
 				delete: () => apiResult(raw.teamsDelete({ path: { teamId: teamId } })),
+				deployments: {
+					get: () => apiResult(raw.teamDeploymentsList({ path: { teamId: teamId } }))
+				},
 				git: {
 					connection: {
 						get: () => apiResult(raw.teamGitConnectionGet({ path: { teamId: teamId } }))

@@ -16,3 +16,17 @@ export interface DeploymentView {
 	startedAt: string | null;
 	finishedAt: string | null;
 }
+
+export interface TeamDeploymentView {
+	id: string;
+	status: DeploymentStatus;
+	trigger: DeploymentTrigger;
+	createdAt: string;
+	finishedAt: string | null;
+	serviceId: string;
+	serviceName: string;
+	environmentId: string;
+	environmentName: string;
+	projectId: string;
+	projectName: string;
+}

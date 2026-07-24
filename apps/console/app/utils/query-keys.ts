@@ -7,6 +7,7 @@ export const queryKeys = {
 	gitInstallations: (teamId: string) => ['teams', teamId, 'git-installations'] as const,
 	gitRepos: (teamId: string, installationId: string) => ['teams', teamId, 'git-installations', installationId, 'repos'] as const,
 	teamProjects: (teamId: string) => ['teams', teamId, 'projects'] as const,
+	teamDeployments: (teamId: string) => ['teams', teamId, 'deployments'] as const,
 	project: (projectId: string) => ['projects', projectId] as const,
 	services: ['services'] as const,
 	environments: ['environments'] as const,
