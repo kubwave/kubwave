@@ -45,7 +45,7 @@ export const templateSecretSchema = z.discriminatedUnion('generate', [passwordSe
 const cpuQuantity = /^(\d+(\.\d+)?|\d+m)$/;
 const memoryQuantity = /^\d+(\.\d+)?[EPTGMK]i?$/;
 
-const templateResourcesSchema = z.object({
+export const templateResourcesSchema = z.object({
 	cpuRequest: z.string().regex(cpuQuantity, 'Enter a valid CPU quantity (e.g. 250m, 1)').optional(),
 	cpuLimit: z.string().regex(cpuQuantity, 'Enter a valid CPU quantity (e.g. 500m, 2)').optional(),
 	memoryRequest: z.string().regex(memoryQuantity, 'Enter a valid memory quantity (e.g. 256Mi, 1Gi)').optional(),
