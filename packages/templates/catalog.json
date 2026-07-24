@@ -71,7 +71,13 @@
               "size": "1Gi"
             }
           ],
-          "configFiles": []
+          "configFiles": [],
+          "resources": {
+            "cpuRequest": "100m",
+            "cpuLimit": "500m",
+            "memoryRequest": "512Mi",
+            "memoryLimit": "1Gi"
+          }
         }
       },
       {
@@ -118,7 +124,13 @@
           "domains": [],
           "exposedPorts": [],
           "volumes": [],
-          "configFiles": []
+          "configFiles": [],
+          "resources": {
+            "cpuRequest": "100m",
+            "cpuLimit": "500m",
+            "memoryRequest": "512Mi",
+            "memoryLimit": "1Gi"
+          }
         }
       }
     ],
@@ -192,7 +204,13 @@
               "subPath": "pgdata"
             }
           ],
-          "configFiles": []
+          "configFiles": [],
+          "resources": {
+            "cpuRequest": "100m",
+            "cpuLimit": "500m",
+            "memoryRequest": "256Mi",
+            "memoryLimit": "512Mi"
+          }
         }
       },
       {
@@ -241,7 +259,13 @@
               "path": "/etc/clickhouse-server/users.d/default-profile-low-resources-overrides.xml",
               "content": "<clickhouse>\n    <profiles>\n        <default>\n            <max_threads>1</max_threads>\n            <max_block_size>8192</max_block_size>\n            <max_download_threads>1</max_download_threads>\n            <input_format_parallel_parsing>0</input_format_parallel_parsing>\n            <output_format_parallel_formatting>0</output_format_parallel_formatting>\n        </default>\n    </profiles>\n</clickhouse>\n"
             }
-          ]
+          ],
+          "resources": {
+            "cpuRequest": "200m",
+            "cpuLimit": "1000m",
+            "memoryRequest": "512Mi",
+            "memoryLimit": "2Gi"
+          }
         }
       },
       {
@@ -295,7 +319,13 @@
             "sh",
             "-c",
             "/entrypoint.sh db createdb && /entrypoint.sh db migrate && /entrypoint.sh run"
-          ]
+          ],
+          "resources": {
+            "cpuRequest": "100m",
+            "cpuLimit": "500m",
+            "memoryRequest": "256Mi",
+            "memoryLimit": "512Mi"
+          }
         }
       }
     ],
@@ -443,7 +473,13 @@
               "path": "/docker-entrypoint-initdb.d/zz-30-realtime.sql",
               "content": "CREATE SCHEMA IF NOT EXISTS _realtime AUTHORIZATION supabase_admin;\n"
             }
-          ]
+          ],
+          "resources": {
+            "cpuRequest": "200m",
+            "cpuLimit": "1000m",
+            "memoryRequest": "512Mi",
+            "memoryLimit": "1Gi"
+          }
         }
       },
       {
@@ -489,7 +525,13 @@
           "domains": [],
           "exposedPorts": [],
           "volumes": [],
-          "configFiles": []
+          "configFiles": [],
+          "resources": {
+            "cpuRequest": "50m",
+            "cpuLimit": "250m",
+            "memoryRequest": "128Mi",
+            "memoryLimit": "256Mi"
+          }
         }
       },
       {
@@ -571,7 +613,13 @@
           "domains": [],
           "exposedPorts": [],
           "volumes": [],
-          "configFiles": []
+          "configFiles": [],
+          "resources": {
+            "cpuRequest": "50m",
+            "cpuLimit": "250m",
+            "memoryRequest": "128Mi",
+            "memoryLimit": "256Mi"
+          }
         }
       },
       {
@@ -613,7 +661,13 @@
           "domains": [],
           "exposedPorts": [],
           "volumes": [],
-          "configFiles": []
+          "configFiles": [],
+          "resources": {
+            "cpuRequest": "50m",
+            "cpuLimit": "250m",
+            "memoryRequest": "128Mi",
+            "memoryLimit": "256Mi"
+          }
         }
       },
       {
@@ -695,7 +749,13 @@
           "domains": [],
           "exposedPorts": [],
           "volumes": [],
-          "configFiles": []
+          "configFiles": [],
+          "resources": {
+            "cpuRequest": "100m",
+            "cpuLimit": "500m",
+            "memoryRequest": "256Mi",
+            "memoryLimit": "512Mi"
+          }
         }
       },
       {
@@ -767,7 +827,13 @@
               "size": "5Gi"
             }
           ],
-          "configFiles": []
+          "configFiles": [],
+          "resources": {
+            "cpuRequest": "50m",
+            "cpuLimit": "250m",
+            "memoryRequest": "128Mi",
+            "memoryLimit": "256Mi"
+          }
         }
       },
       {
@@ -841,7 +907,13 @@
           "domains": [],
           "exposedPorts": [],
           "volumes": [],
-          "configFiles": []
+          "configFiles": [],
+          "resources": {
+            "cpuRequest": "100m",
+            "cpuLimit": "500m",
+            "memoryRequest": "256Mi",
+            "memoryLimit": "512Mi"
+          }
         }
       },
       {
@@ -892,7 +964,13 @@
               "path": "/home/kong/kong.yml",
               "content": "_format_version: \"3.0\"\nconsumers:\n  - username: DASHBOARD\n  - username: anon\n    keyauth_credentials:\n      - key: \"{{ secrets.anon_key }}\"\n  - username: service_role\n    keyauth_credentials:\n      - key: \"{{ secrets.service_role_key }}\"\nbasicauth_credentials:\n  - consumer: DASHBOARD\n    username: \"supabase\"\n    password: \"{{ secrets.dashboard_password }}\"\nacls:\n  - consumer: anon\n    group: anon\n  - consumer: service_role\n    group: admin\nservices:\n  - name: auth-v1\n    url: \"http://{{ services.auth.host }}:9999/\"\n    routes:\n      - name: auth-v1\n        strip_path: true\n        paths: [\"/auth/v1/\"]\n    plugins:\n      - name: cors\n  - name: rest-v1\n    url: \"http://{{ services.rest.host }}:3000/\"\n    routes:\n      - name: rest-v1\n        strip_path: true\n        paths: [\"/rest/v1/\"]\n    plugins:\n      - name: cors\n      - name: key-auth\n        config:\n          hide_credentials: true\n      - name: acl\n        config:\n          hide_groups_header: true\n          allow: [\"admin\", \"anon\"]\n  - name: realtime-v1\n    url: \"http://{{ services.realtime.host }}:4000/socket/\"\n    routes:\n      - name: realtime-v1\n        strip_path: true\n        # preserve_host lets the request-transformer's Host reach the upstream\n        # (with the default preserve_host=false Kong overwrites Host with the upstream name).\n        preserve_host: true\n        paths: [\"/realtime/v1/\"]\n    plugins:\n      - name: cors\n      # Realtime resolves its tenant from the Host subdomain. Behind Kong the upstream\n      # name (svc-<id>) doesn't match the seeded self-host tenant \"realtime-dev\", so every\n      # socket is rejected with TenantNotFound -> the client sees \"transport failure\".\n      # Force the Host to the seeded tenant so the websocket connects.\n      - name: request-transformer\n        config:\n          replace:\n            headers:\n              - \"host:realtime-dev\"\n  - name: storage-v1\n    url: \"http://{{ services.storage.host }}:5000/\"\n    routes:\n      - name: storage-v1\n        strip_path: true\n        paths: [\"/storage/v1/\"]\n    plugins:\n      - name: cors\n  - name: meta\n    url: \"http://{{ services.meta.host }}:8080/\"\n    routes:\n      - name: meta\n        strip_path: true\n        paths: [\"/pg/\"]\n    plugins:\n      - name: key-auth\n      - name: acl\n        config:\n          hide_groups_header: true\n          allow: [\"admin\"]\n  - name: dashboard\n    url: \"http://{{ services.studio.host }}:3000/\"\n    routes:\n      - name: dashboard\n        strip_path: true\n        paths: [\"/\"]\n    plugins:\n      - name: cors\n      - name: basic-auth\n        config:\n          hide_credentials: true\n"
             }
-          ]
+          ],
+          "resources": {
+            "cpuRequest": "100m",
+            "cpuLimit": "500m",
+            "memoryRequest": "256Mi",
+            "memoryLimit": "512Mi"
+          }
         }
       }
     ],
@@ -935,7 +1013,13 @@
               "size": "1Gi"
             }
           ],
-          "configFiles": []
+          "configFiles": [],
+          "resources": {
+            "cpuRequest": "50m",
+            "cpuLimit": "250m",
+            "memoryRequest": "128Mi",
+            "memoryLimit": "256Mi"
+          }
         }
       }
     ],
