@@ -84,4 +84,27 @@ describe('templateSchema', () => {
 		const parsed = templateSchema.parse(valid);
 		expect(parsed.services[0]!.config.configFiles).toEqual([]);
 	});
+
+	test('accepts resources on a service config', () => {
+		const svc = valid.services[0]!;
+		const t = {
+			...valid,
+			services: [
+				{ ...svc, config: { ...svc.config, resources: { cpuRequest: '100m', cpuLimit: '500m', memoryRequest: '256Mi', memoryLimit: '1Gi' } } }
+			]
+		};
+		expect(templateSchema.safeParse(t).success).toBe(true);
+	});
+
+	test('rejects an invalid cpu quantity', () => {
+		const svc = valid.services[0]!;
+		const t = { ...valid, services: [{ ...svc, config: { ...svc.config, resources: { cpuRequest: '250x' } } }] };
+		expect(templateSchema.safeParse(t).success).toBe(false);
+	});
+
+	test('rejects a memory quantity without a unit suffix', () => {
+		const svc = valid.services[0]!;
+		const t = { ...valid, services: [{ ...svc, config: { ...svc.config, resources: { memoryRequest: '512' } } }] };
+		expect(templateSchema.safeParse(t).success).toBe(false);
+	});
 });
