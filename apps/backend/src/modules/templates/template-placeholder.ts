@@ -1,3 +1,4 @@
+import type { ResourceConfig } from '@kubwave/db';
 import type { CatalogTemplate } from '@kubwave/templates';
 
 export interface ResolveContext {
@@ -21,6 +22,7 @@ export interface ResolvedServiceConfig {
 	configFiles: Array<{ path: string; content: string }>;
 	command?: string[];
 	args?: string[];
+	resources?: ResourceConfig;
 }
 
 const PLACEHOLDER_RE = /\{\{\s*([a-zA-Z]+)\.([a-zA-Z0-9_]+)(?:\.([a-zA-Z0-9_]+))?\s*\}\}/g;
@@ -59,6 +61,7 @@ export function resolveTemplateServiceConfig(config: TemplateServiceConfig, ctx:
 		volumes: config.volumes.map(v => ({ name: v.name, mountPath: v.mountPath, size: v.size, ...(v.subPath ? { subPath: v.subPath } : {}) })),
 		configFiles: config.configFiles.map(f => ({ path: f.path, content: resolveTemplateString(f.content, ctx) })),
 		...(config.command ? { command: config.command.map(c => resolveTemplateString(c, ctx)) } : {}),
-		...(config.args ? { args: config.args.map(a => resolveTemplateString(a, ctx)) } : {})
+		...(config.args ? { args: config.args.map(a => resolveTemplateString(a, ctx)) } : {}),
+		...(config.resources ? { resources: config.resources } : {})
 	};
 }
