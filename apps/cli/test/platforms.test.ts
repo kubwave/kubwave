@@ -22,13 +22,19 @@ describe('getPlatformDescriptor', () => {
 	});
 
 	test('throws with available platforms for unknown ID', () => {
-		expect(() => getPlatformDescriptor('unknown')).toThrow('Unknown platform "unknown". Available: cloudfleet-hetzner, cloudfleet-gcp');
+		expect(() => getPlatformDescriptor('unknown')).toThrow('Unknown platform "unknown". Available: cloudfleet-hetzner, cloudfleet-gcp, upcloud-uks');
 	});
 
 	test('returns descriptor for cloudfleet-gcp', () => {
 		const desc = getPlatformDescriptor('cloudfleet-gcp');
 		expect(desc.id).toBe('cloudfleet-gcp');
 		expect(desc.label).toBe('Cloudfleet (Google Cloud)');
+	});
+
+	test('returns descriptor for upcloud-uks', () => {
+		const desc = getPlatformDescriptor('upcloud-uks');
+		expect(desc.id).toBe('upcloud-uks');
+		expect(desc.label).toBe('UpCloud (UKS)');
 	});
 });
 
@@ -60,5 +66,10 @@ describe('PLATFORMS registry', () => {
 	test('contains cloudfleet-gcp', () => {
 		const ids = PLATFORMS.map(d => d.id);
 		expect(ids).toContain('cloudfleet-gcp');
+	});
+
+	test('contains upcloud-uks', () => {
+		const ids = PLATFORMS.map(d => d.id);
+		expect(ids).toContain('upcloud-uks');
 	});
 });

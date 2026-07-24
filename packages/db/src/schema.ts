@@ -57,6 +57,12 @@ export interface ServiceDomain {
 	port: number;
 }
 
+// A TCP container port reachable on the platform's public ingress IP; publicPort is allocated server-side from the configured pool.
+export interface ServicePortExposure {
+	containerPort: number;
+	publicPort: number;
+}
+
 export interface ServiceVolume {
 	name: string;
 	mountPath: string;
@@ -86,6 +92,12 @@ export interface AutoscalingConfig {
 	targetMemoryUtilizationPercentage?: number;
 }
 
+export interface BasicAuthConfig {
+	username: string;
+	// Ciphertext (AES-256-GCM); worker decrypts into an htpasswd Secret for the ingress controller.
+	password: string;
+}
+
 export interface RuntimeConfig {
 	containerPort: number | null;
 	// Only true enables the platform-generated public default domain. Absent/false stays internal-only.
@@ -97,12 +109,16 @@ export interface RuntimeConfig {
 	volumes: ServiceVolume[];
 	// Config files rendered at instantiation and mounted into the container; content is ciphertext. Absent on rows without files — treat as [].
 	configFiles?: ServiceConfigFile[];
+	// TCP ports exposed publicly via the ingress controller's TCP entrypoints. Absent on pre-feature rows — treat as [].
+	exposedPorts?: ServicePortExposure[];
 	// Container entrypoint/command override (maps to k8s container.command/args). Optional.
 	command?: string[];
 	args?: string[];
 	healthCheck?: HealthCheckConfig;
 	resources?: ResourceConfig;
 	autoscaling?: AutoscalingConfig;
+	// HTTP basic auth enforced at the ingress (Traefik Middleware). Absent = disabled.
+	basicAuth?: BasicAuthConfig;
 }
 
 export interface DockerImageServiceConfig extends RuntimeConfig {
@@ -119,6 +135,10 @@ export interface PublicRepoServiceConfig extends RuntimeConfig {
 	branch: string;
 	commit?: string;
 	rootDirectory?: string;
+	// Extra repo-relative prefixes that also trigger auto-deploy (shared packages). Used with rootDirectory unless watchEntireRepo.
+	watchPaths?: string[];
+	// When true, auto-deploy ignores rootDirectory/watchPaths and reacts to any commit on the branch.
+	watchEntireRepo?: boolean;
 	buildCommand?: string;
 	startCommand?: string;
 	// 'nixpacks' (default) auto-generates a Dockerfile from the source; 'dockerfile' uses the repo's own. buildCommand/startCommand apply to nixpacks only.
@@ -131,6 +151,8 @@ export interface PrivateRepoServiceConfig extends RuntimeConfig {
 	branch: string;
 	commit?: string;
 	rootDirectory?: string;
+	watchPaths?: string[];
+	watchEntireRepo?: boolean;
 	buildCommand?: string;
 	startCommand?: string;
 	// FK → ssh_keys.id (scope='team'). The API validates it belongs to the service's team.
@@ -146,6 +168,8 @@ export interface GithubRepoServiceConfig extends RuntimeConfig {
 	branch: string;
 	commit?: string;
 	rootDirectory?: string;
+	watchPaths?: string[];
+	watchEntireRepo?: boolean;
 	buildCommand?: string;
 	startCommand?: string;
 	// FK → git_installations.id. The API validates it belongs to the service's team.
@@ -412,6 +436,28 @@ export const services = pgTable(
 export type Service = typeof services.$inferSelect;
 export type NewService = typeof services.$inferInsert;
 
+// Allocation source of truth for public TCP ports: public_port is unique cluster-wide, which the JSONB config copy (RuntimeConfig.exposedPorts) can't enforce.
+export const servicePortExposures = pgTable(
+	'service_port_exposures',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		serviceId: uuid('service_id')
+			.notNull()
+			.references(() => services.id, { onDelete: 'cascade' }),
+		containerPort: integer('container_port').notNull(),
+		// Allocated from the platform TCP pool (workloadIngress.tcpPortPool); names the Traefik entrypoint `tcp-<publicPort>`.
+		publicPort: integer('public_port').notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+	},
+	table => [
+		uniqueIndex('service_port_exposures_public_port_unique').on(table.publicPort),
+		uniqueIndex('service_port_exposures_service_container_port_unique').on(table.serviceId, table.containerPort)
+	]
+);
+
+export type ServicePortExposureRow = typeof servicePortExposures.$inferSelect;
+export type NewServicePortExposureRow = typeof servicePortExposures.$inferInsert;
+
 export const serviceFlowNodes = pgTable(
 	'service_flow_nodes',
 	{
@@ -489,6 +535,7 @@ export type Setting = typeof settings.$inferSelect;
 // NOTE: partial unique index `update_runs_single_active` (at most one active run) can't be expressed in drizzle, so it lives in migration 0007, not here.
 export const updateRuns = pgTable('update_runs', {
 	id: uuid('id').primaryKey().defaultRandom(),
+	kind: text('kind').notNull().default('version'),
 	fromVersion: text('from_version').notNull(),
 	toVersion: text('to_version').notNull(),
 	status: text('status').notNull(),

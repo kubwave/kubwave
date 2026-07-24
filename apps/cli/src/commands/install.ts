@@ -1,4 +1,4 @@
-import type { Command } from 'commander';
+import { InvalidArgumentError, type Command } from 'commander';
 import * as p from '@clack/prompts';
 import { CoreV1Api, type KubeConfig } from '@kubernetes/client-node';
 import { APP_NAMESPACE, DEFAULT_REGISTRY } from '~/lib/constants.js';
@@ -10,7 +10,7 @@ import { assertValidInstallFlags, promptInstallInputs } from '~/lib/prompts.js';
 import { checkAdoption } from '~/lib/adoption.js';
 import { resolveCertManagerClusterIssuer } from '~/lib/cert-manager.js';
 import { createSecrets } from '~/lib/secrets.js';
-import { generateValuesFile, helmUpgradeInstall } from '~/lib/helm.js';
+import { generateValuesFile, helmUpgradeInstall, dnsPolicyForPlatform } from '~/lib/helm.js';
 import { selectPlatform } from '~/lib/platforms.js';
 import { warmNodes } from '~/lib/node-warmup.js';
 import { writeVersionMarker } from '~/lib/version-marker.js';
@@ -20,7 +20,8 @@ import { validateTargetForChannel } from '~/lib/releases.js';
 import { buildInstallState } from '~/lib/install-state.js';
 import { FatalCliError, printAndExit } from '~/lib/errors.js';
 import type { InstallConfig } from '~/lib/helm.js';
-import type { Platform } from '~/lib/platforms.js';
+import type { AutoscalingDecision, Platform, UpcloudNodeGroup } from '~/lib/platforms.js';
+import { parseUpcloudNodeGroup } from '~/platforms/upcloud/autoscaling.js';
 
 export function registerInstallCommand(parent: Command): void {
 	parent
@@ -32,8 +33,27 @@ export function registerInstallCommand(parent: Command): void {
 		.option('--registry <url>', 'Container registry', DEFAULT_REGISTRY)
 		.option('--cluster-confirmed', 'Skip cluster confirmation', false)
 		.option('--in-cluster', 'Use in-cluster kubeconfig', false)
-		.option('--platform <id>', 'Target platform (prompted when omitted)')
+		.option('--platform <id>', 'Target platform: cloudfleet-hetzner, cloudfleet-gcp, or upcloud-uks (prompted when omitted)')
 		.option('--hetzner-lb-location <loc>', 'Hetzner Load Balancer location (fsn1|nbg1|hel1|ash|hil); used by cloudfleet-hetzner')
+		.option('--upcloud-autoscaling', 'Install UpCloud Cluster Autoscaler (required with --yes for upcloud-uks)')
+		.option('--no-upcloud-autoscaling', 'Skip UpCloud Cluster Autoscaler')
+		.option('--upcloud-cluster-uuid <uuid>', 'UpCloud UKS cluster UUID (for Cluster Autoscaler)')
+		.option('--upcloud-token <token>', 'UpCloud API token (or set UPCLOUD_TOKEN); preferred')
+		.option('--upcloud-username <user>', 'UpCloud API username (or set UPCLOUD_USERNAME; basic auth, less reliable)')
+		.option('--upcloud-password <pass>', 'UpCloud API password (or set UPCLOUD_PASSWORD; basic auth, less reliable)')
+		.option(
+			'--upcloud-node-group <spec>',
+			'Node group to autoscale as <min>:<max>:<name>; repeatable',
+			(value, prev: UpcloudNodeGroup[]) => {
+				try {
+					return [...prev, parseUpcloudNodeGroup(value)];
+				} catch (err) {
+					throw new InvalidArgumentError(err instanceof Error ? err.message : String(err));
+				}
+			},
+			[] as UpcloudNodeGroup[]
+		)
+		.option('--upcloud-autoscaler-image-tag <tag>', 'Override the UpCloud autoscaler image tag (or set UPCLOUD_AUTOSCALER_IMAGE_TAG)')
 		.option('--storage <mode>', 'Storage handling mode: auto | skip', 'auto')
 		.option('--storage-class <name>', 'Use this StorageClass and skip CSI auto-install')
 		.option(
@@ -62,6 +82,13 @@ export function registerInstallCommand(parent: Command): void {
 				inCluster: boolean;
 				platform?: string;
 				hetznerLbLocation?: string;
+				upcloudAutoscaling?: boolean;
+				upcloudClusterUuid?: string;
+				upcloudToken?: string;
+				upcloudUsername?: string;
+				upcloudPassword?: string;
+				upcloudNodeGroup?: UpcloudNodeGroup[];
+				upcloudAutoscalerImageTag?: string;
 				storage: string;
 				storageClass?: string;
 				tenantPodSecurity: string;
@@ -88,6 +115,13 @@ async function runInstall(opts: {
 	inCluster: boolean;
 	platform?: string;
 	hetznerLbLocation?: string;
+	upcloudAutoscaling?: boolean;
+	upcloudClusterUuid?: string;
+	upcloudToken?: string;
+	upcloudUsername?: string;
+	upcloudPassword?: string;
+	upcloudNodeGroup?: UpcloudNodeGroup[];
+	upcloudAutoscalerImageTag?: string;
 	storage: string;
 	storageClass?: string;
 	tenantPodSecurity: string;
@@ -118,9 +152,19 @@ async function runInstall(opts: {
 	try {
 		await ensureDependencies(kc, platform.dependencies, undefined, { assumeYes });
 		const storage = await platform.ensureStorage(kc, { storageMode, storageClass: opts.storageClass, assumeYes });
+		const autoscaling = await platform.ensureAutoscaling?.(kc, {
+			upcloudAutoscaling: opts.upcloudAutoscaling,
+			upcloudClusterUuid: opts.upcloudClusterUuid,
+			upcloudToken: opts.upcloudToken,
+			upcloudUsername: opts.upcloudUsername,
+			upcloudPassword: opts.upcloudPassword,
+			upcloudNodeGroups: opts.upcloudNodeGroup,
+			upcloudAutoscalerImageTag: opts.upcloudAutoscalerImageTag,
+			assumeYes
+		});
 		await checkAdoption(kc, assumeYes);
 
-		const config = await resolveInstallConfig(opts, storage, channel, cliVersion, platform, tenantPodSecurity, tenantRuntimeClass);
+		const config = await resolveInstallConfig(opts, storage, autoscaling, channel, cliVersion, platform, tenantPodSecurity, tenantRuntimeClass);
 		const resolvedConfig = await resolveInstallClusterIssuer(kc, config);
 		if (resolvedConfig.ha) await warnIfFewNodesForHa(kc);
 		await prepareClusterResources(kc, resolvedConfig);
@@ -181,6 +225,7 @@ async function resolveInstallConfig(
 		ha: boolean;
 	},
 	storage: { storageClass?: string; nodeSelector?: Record<string, string> },
+	autoscaling: AutoscalingDecision | void | undefined,
 	channel: Channel,
 	cliVersion: string,
 	platform: Platform,
@@ -204,7 +249,9 @@ async function resolveInstallConfig(
 		dependencies: platform.dependencies,
 		ha: opts.ha,
 		tenantPodSecurity,
-		tenantRuntimeClass
+		tenantRuntimeClass,
+		dnsPolicy: dnsPolicyForPlatform(platform.id),
+		...(autoscaling?.enabled ? { upcloudAutoscaling: autoscaling } : {})
 	};
 }
 

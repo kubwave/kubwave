@@ -4,6 +4,10 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { FatalCliError } from '~/lib/errors.js';
 
+export function isBunRuntime(): boolean {
+	return process.execPath.endsWith('/bun') || process.execPath.endsWith('\\bun.exe');
+}
+
 export interface LoadKubeOpts {
 	inCluster?: boolean;
 	/** Select a non-default kubeconfig context by name (ignored when inCluster). */
@@ -87,7 +91,7 @@ export function ensureClusterCA(): void {
 function buildReExecCommand(): string[] {
 	const entrypoint = Bun.argv[1];
 	const userArgs = Bun.argv.slice(2);
-	const runningViaBun = process.execPath.endsWith('/bun') || process.execPath.endsWith('\\bun.exe');
+	const runningViaBun = isBunRuntime();
 
 	if (runningViaBun && entrypoint && !entrypoint.startsWith('/$bunfs/')) {
 		return [process.execPath, entrypoint, ...userArgs];

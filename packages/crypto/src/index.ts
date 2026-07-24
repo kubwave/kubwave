@@ -53,6 +53,12 @@ export function decryptSecret(serialized: string): string {
 	return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
 }
 
+// Apache htpasswd line ({SHA} scheme) for Traefik basicAuth Middleware secrets.
+export function generateHtpasswd(username: string, password: string): string {
+	const digest = createHash('sha1').update(password, 'utf8').digest('base64');
+	return `${username}:{SHA}${digest}`;
+}
+
 // base64url keeps generated passwords URL-safe so they survive env injection and connection-string interpolation without escaping.
 export function generatePassword(bytes = 24): string {
 	return randomBytes(bytes).toString('base64url');

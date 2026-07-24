@@ -13,13 +13,21 @@ import type {
 
 type SecretsView = Array<{ key: string; hasValue: boolean }>;
 
+export interface BasicAuthView {
+	enabled: boolean;
+	username: string;
+	hasPassword: boolean;
+}
+
+type SensitiveRuntime = 'secrets' | 'basicAuth';
+
 // Config-file content is decrypted in toConfigView, so the view keeps `configFiles` (unlike `secrets`).
-export type DockerImageConfigView = Omit<DockerImageServiceConfig, 'secrets'> & { secrets: SecretsView };
-export type DockerfileConfigView = Omit<DockerfileServiceConfig, 'secrets'> & { secrets: SecretsView };
-export type PublicRepoConfigView = Omit<PublicRepoServiceConfig, 'secrets'> & { secrets: SecretsView };
-export type PrivateRepoConfigView = Omit<PrivateRepoServiceConfig, 'secrets'> & { secrets: SecretsView };
-export type GithubRepoConfigView = Omit<GithubRepoServiceConfig, 'secrets'> & { secrets: SecretsView };
-export type DatabaseConfigView = Omit<DatabaseServiceConfig, 'secrets' | 'password'> & { secrets: SecretsView };
+export type DockerImageConfigView = Omit<DockerImageServiceConfig, SensitiveRuntime> & { secrets: SecretsView; basicAuth?: BasicAuthView };
+export type DockerfileConfigView = Omit<DockerfileServiceConfig, SensitiveRuntime> & { secrets: SecretsView; basicAuth?: BasicAuthView };
+export type PublicRepoConfigView = Omit<PublicRepoServiceConfig, SensitiveRuntime> & { secrets: SecretsView; basicAuth?: BasicAuthView };
+export type PrivateRepoConfigView = Omit<PrivateRepoServiceConfig, SensitiveRuntime> & { secrets: SecretsView; basicAuth?: BasicAuthView };
+export type GithubRepoConfigView = Omit<GithubRepoServiceConfig, SensitiveRuntime> & { secrets: SecretsView; basicAuth?: BasicAuthView };
+export type DatabaseConfigView = Omit<DatabaseServiceConfig, SensitiveRuntime | 'password'> & { secrets: SecretsView; basicAuth?: BasicAuthView };
 export type ServiceConfigView =
 	| DockerImageConfigView
 	| DockerfileConfigView
@@ -36,6 +44,10 @@ export interface ServiceConnectionView {
 	database: string;
 	password: string;
 	uri: string;
+	// Public reachability via a TCP exposure on the engine port; null when not exposed or the ingress IP is unknown.
+	externalHost: string | null;
+	externalPort: number | null;
+	externalUri: string | null;
 }
 
 export interface AutoDeployView {
@@ -44,6 +56,13 @@ export interface AutoDeployView {
 	lastPolledAt: string | null;
 	nextPollAt: string | null;
 	lastPollError: string | null;
+}
+
+export interface ExposedEndpointView {
+	containerPort: number;
+	publicPort: number;
+	// Public ingress IP to connect to; null when the platform hasn't resolved one yet.
+	host: string | null;
 }
 
 export interface ServiceView {
@@ -56,6 +75,7 @@ export interface ServiceView {
 	autoDeploy: AutoDeployView;
 	internalDomain: string | null;
 	defaultUrl: string | null;
+	exposedEndpoints: ExposedEndpointView[];
 	createdAt: string;
 	updatedAt: string;
 }

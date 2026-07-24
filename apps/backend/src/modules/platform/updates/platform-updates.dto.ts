@@ -16,6 +16,9 @@ export class UpdateRunDto {
 	@ApiProperty({ type: String, format: 'uuid' })
 	id!: string;
 
+	@ApiProperty({ enum: ['version', 'tcp_port_pool'] })
+	kind!: 'version' | 'tcp_port_pool';
+
 	@ApiProperty({ type: String })
 	fromVersion!: string;
 

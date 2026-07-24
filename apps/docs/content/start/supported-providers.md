@@ -12,10 +12,11 @@ profile. To run kubwave on another provider, use a separate Kubernetes cluster.
 
 ## Supported today
 
-| Provider                  | Platform ID          | Status    | Notes                                                                                                                  |
-| ------------------------- | -------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Cloudfleet (Hetzner)      | `cloudfleet-hetzner` | Supported | First-class target for production installs today.                                                                      |
-| Cloudfleet (Google Cloud) | `cloudfleet-gcp`     | Supported | PD CSI driver installed from pinned vendored manifest (server-side apply); requires `cloud-sa` service-account secret. |
+| Provider                  | Platform ID          | Status    | Notes                                                                                                                                   |
+| ------------------------- | -------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Cloudfleet (Hetzner)      | `cloudfleet-hetzner` | Supported | First-class target for production installs today.                                                                                       |
+| Cloudfleet (Google Cloud) | `cloudfleet-gcp`     | Supported | PD CSI driver installed from pinned vendored manifest (server-side apply); requires `cloud-sa` service-account secret.                  |
+| UpCloud UKS               | `upcloud-uks`        | Supported | UpCloud Managed Kubernetes; CSI and CCM pre-installed. Optional Cluster Autoscaler via CLI. Default SC `upcloud-block-storage-maxiops`. |
 
 Use these targets with:
 
@@ -27,10 +28,15 @@ kubwave install --platform cloudfleet-hetzner
 kubwave install --platform cloudfleet-gcp
 ```
 
+```sh
+kubwave install --platform upcloud-uks
+```
+
 Each has a step-by-step setup guide, including any GCP IAM and storage prerequisites:
 
 - [Cloudfleet (Hetzner) setup](/providers/cloudfleet-hetzner/)
 - [Cloudfleet (Google Cloud) setup](/providers/cloudfleet-gcp/)
+- [UpCloud UKS setup](/providers/upcloud-uks/)
 
 ## Coming soon
 

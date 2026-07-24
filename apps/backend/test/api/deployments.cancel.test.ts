@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { ServicesService } from '~/modules/services/services.service';
+import type { TeamsService } from '~/modules/teams/teams.service';
 
 type DeploymentRow = {
 	id: string;
@@ -96,6 +97,9 @@ mock.module('@kubwave/db', () => ({
 		phase: 'phase'
 	},
 	deploymentLogs: {},
+	environments: {},
+	projects: {},
+	services: {},
 	db: {
 		select: () => selectChain(),
 		transaction: async (fn: (tx: ReturnType<typeof makeTx>) => Promise<unknown>) => fn(makeTx())
@@ -112,10 +116,19 @@ mock.module('~/modules/services/services.service', () => ({
 	}
 }));
 
+mock.module('~/modules/teams/teams.service', () => ({
+	TeamsService: class {
+		async requireTeamRole() {
+			return 'owner';
+		}
+	}
+}));
+
 const { DeploymentsService } = await import('~/modules/deployments/deployments.service');
 
 const services = { loadServiceForUser: async () => ({ id: 'svc-1' }) } as unknown as ServicesService;
-const service = new DeploymentsService(services);
+const teams = { requireTeamRole: async () => 'owner' } as unknown as TeamsService;
+const service = new DeploymentsService(services, teams);
 
 afterEach(() => {
 	currentRow = row();

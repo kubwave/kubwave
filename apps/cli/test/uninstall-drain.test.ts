@@ -73,7 +73,8 @@ function basePlan(customResourceDefinitions: DependencyCrd[]): Parameters<typeof
 		clusterRoles: [],
 		clusterRoleBindings: [],
 		customResourceDefinitions,
-		csiTeardowns: []
+		csiTeardowns: [],
+		upcloudAutoscalerInstalled: false
 	};
 }
 

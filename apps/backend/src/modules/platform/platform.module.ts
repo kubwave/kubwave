@@ -17,6 +17,8 @@ import { PlatformRegistrySettingsController } from './settings/registry/platform
 import { PlatformRegistrySettingsService } from './settings/registry/platform-registry-settings.service.js';
 import { PlatformSmtpSettingsController } from './settings/smtp/platform-smtp-settings.controller.js';
 import { PlatformSmtpSettingsService } from './settings/smtp/platform-smtp-settings.service.js';
+import { PlatformTcpPortPoolSettingsController } from './settings/tcp-port-pool/platform-tcp-port-pool-settings.controller.js';
+import { PlatformTcpPortPoolSettingsService } from './settings/tcp-port-pool/platform-tcp-port-pool-settings.service.js';
 import { PlatformVolumeAutoscalingSettingsController } from './settings/volume-autoscaling/platform-volume-autoscaling-settings.controller.js';
 import { PlatformVolumeAutoscalingSettingsService } from './settings/volume-autoscaling/platform-volume-autoscaling-settings.service.js';
 import { PlatformUpdatesController } from './updates/platform-updates.controller.js';
@@ -38,6 +40,7 @@ import { PlatformVersionService } from './version/platform-version.service.js';
 		PlatformDeploymentConcurrencySettingsController,
 		PlatformVolumeAutoscalingSettingsController,
 		PlatformVolumesController,
+		PlatformTcpPortPoolSettingsController,
 		PlatformUpdatesController
 	],
 	providers: [
@@ -52,6 +55,7 @@ import { PlatformVersionService } from './version/platform-version.service.js';
 		PlatformDeploymentConcurrencySettingsService,
 		PlatformVolumeAutoscalingSettingsService,
 		PlatformVolumesService,
+		PlatformTcpPortPoolSettingsService,
 		PlatformVersionService,
 		PlatformUpdatesService
 	]

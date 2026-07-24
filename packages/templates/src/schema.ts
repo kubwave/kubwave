@@ -49,6 +49,8 @@ const templateServiceConfigSchema = z.object({
 	env: z.array(z.object({ key: z.string().min(1), value: z.string() })).default([]),
 	secrets: z.array(z.object({ key: z.string().min(1), value: z.string() })).default([]),
 	domains: z.array(z.object({ host: z.string().min(1), port: z.number().int() })).default([]),
+	// Public TCP exposures requested at instantiation (container ports only; the API allocates the public ports).
+	exposedPorts: z.array(z.object({ containerPort: z.number().int().min(1).max(65535) })).default([]),
 	// `subPath` mounts a subdirectory at `mountPath` instead of the volume root — for images that initdb into the root, where ext4's lost+found blocks init.
 	volumes: z
 		.array(z.object({ name: z.string().min(1), mountPath: z.string().min(1), size: z.string().min(1), subPath: cleanRelativeSubPath.optional() }))

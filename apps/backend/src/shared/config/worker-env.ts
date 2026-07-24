@@ -1,3 +1,5 @@
+import type { ResourceConfig } from '@kubwave/db';
+
 function num(name: string, fallback: number): number {
 	const value = process.env[name];
 	return value ? Number(value) : fallback;
@@ -31,6 +33,25 @@ function jsonRecord(name: string): Record<string, string> {
 	}
 }
 
+function resourceConfig(name: string, fallback: ResourceConfig): ResourceConfig {
+	const value = process.env[name];
+	if (!value) return fallback;
+	try {
+		const parsed: unknown = JSON.parse(value);
+		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return fallback;
+		const raw = parsed as Record<string, unknown>;
+		const out: ResourceConfig = {};
+		if (raw.cpuRequest) out.cpuRequest = String(raw.cpuRequest);
+		if (raw.cpuLimit) out.cpuLimit = String(raw.cpuLimit);
+		if (raw.memoryRequest) out.memoryRequest = String(raw.memoryRequest);
+		if (raw.memoryLimit) out.memoryLimit = String(raw.memoryLimit);
+		return Object.keys(out).length > 0 ? out : fallback;
+	} catch {
+		console.warn(`[env] ${name} is not valid JSON; ignoring`);
+		return fallback;
+	}
+}
+
 export function resolveBuildEngine(value: string | undefined): 'buildkit' {
 	const resolved = value || 'buildkit';
 	if (resolved !== 'buildkit') throw new Error(`[env] BUILD_ENGINE=${resolved} is not supported; only "buildkit" is available.`);
@@ -50,6 +71,10 @@ export interface WorkerRuntimeConfig {
 	ingressAnnotations: Record<string, string>;
 	ingressLoadBalancerIp?: string;
 	ingressControllerService: string;
+	// Public TCP pool for raw port exposures; when off the worker skips IngressRouteTCP rendering (e.g. non-Traefik controllers).
+	tcpPortPoolEnabled: boolean;
+	tcpPortPoolStart: number;
+	tcpPortPoolSize: number;
 	storageClassName: string;
 	registryEndpoint: string;
 	registryInsecure: boolean;
@@ -73,6 +98,7 @@ export interface WorkerRuntimeConfig {
 	gitPollBatch: number;
 	gitPollServiceIntervalSeconds: number;
 	gitLsRemoteTimeoutMs: number;
+	gitDiffTimeoutMs: number;
 	gitPollErrorBackoffSeconds: number;
 	templateCatalogUrl: string;
 	templateCatalogPollIntervalMs: number;
@@ -85,6 +111,7 @@ export interface WorkerRuntimeConfig {
 	prometheusStorageSize: string;
 	tenantPodSecurity: string;
 	tenantRuntimeClass: string;
+	tenantDefaultResources: ResourceConfig;
 	tenantEgressEnabled: boolean;
 	tenantEgressBlockedCidrs: string[];
 	dnsNamespace: string;
@@ -92,7 +119,21 @@ export interface WorkerRuntimeConfig {
 	dnsServiceIp?: string;
 }
 
+// An out-of-range pool would allocate ports no ingress entrypoint can serve; fail loudly at config load.
+export function assertValidTcpPortPool(pool: { enabled: boolean; start: number; size: number }): void {
+	if (!pool.enabled) return;
+	if (pool.start < 1 || pool.size < 0 || pool.start + pool.size - 1 > 65535) {
+		throw new Error(`Invalid TCP port pool: start=${pool.start}, size=${pool.size} (must fit 1-65535)`);
+	}
+}
+
 export function resolveWorkerRuntimeConfig(): WorkerRuntimeConfig {
+	const tcpPortPool = {
+		enabled: bool('TCP_PORT_POOL_ENABLED', false),
+		start: num('TCP_PORT_POOL_START', 30100),
+		size: num('TCP_PORT_POOL_SIZE', 0)
+	};
+	assertValidTcpPortPool(tcpPortPool);
 	return {
 		workerId: process.env.WORKER_ID ?? process.env.HOSTNAME ?? 'worker',
 		reconcileIntervalMs: num('RECONCILE_INTERVAL_MS', 5000),
@@ -106,6 +147,9 @@ export function resolveWorkerRuntimeConfig(): WorkerRuntimeConfig {
 		ingressAnnotations: jsonRecord('INGRESS_ANNOTATIONS'),
 		ingressLoadBalancerIp: process.env.INGRESS_LB_IP || undefined,
 		ingressControllerService: process.env.INGRESS_CONTROLLER_SERVICE || 'traefik',
+		tcpPortPoolEnabled: tcpPortPool.enabled,
+		tcpPortPoolStart: tcpPortPool.start,
+		tcpPortPoolSize: tcpPortPool.size,
 		storageClassName: process.env.STORAGE_CLASS_NAME ?? '',
 		registryEndpoint: process.env.REGISTRY_ENDPOINT || '',
 		registryInsecure: bool('REGISTRY_INSECURE', false),
@@ -118,7 +162,7 @@ export function resolveWorkerRuntimeConfig(): WorkerRuntimeConfig {
 		registryPushSecretName: process.env.REGISTRY_PUSH_SECRET_NAME || undefined,
 		buildTimeoutSeconds: num('BUILD_TIMEOUT_SECONDS', 1800),
 		buildJobTtlSeconds: num('BUILD_JOB_TTL_SECONDS', 3600),
-		buildMemoryRequest: process.env.BUILD_MEMORY_REQUEST || '2Gi',
+		buildMemoryRequest: process.env.BUILD_MEMORY_REQUEST || '1.5Gi',
 		buildMemoryLimit: process.env.BUILD_MEMORY_LIMIT || '2Gi',
 		registryPruneKeep: num('REGISTRY_PRUNE_KEEP', 2),
 		registryPruneIntervalMs: num('REGISTRY_PRUNE_INTERVAL_MS', 60 * 60 * 1000),
@@ -129,6 +173,7 @@ export function resolveWorkerRuntimeConfig(): WorkerRuntimeConfig {
 		gitPollBatch: num('GIT_POLL_BATCH', 20),
 		gitPollServiceIntervalSeconds: num('GIT_POLL_SERVICE_INTERVAL_SECONDS', 60),
 		gitLsRemoteTimeoutMs: num('GIT_LS_REMOTE_TIMEOUT_MS', 20_000),
+		gitDiffTimeoutMs: num('GIT_DIFF_TIMEOUT_MS', 30_000),
 		gitPollErrorBackoffSeconds: num('GIT_POLL_ERROR_BACKOFF_SECONDS', 300),
 		templateCatalogUrl: process.env.TEMPLATE_CATALOG_URL ?? 'https://raw.githubusercontent.com/kubwave/kubwave/main/packages/templates/catalog.json',
 		templateCatalogPollIntervalMs: num('TEMPLATE_CATALOG_POLL_INTERVAL_MS', 1_800_000),
@@ -143,6 +188,7 @@ export function resolveWorkerRuntimeConfig(): WorkerRuntimeConfig {
 		prometheusStorageSize: process.env.PROMETHEUS_STORAGE_SIZE ?? '5Gi',
 		tenantPodSecurity: process.env.TENANT_POD_SECURITY ?? 'baseline',
 		tenantRuntimeClass: process.env.TENANT_RUNTIME_CLASS ?? '',
+		tenantDefaultResources: resourceConfig('TENANT_DEFAULT_RESOURCES', { cpuRequest: '50m', memoryRequest: '128Mi' }),
 		tenantEgressEnabled: bool('TENANT_EGRESS_ENABLED', false),
 		tenantEgressBlockedCidrs: list('TENANT_EGRESS_BLOCKED_CIDRS', ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16']),
 		dnsNamespace: process.env.DNS_NAMESPACE ?? 'kube-system',

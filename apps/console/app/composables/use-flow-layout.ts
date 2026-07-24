@@ -22,6 +22,8 @@ export class FlowLayoutConflict extends Error {
 
 export const FLOW_LAYOUT_GRID_SIZE = 22;
 export const FLOW_LAYOUT_SNAP_GRID: [number, number] = [FLOW_LAYOUT_GRID_SIZE, FLOW_LAYOUT_GRID_SIZE];
+const FLOW_LAYOUT_FALLBACK_COL_WIDTH = 304;
+const FLOW_LAYOUT_FALLBACK_ROW_HEIGHT = 188;
 
 function normalizeZero(value: number): number {
 	return Object.is(value, -0) ? 0 : value;
@@ -32,6 +34,13 @@ export function snapFlowPosition(position: FlowNodePosition): FlowNodePosition {
 		x: normalizeZero(FLOW_LAYOUT_GRID_SIZE * Math.round(position.x / FLOW_LAYOUT_GRID_SIZE)),
 		y: normalizeZero(FLOW_LAYOUT_GRID_SIZE * Math.round(position.y / FLOW_LAYOUT_GRID_SIZE))
 	};
+}
+
+export function fallbackFlowPosition(index: number): FlowNodePosition {
+	return snapFlowPosition({
+		x: (index % 3) * FLOW_LAYOUT_FALLBACK_COL_WIDTH,
+		y: Math.floor(index / 3) * FLOW_LAYOUT_FALLBACK_ROW_HEIGHT
+	});
 }
 
 export function upsertFlowLayoutNode(layout: FlowLayout | undefined, node: FlowLayoutNode): FlowLayout {

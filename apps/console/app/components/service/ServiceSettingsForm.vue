@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Box, Braces, Cpu, Globe, Settings2, ShieldAlert } from 'lucide-vue-next';
 import type { Service } from '~/utils/types';
+import { watchPathConfigFields } from '~/utils/repo-watch-paths';
 import { snapshot, makeServiceSettingsSchema, type ServiceSettingsValues } from '~/composables/use-service-settings-schema';
 import { isDatabaseEngine } from '~/utils/database-engines';
 import { SERVICE_SETTINGS_ERRORS } from '~/components/service/settings/service-settings-context';
@@ -75,10 +76,10 @@ const GROUPS = [
 
 type GroupKey = (typeof GROUPS)[number]['key'];
 
-// Managed databases hide networking and resources/scaling (fixed port, no scaling; storage lives in Source).
+// Managed databases hide resources/scaling (fixed port, no scaling; storage lives in Source); networking shows only their TCP exposure.
 const isDatabase = computed(() => isDatabaseEngine(props.service.type));
-const DATABASE_GROUP_KEYS: GroupKey[] = ['general', 'source', 'variables', 'danger'];
-const visibleGroups = computed(() => (isDatabase.value ? GROUPS.filter(g => DATABASE_GROUP_KEYS.includes(g.key)) : [...GROUPS]));
+const DATABASE_GROUP_KEYS: GroupKey[] = ['general', 'source', 'networking', 'variables', 'danger'];
+const visibleGroups = computed(() => (isDatabase.value ? GROUPS.filter(g => DATABASE_GROUP_KEYS.includes(g.key)) : GROUPS));
 
 const group = ref<GroupKey>('general');
 
@@ -94,7 +95,8 @@ function groupForPath(path: string): GroupKey {
 	const head = path.split('.')[0] ?? '';
 	if (head === 'name' || head === 'description') return 'general';
 	if (head === 'resources' || head === 'autoscaling' || head === 'volumes' || head === 'configFiles') return 'resources';
-	if (head === 'healthCheck' || head === 'domains' || head === 'defaultDomainEnabled') return 'networking';
+	if (head === 'healthCheck' || head === 'domains' || head === 'defaultDomainEnabled' || head === 'exposedPorts' || head === 'basicAuth')
+		return 'networking';
 	if (head === 'env' || head === 'secrets') return 'variables';
 	return 'source';
 }
@@ -170,6 +172,14 @@ function removeDomain(index: number) {
 	state.domains.splice(index, 1);
 }
 
+function addExposedPort() {
+	state.exposedPorts.push({ _id: crypto.randomUUID(), containerPort: state.containerPort || '', publicPort: '' });
+}
+
+function removeExposedPort(index: number) {
+	state.exposedPorts.splice(index, 1);
+}
+
 function addVolume() {
 	state.volumes.push({ _id: crypto.randomUUID(), name: '', mountPath: '', size: '1Gi', subPath: '' });
 }
@@ -220,6 +230,7 @@ function repoBuildFields(values: ServiceSettingsValues) {
 		...(values.builder === 'dockerfile' && values.dockerfilePath.trim() ? { dockerfilePath: values.dockerfilePath.trim() } : {}),
 		...(values.commit.trim() ? { commit: values.commit.trim() } : {}),
 		...(values.rootDirectory.trim() ? { rootDirectory: values.rootDirectory.trim() } : {}),
+		...watchPathConfigFields(values.watchPaths, values.watchEntireRepo),
 		...(values.builder !== 'dockerfile' && values.buildCommand.trim() ? { buildCommand: values.buildCommand.trim() } : {}),
 		...(values.builder !== 'dockerfile' && values.startCommand.trim() ? { startCommand: values.startCommand.trim() } : {})
 	};
@@ -268,6 +279,7 @@ function buildConfig(values: ServiceSettingsValues) {
 		env: values.env.map(e => ({ key: e.key.trim(), value: e.value })).filter(e => e.key),
 		secrets: values.secrets.filter(s => s.key.trim()).map(s => ({ key: s.key.trim(), value: s.hasValue && s.value === '' ? null : s.value })),
 		domains: values.domains.filter(d => d.host.trim()).map(d => ({ host: d.host.trim(), port: Number(d.port) })),
+		exposedPorts: values.exposedPorts.filter(p => p.containerPort.trim()).map(p => ({ containerPort: Number(p.containerPort) })),
 		volumes: values.volumes
 			.filter(v => v.name.trim())
 			.map(v => ({
@@ -278,7 +290,14 @@ function buildConfig(values: ServiceSettingsValues) {
 			})),
 		healthCheck,
 		...(Object.keys(resources).length > 0 ? { resources } : {}),
-		autoscaling
+		autoscaling,
+		basicAuth: values.basicAuth.enabled
+			? {
+					enabled: true,
+					username: values.basicAuth.username.trim(),
+					password: values.basicAuth.password || null
+				}
+			: { enabled: false }
 	};
 
 	// Narrow DB config: database/username are immutable post-create and pass through unchanged; version + storage come from the form.
@@ -289,6 +308,7 @@ function buildConfig(values: ServiceSettingsValues) {
 		...('username' in props.service.config && props.service.config.username ? { username: props.service.config.username } : {}),
 		env: sharedConfig.env,
 		secrets: sharedConfig.secrets,
+		exposedPorts: sharedConfig.exposedPorts,
 		...(Object.keys(resources).length > 0 ? { resources } : {})
 	};
 
@@ -382,68 +402,78 @@ async function onDelete() {
 				</button>
 			</nav>
 
-			<div class="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 py-4">
-				<!-- Narrow-width section picker (replaces the rail) -->
-				<Select v-model="groupModel" class="lg:hidden">
-					<SelectTrigger class="w-full lg:hidden">
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem v-for="item in groupSelectItems" :key="item.value" :value="item.value">{{ item.label }}</SelectItem>
-					</SelectContent>
-				</Select>
+			<div class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+				<div class="mx-auto flex w-full max-w-2xl flex-col gap-6">
+					<!-- Narrow-width section picker (replaces the rail) -->
+					<Select v-model="groupModel" class="lg:hidden">
+						<SelectTrigger class="w-full lg:hidden">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem v-for="item in groupSelectItems" :key="item.value" :value="item.value">{{ item.label }}</SelectItem>
+						</SelectContent>
+					</Select>
 
-				<div v-show="group === 'general'">
-					<ServiceSettingsGeneralSection :state :saving :service />
-				</div>
+					<div v-show="group === 'general'">
+						<ServiceSettingsGeneralSection :state :saving :service />
+					</div>
 
-				<div v-show="group === 'source'" class="flex flex-col gap-6">
-					<ServiceSettingsSourceSection :state :saving :service />
-					<template v-if="service.type === 'docker-image'">
-						<Separator />
-						<ServiceSettingsCommandSection
+					<div v-show="group === 'source'" class="flex flex-col gap-6">
+						<ServiceSettingsSourceSection :state :saving :service />
+						<template v-if="service.type === 'docker-image'">
+							<Separator />
+							<ServiceSettingsCommandSection
+								:state
+								:saving
+								:add-command="addCommand"
+								:remove-command="removeCommand"
+								:add-arg="addArg"
+								:remove-arg="removeArg"
+							/>
+						</template>
+					</div>
+
+					<div v-show="group === 'resources'" class="flex flex-col gap-6">
+						<ServiceSettingsResourcesSection :state :saving :service :add-volume="addVolume" :remove-volume="removeVolume" />
+						<template v-if="service.type === 'docker-image'">
+							<Separator />
+							<ServiceSettingsConfigFilesSection :state :saving :service :add-config-file="addConfigFile" :remove-config-file="removeConfigFile" />
+						</template>
+					</div>
+
+					<div v-show="group === 'networking'">
+						<ServiceSettingsNetworkingSection
 							:state
 							:saving
-							:add-command="addCommand"
-							:remove-command="removeCommand"
-							:add-arg="addArg"
-							:remove-arg="removeArg"
+							:service
+							:add-domain="addDomain"
+							:remove-domain="removeDomain"
+							:add-exposed-port="addExposedPort"
+							:remove-exposed-port="removeExposedPort"
 						/>
-					</template>
-				</div>
+					</div>
 
-				<div v-show="group === 'resources'" class="flex flex-col gap-6">
-					<ServiceSettingsResourcesSection :state :saving :service :add-volume="addVolume" :remove-volume="removeVolume" />
-					<template v-if="service.type === 'docker-image'">
-						<Separator />
-						<ServiceSettingsConfigFilesSection :state :saving :service :add-config-file="addConfigFile" :remove-config-file="removeConfigFile" />
-					</template>
-				</div>
+					<div v-show="group === 'variables'">
+						<ServiceSettingsVariablesSection
+							:state
+							:saving
+							:service
+							:shown-secrets="shownSecrets"
+							:add-env="addEnv"
+							:remove-env="removeEnv"
+							:add-secret="addSecret"
+							:remove-secret="removeSecret"
+							:toggle-secret="toggleSecret"
+						/>
+					</div>
 
-				<div v-show="group === 'networking'">
-					<ServiceSettingsNetworkingSection :state :saving :service :add-domain="addDomain" :remove-domain="removeDomain" />
-				</div>
+					<div v-show="group === 'danger'">
+						<ServiceSettingsDangerSection :service @delete="onDelete" />
+					</div>
 
-				<div v-show="group === 'variables'">
-					<ServiceSettingsVariablesSection
-						:state
-						:saving
-						:service
-						:shown-secrets="shownSecrets"
-						:add-env="addEnv"
-						:remove-env="removeEnv"
-						:add-secret="addSecret"
-						:remove-secret="removeSecret"
-						:toggle-secret="toggleSecret"
-					/>
+					<!-- Clearance so long content scrolls clear of the floating save bar -->
+					<div v-if="dirty" class="h-16 shrink-0" aria-hidden="true" />
 				</div>
-
-				<div v-show="group === 'danger'">
-					<ServiceSettingsDangerSection :service @delete="onDelete" />
-				</div>
-
-				<!-- Clearance so long content scrolls clear of the floating save bar -->
-				<div v-if="dirty" class="h-16 shrink-0" aria-hidden="true" />
 			</div>
 		</div>
 

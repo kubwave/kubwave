@@ -32,6 +32,28 @@ export const serviceDomainSchema = z.object({
 	port: z.number().int().min(1).max(65535)
 });
 
+// publicPort is server-allocated on write; clients only ever submit the container port.
+export const servicePortExposureInputSchema = z.object({
+	containerPort: z.number().int().min(1).max(65535)
+});
+
+function refineExposedPorts(val: { exposedPorts?: Array<{ containerPort: number }> }, ctx: z.RefinementCtx): void {
+	const seen = new Set<number>();
+	(val.exposedPorts ?? []).forEach((exposure, i) => {
+		if (seen.has(exposure.containerPort)) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: 'Each exposed port must target a different container port.',
+				path: ['exposedPorts', i, 'containerPort']
+			});
+		}
+		seen.add(exposure.containerPort);
+	});
+}
+
+// Optional rather than defaulted so updates can omit it: absent = keep the stored allocation, explicit [] = clear all.
+const exposedPortsInputSchema = z.array(servicePortExposureInputSchema).max(5).optional();
+
 const quantityRegex = /^\d+(\.\d+)?[EPTGMK]i?$/;
 const cpuRegex = /^(\d+(\.\d+)?|\d+m)$/;
 
@@ -65,6 +87,19 @@ export const serviceVolumeSchema = z.object({
 		.regex(/^[^/]/, 'Must be a relative path without a leading slash.')
 		.refine(isCleanRelativeSubPath, 'Must not contain empty, "." or ".." path segments.')
 		.optional()
+});
+
+export const basicAuthInputSchema = z.object({
+	enabled: z.boolean(),
+	username: z
+		.string()
+		.trim()
+		.min(1)
+		.max(128)
+		.regex(/^[^\s:]+$/, 'Username cannot contain spaces or colons.')
+		.optional(),
+	// null = keep the stored password (same pattern as secrets); a string sets a new one.
+	password: z.string().min(1).max(256).nullable().optional()
 });
 
 export const autoscalingConfigSchema = z.object({
@@ -104,10 +139,12 @@ const runtimeConfigBase = z.object({
 	env: z.array(dockerEnvVarSchema).max(100),
 	secrets: z.array(dockerSecretInputSchema).max(100).default([]),
 	domains: z.array(serviceDomainSchema).max(20).default([]),
+	exposedPorts: exposedPortsInputSchema,
 	volumes: z.array(serviceVolumeSchema).max(10).default([]),
 	healthCheck: healthCheckSchema.optional(),
 	resources: resourceConfigSchema.optional(),
-	autoscaling: autoscalingConfigSchema.optional()
+	autoscaling: autoscalingConfigSchema.optional(),
+	basicAuth: basicAuthInputSchema.optional()
 });
 
 const dockerImageConfigBase = runtimeConfigBase.extend({
@@ -120,6 +157,8 @@ const dockerImageConfigBase = runtimeConfigBase.extend({
 });
 
 function refineRuntimeConfig(val: z.infer<typeof runtimeConfigBase>, ctx: z.RefinementCtx): void {
+	refineExposedPorts(val, ctx);
+
 	if (val.healthCheck?.enabled && val.healthCheck.port == null && val.containerPort == null) {
 		ctx.addIssue({
 			code: z.ZodIssueCode.custom,
@@ -135,6 +174,11 @@ function refineRuntimeConfig(val: z.infer<typeof runtimeConfigBase>, ctx: z.Refi
 			message: 'Autoscaling cannot be enabled for a service with a persistent volume.',
 			path: ['autoscaling', 'enabled']
 		});
+	}
+
+	const basicAuth = val.basicAuth;
+	if (basicAuth?.enabled && !basicAuth.username?.trim()) {
+		ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'A username is required when basic auth is enabled.', path: ['basicAuth', 'username'] });
 	}
 
 	if (!autoscaling?.enabled) return;
@@ -243,6 +287,19 @@ const publicRepoConfigBase = runtimeConfigBase.extend({
 		.regex(gitRefRegex, 'Enter a valid sub-directory.')
 		.refine(noTraversal, 'Sub-directory cannot traverse outside the repo.')
 		.optional(),
+	watchPaths: z
+		.array(
+			z
+				.string()
+				.trim()
+				.max(255)
+				.regex(gitRefRegex, 'Enter a valid watch path.')
+				.refine(noTraversal, 'Watch path cannot traverse outside the repo.')
+				.refine(value => !value.startsWith('/'), 'Watch path must be relative to the repo root.')
+		)
+		.max(20)
+		.optional(),
+	watchEntireRepo: z.boolean().optional(),
 	buildCommand: z.string().trim().max(4000).optional(),
 	startCommand: z.string().trim().max(4000).optional(),
 	builder: z.enum(['nixpacks', 'dockerfile']).default('nixpacks'),
@@ -322,12 +379,13 @@ const databaseConfigShape = {
 	username: dbIdentifierSchema.optional(),
 	resources: resourceConfigSchema.optional(),
 	env: z.array(dockerEnvVarSchema).max(100).default([]),
-	secrets: z.array(dockerSecretInputSchema).max(100).default([])
+	secrets: z.array(dockerSecretInputSchema).max(100).default([]),
+	exposedPorts: exposedPortsInputSchema
 };
 
 function databaseCreateConfigSchema(engine: DatabaseEngine) {
 	const versions = DATABASE_ENGINE_CATALOG[engine].versions.allowed;
-	return z.object({ version: z.enum(versions as [string, ...string[]]), ...databaseConfigShape });
+	return z.object({ version: z.enum(versions as [string, ...string[]]), ...databaseConfigShape }).superRefine(refineExposedPorts);
 }
 
 export const postgresConfigSchema = databaseCreateConfigSchema('postgres');
@@ -335,7 +393,9 @@ export const mysqlConfigSchema = databaseCreateConfigSchema('mysql');
 export const mariadbConfigSchema = databaseCreateConfigSchema('mariadb');
 export const mongodbConfigSchema = databaseCreateConfigSchema('mongodb');
 
-export const databaseUpdateConfigSchema = z.object({ version: z.string().trim().min(1).max(32), ...databaseConfigShape });
+export const databaseUpdateConfigSchema = z
+	.object({ version: z.string().trim().min(1).max(32), ...databaseConfigShape })
+	.superRefine(refineExposedPorts);
 export type DatabaseUpdateConfigInput = z.infer<typeof databaseUpdateConfigSchema>;
 
 export const autoDeployInputSchema = z.object({
@@ -478,6 +538,17 @@ export class CreateComposeServicesDto implements CreateComposeServicesInput {
 	compose!: string;
 }
 
+export class ExposedEndpointViewDto {
+	@ApiProperty({ type: Number })
+	containerPort!: number;
+
+	@ApiProperty({ type: Number })
+	publicPort!: number;
+
+	@ApiProperty({ type: String, nullable: true })
+	host!: string | null;
+}
+
 export class ServiceViewDto implements ServiceView {
 	@ApiProperty({ type: String, format: 'uuid' })
 	id!: string;
@@ -505,6 +576,9 @@ export class ServiceViewDto implements ServiceView {
 
 	@ApiProperty({ type: String, nullable: true })
 	defaultUrl!: string | null;
+
+	@ApiProperty({ type: [ExposedEndpointViewDto] })
+	exposedEndpoints!: ExposedEndpointViewDto[];
 
 	@ApiProperty({ type: String })
 	createdAt!: string;
@@ -534,6 +608,15 @@ export class ServiceConnectionDto implements ServiceConnectionView {
 
 	@ApiProperty({ type: String })
 	uri!: string;
+
+	@ApiProperty({ type: String, nullable: true })
+	externalHost!: string | null;
+
+	@ApiProperty({ type: Number, nullable: true })
+	externalPort!: number | null;
+
+	@ApiProperty({ type: String, nullable: true })
+	externalUri!: string | null;
 }
 
 export class ServiceOkDto {

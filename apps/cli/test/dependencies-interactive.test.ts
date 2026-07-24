@@ -31,7 +31,7 @@ const { ensureDependencies, waitDependencies } = await import('../src/lib/depend
 describe('ensureDependencies', () => {
 	test('skips already installed dependencies', async () => {
 		execHelmCalls.length = 0;
-		execHelmResults = [{ stdout: '', stderr: '', exitCode: 0 }];
+		execHelmResults = [{ stdout: '', stderr: 'release: not found', exitCode: 1 }];
 
 		const kc = kubeStub({
 			ingressClasses: [{ metadata: { name: 'traefik' } }],
@@ -42,10 +42,11 @@ describe('ensureDependencies', () => {
 		const results = await ensureDependencies(kc, depsState(), 'my-cluster');
 		expect(results.map(r => r.name)).toEqual(['Traefik', 'cert-manager', 'CloudNativePG']);
 		expect(results.every(r => r.alreadyInstalled)).toBe(true);
-		expect(execHelmCalls).toEqual([]);
+		// Only the traefik drift probe runs (unreadable release = no drift, hands-off).
+		expect(execHelmCalls).toEqual([['get', 'values', 'traefik', '-n', 'traefik', '-o', 'json']]);
 	});
 
-	test('installs missing dependencies when confirmed', async () => {
+	test('installs missing dependencies when confirmed and Traefik has no user-supplied values', async () => {
 		confirmResult = true;
 		execHelmCalls.length = 0;
 		execHelmResults = [

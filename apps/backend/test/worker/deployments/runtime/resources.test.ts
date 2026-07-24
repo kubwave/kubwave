@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { V1ResourceRequirements } from '@kubernetes/client-node';
 import type { DockerImageServiceConfig } from '@kubwave/db';
-import { resourcesMatch } from '~/modules/worker/jobs/deployments/deployers/runtime/resources';
+import { buildResources, resourcesMatch } from '~/modules/worker/jobs/deployments/deployers/runtime/resources';
 
 function configWith(resources: DockerImageServiceConfig['resources']): DockerImageServiceConfig {
 	return { image: 'nginx', tag: 'latest', containerPort: 8080, env: [], domains: [], volumes: [], resources };
@@ -40,5 +40,51 @@ describe('resourcesMatch', () => {
 	test('container has resources but config is empty', () => {
 		const live: V1ResourceRequirements = { limits: { memory: '512Mi' } };
 		expect(resourcesMatch({ resources: live }, configWith(undefined))).toBe(false);
+	});
+});
+
+const DEFAULTS = { cpuRequest: '50m', memoryRequest: '128Mi' };
+
+describe('buildResources defaults', () => {
+	test('applies the cluster defaults when the service configures nothing', () => {
+		expect(buildResources(undefined, DEFAULTS)).toEqual({ requests: { cpu: '50m', memory: '128Mi' } });
+	});
+
+	test('per-service config overrides the defaults field-by-field', () => {
+		expect(buildResources({ memoryRequest: '512Mi', memoryLimit: '1Gi' }, DEFAULTS)).toEqual({
+			requests: { cpu: '50m', memory: '512Mi' },
+			limits: { memory: '1Gi' }
+		});
+	});
+
+	test('no defaults and no config yields undefined', () => {
+		expect(buildResources(undefined, undefined)).toBeUndefined();
+	});
+
+	test('empty-string per-service values fall back to the defaults', () => {
+		expect(buildResources({ cpuRequest: '', memoryRequest: '', cpuLimit: '', memoryLimit: '' }, DEFAULTS)).toEqual({
+			requests: { cpu: '50m', memory: '128Mi' }
+		});
+	});
+
+	test('whitespace-only per-service values fall back to the defaults', () => {
+		expect(buildResources({ cpuRequest: '  ', memoryLimit: '\t' }, DEFAULTS)).toEqual({
+			requests: { cpu: '50m', memory: '128Mi' }
+		});
+	});
+
+	test('blank per-service values with no defaults are omitted', () => {
+		expect(buildResources({ cpuRequest: '', memoryLimit: '   ' }, undefined)).toBeUndefined();
+	});
+});
+
+describe('resourcesMatch with defaults', () => {
+	test('a container carrying the defaults matches an unconfigured service', () => {
+		const live: V1ResourceRequirements = { requests: { cpu: '50m', memory: '128Mi' } };
+		expect(resourcesMatch({ resources: live }, configWith(undefined), DEFAULTS)).toBe(true);
+	});
+
+	test('a container missing the defaults is a mismatch (rolls once to apply them)', () => {
+		expect(resourcesMatch({}, configWith(undefined), DEFAULTS)).toBe(false);
 	});
 });

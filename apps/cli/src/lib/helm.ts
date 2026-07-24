@@ -16,9 +16,11 @@ import { execHelm } from '~/lib/helm-exec.js';
 
 // Re-exported so existing `import { execHelm } from '~/lib/helm.js'` call sites keep working.
 export { execHelm };
-import { buildRegistryNetworkPolicyEgressPorts, platformRegistryHost } from '@kubwave/kube';
+import { buildRegistryNetworkPolicyEgressPorts, platformRegistryHost, type TcpPortPoolSettings } from '@kubwave/kube';
 import { HelmCommandError } from '~/lib/errors.js';
+import { TCP_PORT_POOL } from '~/lib/traefik.js';
 import type { CertManagerClusterIssuerConfig } from '~/lib/cert-manager.js';
+import type { UpcloudNodeGroup } from '~/lib/platforms.js';
 
 // Build registry trust model: platform = Kubwave-managed (TLS, or legacy in-cluster HTTP on upgrades); external = operator-supplied.
 export type BuildRegistryConfig =
@@ -43,6 +45,9 @@ export interface InstallConfig {
 	tenantPodSecurity?: string;
 	// Sandbox runtime for tenant pods ('' = runc). Set by --tenant-runtime-class, persisted; 'gvisor' auto-installs the runtimeClass on all Linux nodes.
 	tenantRuntimeClass?: string;
+	upcloudAutoscaling?: { enabled: boolean; clusterUuid: string; nodeGroups?: UpcloudNodeGroup[] };
+	tcpPortPool?: TcpPortPoolSettings;
+	dnsPolicy?: DnsPolicy;
 }
 
 export function generateValuesFile(config: InstallConfig): string {
@@ -64,6 +69,7 @@ export interface ProductionValuesInput {
 	storageClass?: string;
 	nodeSelector?: Record<string, string>;
 	dependencies: DependencyStateMap;
+	tcpPortPool?: TcpPortPoolSettings;
 	ha: boolean;
 	clusterIssuerName?: string;
 	// PSS enforce level for tenant namespaces. Undefined → omit (chart default 'baseline'); '' explicitly disables the PSS labels.
@@ -72,20 +78,30 @@ export interface ProductionValuesInput {
 	tenantRuntimeClass?: string;
 	// Install-only: emits the certManager cluster-issuer block. Upgrade omits it (--reset-then-reuse-values reuses the existing issuer).
 	certManagerClusterIssuer?: CertManagerClusterIssuerConfig;
+	dnsPolicy?: DnsPolicy;
 }
 
-const cloudfleetDnsPolicy = {
+export type DnsPolicy = { namespace: string; podLabels: Record<string, string>; serviceIp: string };
+
+const defaultDnsPolicy: DnsPolicy = {
 	namespace: 'kube-system',
 	podLabels: { 'k8s-app': 'coredns' },
 	serviceIp: '10.96.0.10/32'
 };
+
+// UpCloud UKS ships CoreDNS labelled `k8s-app: coredns`; an earlier `kube-dns` guess blocked all tenant DNS egress there.
+const upcloudDnsPolicy: DnsPolicy = { ...defaultDnsPolicy, podLabels: { 'k8s-app': 'coredns' } };
+
+export function dnsPolicyForPlatform(platformId: string | undefined): DnsPolicy {
+	return platformId === 'upcloud-uks' ? upcloudDnsPolicy : defaultDnsPolicy;
+}
 
 const productionConsoleResources = {
 	requests: { cpu: '100m', memory: '256Mi' },
 	limits: { cpu: '1000m', memory: '1Gi' }
 };
 
-function registryValues(input: ProductionValuesInput): { registry: Record<string, unknown>; builds: Record<string, unknown> } {
+function registryValues(input: ProductionValuesInput, dnsPolicy: DnsPolicy): { registry: Record<string, unknown>; builds: Record<string, unknown> } {
 	const buildDefaults = {
 		engine: 'buildkit',
 		builderImage: 'moby/buildkit:v0.31.0-rootless',
@@ -93,7 +109,7 @@ function registryValues(input: ProductionValuesInput): { registry: Record<string
 	};
 	const networkPolicy = (egressPorts?: number[], ingressController = false) => ({
 		enabled: true,
-		dns: cloudfleetDnsPolicy,
+		dns: dnsPolicy,
 		...(egressPorts ? { egressPorts } : {}),
 		...(ingressController
 			? {
@@ -169,8 +185,10 @@ function registryValues(input: ProductionValuesInput): { registry: Record<string
 // Must emit the full api/console/worker shape — prod layers no other file, so anything omitted falls back to the chart's DEV defaults (broken install).
 export function buildProductionValues(input: ProductionValuesInput): Record<string, unknown> {
 	const nodeSelector = input.nodeSelector && Object.keys(input.nodeSelector).length > 0 ? { nodeSelector: input.nodeSelector } : {};
+	const dnsPolicy = input.dnsPolicy ?? defaultDnsPolicy;
 	const ingressClassName = input.ingressClassName;
 	const clusterIssuerName = input.clusterIssuerName ?? input.certManagerClusterIssuer?.name ?? '';
+	const tcpPortPool = input.tcpPortPool ?? TCP_PORT_POOL;
 	const image = (app: string) => ({
 		repository: `${input.imageRegistry}/${app}`,
 		tag: input.version,
@@ -227,7 +245,9 @@ export function buildProductionValues(input: ProductionValuesInput): Record<stri
 			// The per-env NetworkPolicy whitelists this namespace so an enforcing CNI lets Traefik reach tenant pods; the kube-system default leaves them unreachable.
 			controllerNamespace: input.ingressControllerNamespace,
 			// Empty → worker reads the controller Service LB status and sslip-encodes the real IPv4; a literal (e.g. 127.0.0.1) pins every auto-domain to that IP.
-			loadBalancerIp: ''
+			loadBalancerIp: '',
+			// Same pool the Traefik dependency exposes as TCP entrypoints (see traefik.ts); the API allocates from it.
+			tcpPortPool
 		},
 		// Install-only: on upgrade cert-manager is already configured and helm reuses existing values (--reset-then-reuse-values), so we must not re-emit it.
 		...(input.certManagerClusterIssuer
@@ -253,7 +273,7 @@ export function buildProductionValues(input: ProductionValuesInput): Record<stri
 			dependencies: buildUpdateDependencyValues(input.dependencies),
 			...nodeSelector
 		},
-		...registryValues(input),
+		...registryValues(input, dnsPolicy),
 		// Tenant namespace hardening: turn egress confinement ON (Cilium-enforced); podSecurity stays the chart baseline unless --tenant-pod-security overrides it.
 		tenants: {
 			...(input.tenantPodSecurity !== undefined ? { podSecurity: input.tenantPodSecurity } : {}),
@@ -267,8 +287,8 @@ export function buildProductionValues(input: ProductionValuesInput): Record<stri
 				: {}),
 			egress: {
 				enabled: true,
-				dnsPodLabels: cloudfleetDnsPolicy.podLabels,
-				dnsServiceIp: cloudfleetDnsPolicy.serviceIp
+				dnsPodLabels: dnsPolicy.podLabels,
+				dnsServiceIp: dnsPolicy.serviceIp
 			}
 		}
 	};
@@ -293,12 +313,14 @@ export function buildValues(config: InstallConfig): Record<string, unknown> {
 		...(config.storageClass ? { storageClass: config.storageClass } : {}),
 		...(config.nodeSelector && Object.keys(config.nodeSelector).length > 0 ? { nodeSelector: config.nodeSelector } : {}),
 		dependencies,
+		tcpPortPool: config.tcpPortPool ?? TCP_PORT_POOL,
 		ha: config.ha,
 		// buildProductionValues drops these when undefined, so the omit-contract lives in one place there.
 		tenantPodSecurity: config.tenantPodSecurity,
 		tenantRuntimeClass: config.tenantRuntimeClass,
 		clusterIssuerName: certManagerClusterIssuer.name,
-		certManagerClusterIssuer
+		certManagerClusterIssuer,
+		...(config.dnsPolicy ? { dnsPolicy: config.dnsPolicy } : {})
 	});
 }
 

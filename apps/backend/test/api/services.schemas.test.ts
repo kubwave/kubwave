@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { dockerImageConfigSchema } from '~/modules/services/services.dto';
+import { databaseUpdateConfigSchema, dockerImageConfigSchema } from '~/modules/services/services.dto';
 
 const base = {
 	image: 'nginx',
@@ -108,5 +108,39 @@ describe('dockerImageConfigSchema: config files', () => {
 		expect(result.success).toBe(false);
 		const messages = result.success ? [] : result.error.issues.map(i => i.message);
 		expect(messages.some(m => m.includes('total size limit'))).toBe(true);
+	});
+});
+
+// Public TCP exposures: clients request container ports only; the public port is server-allocated on write.
+describe('exposedPorts validation', () => {
+	test('accepts container ports and strips a client-supplied publicPort', () => {
+		const result = dockerImageConfigSchema.safeParse({ ...base, exposedPorts: [{ containerPort: 5432, publicPort: 30100 }] });
+		expect(result.success).toBe(true);
+		expect(result.success ? result.data.exposedPorts : null).toEqual([{ containerPort: 5432 }]);
+	});
+
+	test('rejects duplicate container ports', () => {
+		const result = dockerImageConfigSchema.safeParse({ ...base, exposedPorts: [{ containerPort: 5432 }, { containerPort: 5432 }] });
+		expect(result.success).toBe(false);
+		const messages = result.success ? [] : result.error.issues.map(i => i.message);
+		expect(messages.some(m => m.includes('different container port'))).toBe(true);
+	});
+
+	test('rejects out-of-range ports and more than five exposures', () => {
+		expect(dockerImageConfigSchema.safeParse({ ...base, exposedPorts: [{ containerPort: 0 }] }).success).toBe(false);
+		expect(dockerImageConfigSchema.safeParse({ ...base, exposedPorts: [{ containerPort: 65536 }] }).success).toBe(false);
+		const six = Array.from({ length: 6 }, (_, i) => ({ containerPort: 5432 + i }));
+		expect(dockerImageConfigSchema.safeParse({ ...base, exposedPorts: six }).success).toBe(false);
+	});
+
+	test('managed-database configs accept exposures too', () => {
+		const result = databaseUpdateConfigSchema.safeParse({
+			version: '16',
+			storage: { size: '1Gi' },
+			env: [],
+			secrets: [],
+			exposedPorts: [{ containerPort: 5432 }]
+		});
+		expect(result.success).toBe(true);
 	});
 });

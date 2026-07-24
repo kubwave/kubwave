@@ -72,6 +72,10 @@ EOF
 done
 
 CHANNEL="${CHANNEL_ARG:-${KUBWAVE_CHANNEL:-stable}}"
+# A pinned prerelease tag implies the preview channel — the CLI rejects prereleases on stable.
+if [[ -z "$CHANNEL_ARG" && -n "$VERSION_ARG" && "$VERSION_ARG" == *-* ]]; then
+	CHANNEL="preview"
+fi
 case "$CHANNEL" in
 	stable|preview) ;;
 	*)
@@ -104,6 +108,7 @@ ASSET="${BINARY_NAME}-${OS}-${ARCH}"
 # ── Resolve auth token ──────────────────────────────────────
 GH_AUTH="${GITHUB_TOKEN:-}"
 
+# bash 3.2 (macOS) treats expanding an empty array under `set -u` as unbound — hence the `+` guards at use sites.
 AUTH_HEADER=()
 if [[ -n "$GH_AUTH" ]]; then
 	AUTH_HEADER=(-H "Authorization: Bearer ${GH_AUTH}")
@@ -128,7 +133,7 @@ api_get() {
 	status="$(curl -sS -o "$body" -w '%{http_code}' \
 		-H "Accept: application/json" \
 		-H "User-Agent: kubwave-install.sh" \
-		"${AUTH_HEADER[@]}" \
+		"${AUTH_HEADER[@]+"${AUTH_HEADER[@]}"}" \
 		"$url" || true)"
 	if [[ "$status" == "404" ]]; then
 		rm -f "$body"
@@ -245,7 +250,7 @@ TMP="$(mktemp)"
 HTTP_CODE="$(curl -sSL -o "${TMP}" -w '%{http_code}' \
 	-H "Accept: application/octet-stream" \
 	-H "User-Agent: kubwave-install.sh" \
-	"${AUTH_HEADER[@]}" \
+	"${AUTH_HEADER[@]+"${AUTH_HEADER[@]}"}" \
 	"${ASSET_URL}" || true)"
 
 if [[ "$HTTP_CODE" == "404" ]]; then

@@ -1,4 +1,4 @@
-import { AppsV1Api, AutoscalingV2Api, CoreV1Api, NetworkingV1Api, type V1Deployment } from '@kubernetes/client-node';
+import { AppsV1Api, AutoscalingV2Api, CoreV1Api, CustomObjectsApi, NetworkingV1Api, type V1Deployment } from '@kubernetes/client-node';
 import type { DeploymentLogEntry, RuntimeConfig } from '@kubwave/db';
 import { deploymentRolloutState, LABEL_SERVICE_ID, parseMemoryToBytes, pvcName, resourceName, secretName } from '@kubwave/kube';
 import {
@@ -10,7 +10,8 @@ import {
 	rolloutFailureMessage,
 	unhealthyReason
 } from '../../../../../../shared/cluster/ops.js';
-import { convergeNetworking, stepEvent, teardownNetworking } from '../../../../../../shared/cluster/networking.js';
+import { type BasicAuthSpec, convergeNetworking, stepEvent, teardownNetworking } from '../../../../../../shared/cluster/networking.js';
+import { decryptSecret } from '@kubwave/crypto';
 import { env } from '../../../../../../shared/config/worker-env.js';
 import { tenantIsolation } from '../../../../../../shared/cluster/isolation.js';
 import type { DeployContext, ReconcileResult, TeardownContext } from '../types.js';
@@ -21,6 +22,11 @@ import { convergePullSecret } from './pull-secret.js';
 import { convergeSecret } from './secrets.js';
 import { convergeConfigFiles, filesSecretName } from './config-files.js';
 import { buildPVC } from './storage.js';
+
+function resolveBasicAuthSpec(config: RuntimeConfig): BasicAuthSpec | undefined {
+	if (!config.basicAuth) return undefined;
+	return { username: config.basicAuth.username, password: decryptSecret(config.basicAuth.password) };
+}
 
 async function convergePersistentVolumes(
 	coreApi: CoreV1Api,
@@ -63,6 +69,7 @@ async function convergePersistentVolumes(
 async function syncRuntimeNetworking(args: {
 	coreApi: CoreV1Api;
 	netApi: NetworkingV1Api;
+	customApi: CustomObjectsApi;
 	autoscalingApi: AutoscalingV2Api;
 	ctx: DeployContext;
 	serviceId: string;
@@ -74,11 +81,15 @@ async function syncRuntimeNetworking(args: {
 	await convergeNetworking({
 		coreApi: args.coreApi,
 		netApi: args.netApi,
+		customApi: args.customApi,
 		namespace: args.ctx.namespace,
 		deployment: args.ctx.deployment,
 		ports: args.ports,
 		domains: args.domains,
+		exposedPorts: args.config.exposedPorts ?? [],
+		tcpRoutesEnabled: env.tcpPortPoolEnabled,
 		ingress: args.ctx.ingress,
+		basicAuth: resolveBasicAuthSpec(args.config),
 		events: args.events
 	});
 	await convergeHPA(args.autoscalingApi, args.ctx.namespace, args.serviceId, args.config, args.events);
@@ -108,11 +119,14 @@ export async function reconcileRuntime(ctx: DeployContext, config: RuntimeConfig
 	const appsApi = ctx.kc.makeApiClient(AppsV1Api);
 	const coreApi = ctx.kc.makeApiClient(CoreV1Api);
 	const netApi = ctx.kc.makeApiClient(NetworkingV1Api);
+	const customApi = ctx.kc.makeApiClient(CustomObjectsApi);
 	const autoscalingApi = ctx.kc.makeApiClient(AutoscalingV2Api);
 	const imagePullSecretName = env.registryPullSecretName || undefined;
 	// Same source the namespace reconciler stamps as the PSS enforce label, so pod hardening and the admission level can't diverge.
 	const podSecurityEnforce = tenantIsolation.podSecurityEnforce;
 	const runtimeClass = runtimeClassForService(ctx.deployment.type, tenantIsolation.runtimeClass) || undefined;
+	// Cluster-wide baseline resources applied when a service configures none (scheduler spreading + autoscaler signal).
+	const defaultResources = env.tenantDefaultResources;
 	const desiredPorts = containerPorts(config);
 	const desiredDomains = withDefaultDomain(config, ctx.defaultDomainHost);
 
@@ -131,6 +145,7 @@ export async function reconcileRuntime(ctx: DeployContext, config: RuntimeConfig
 		await syncRuntimeNetworking({
 			coreApi,
 			netApi,
+			customApi,
 			autoscalingApi,
 			ctx,
 			serviceId,
@@ -147,17 +162,23 @@ export async function reconcileRuntime(ctx: DeployContext, config: RuntimeConfig
 	if (!existing) {
 		await appsApi.createNamespacedDeployment({
 			namespace: ctx.namespace,
-			body: buildDeployment(ctx.deployment, ctx.namespace, config, imageRef, { imagePullSecretName, podSecurityEnforce, runtimeClass })
+			body: buildDeployment(ctx.deployment, ctx.namespace, config, imageRef, {
+				imagePullSecretName,
+				podSecurityEnforce,
+				runtimeClass,
+				defaultResources
+			})
 		});
 		events.push(stepEvent('deployment-created', `Created Deployment ${name} with image ${imageRef}`));
 		await syncNetworking();
 		return { state: 'progressing', phase: 'applying', events };
 	}
-	if (!deploymentMatchesConfig(existing, config, imageRef, serviceId, podSecurityEnforce, runtimeClass)) {
+	if (!deploymentMatchesConfig(existing, config, imageRef, serviceId, podSecurityEnforce, runtimeClass, defaultResources)) {
 		await replaceWithRetry({
 			label: `Deployment ${name}`,
 			read: () => readDeploymentOrNull(appsApi, ctx.namespace, name),
-			build: () => buildDeployment(ctx.deployment, ctx.namespace, config, imageRef, { imagePullSecretName, podSecurityEnforce, runtimeClass }),
+			build: () =>
+				buildDeployment(ctx.deployment, ctx.namespace, config, imageRef, { imagePullSecretName, podSecurityEnforce, runtimeClass, defaultResources }),
 			carryOver: (fresh, desired) => {
 				desired.metadata = { ...desired.metadata, resourceVersion: fresh.metadata?.resourceVersion ?? undefined };
 				// Under HPA, carry over the live replica count so the replace doesn't reset its scaling to the default.
@@ -184,6 +205,7 @@ export async function teardownRuntime(ctx: TeardownContext): Promise<void> {
 	const appsApi = ctx.kc.makeApiClient(AppsV1Api);
 	const coreApi = ctx.kc.makeApiClient(CoreV1Api);
 	const netApi = ctx.kc.makeApiClient(NetworkingV1Api);
+	const customApi = ctx.kc.makeApiClient(CustomObjectsApi);
 	const autoscalingApi = ctx.kc.makeApiClient(AutoscalingV2Api);
 	await deleteIgnoreMissing(() => autoscalingApi.deleteNamespacedHorizontalPodAutoscaler({ name, namespace: ctx.namespace }));
 	await deleteIgnoreMissing(() => appsApi.deleteNamespacedDeployment({ name, namespace: ctx.namespace, propagationPolicy: 'Background' }));
@@ -203,5 +225,5 @@ export async function teardownRuntime(ctx: TeardownContext): Promise<void> {
 	for (const pvc of pvcs.items) {
 		await deleteIgnoreMissing(() => coreApi.deleteNamespacedPersistentVolumeClaim({ name: pvc.metadata!.name!, namespace: ctx.namespace }));
 	}
-	await teardownNetworking({ coreApi, netApi, namespace: ctx.namespace, serviceId: ctx.serviceId });
+	await teardownNetworking({ coreApi, netApi, customApi, namespace: ctx.namespace, serviceId: ctx.serviceId });
 }

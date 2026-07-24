@@ -160,7 +160,8 @@ function gcpCsiPlan(): Parameters<typeof teardownCsiDrivers>[1] {
 				},
 				storageClass: 'pd-ssd'
 			}
-		]
+		],
+		upcloudAutoscalerInstalled: false
 	};
 }
 
@@ -192,7 +193,8 @@ function hetznerCsiPlan(): Parameters<typeof teardownCsiDrivers>[1] {
 				},
 				storageClass: undefined
 			}
-		]
+		],
+		upcloudAutoscalerInstalled: false
 	};
 }
 

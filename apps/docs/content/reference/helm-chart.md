@@ -172,6 +172,15 @@ onto every tenant Ingress.
 | `workloadIngress.controllerNamespace`   | `kube-system` | Ingress controller namespace.       |
 | `workloadIngress.controllerServiceName` | `traefik`     | Controller Service name.            |
 | `workloadIngress.loadBalancerIp`        | `""`          | Explicit LB IP for auto-domain.     |
+| `workloadIngress.tcpPortPool.enabled`   | `true`        | Public TCP exposures on/off.        |
+| `workloadIngress.tcpPortPool.start`     | `30100`       | First public TCP pool port.         |
+| `workloadIngress.tcpPortPool.size`      | `20`          | Number of TCP pool ports.           |
+
+When kubwave is installed through the Console, **Admin → Settings → Network** is authoritative for
+this pool. Saving a change runs a same-version infrastructure reconciliation that first updates the
+Traefik dependency and its LoadBalancer listeners, then applies these Helm values to the API and
+worker. Do not shrink, move, or disable a pool while a service still uses one of the affected public
+ports.
 
 ---
 

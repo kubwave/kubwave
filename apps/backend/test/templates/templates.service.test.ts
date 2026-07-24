@@ -33,6 +33,7 @@ const ghost: CatalogTemplate = {
 				env: [],
 				secrets: [{ key: 'MYSQL_PASSWORD', value: '{{ secrets.db_password }}' }],
 				domains: [],
+				exposedPorts: [],
 				volumes: [{ name: 'data', mountPath: '/var/lib/mysql', size: '1Gi' }],
 				configFiles: []
 			}
@@ -52,6 +53,7 @@ const ghost: CatalogTemplate = {
 				],
 				secrets: [{ key: 'database__connection__password', value: '{{ secrets.db_password }}' }],
 				domains: [],
+				exposedPorts: [],
 				volumes: [],
 				configFiles: []
 			}
@@ -117,6 +119,7 @@ describe('TemplatesService.instantiate', () => {
 						env: [{ key: 'B_HOST', value: '{{ services.b.host }}' }],
 						secrets: [],
 						domains: [],
+						exposedPorts: [],
 						volumes: [],
 						configFiles: []
 					}
@@ -132,6 +135,7 @@ describe('TemplatesService.instantiate', () => {
 						env: [{ key: 'A_HOST', value: '{{ services.a.host }}' }],
 						secrets: [],
 						domains: [],
+						exposedPorts: [],
 						volumes: [],
 						configFiles: []
 					}
@@ -173,6 +177,7 @@ describe('TemplatesService.instantiate', () => {
 						env: [],
 						secrets: [],
 						domains: [],
+						exposedPorts: [],
 						volumes: [],
 						configFiles: [],
 						command: ['start', '--main-service', '/home/deno/functions/main'],
@@ -220,6 +225,7 @@ describe('TemplatesService.instantiate', () => {
 						],
 						secrets: [],
 						domains: [],
+						exposedPorts: [],
 						volumes: [],
 						configFiles: []
 					}
@@ -285,13 +291,33 @@ describe('TemplatesService.instantiate', () => {
 					name: 'app',
 					primary: false,
 					type: 'docker-image',
-					config: { image: 'img', tag: 'latest', containerPort: 80, env: [], secrets: [], domains: [], volumes: [], configFiles: [] }
+					config: {
+						image: 'img',
+						tag: 'latest',
+						containerPort: 80,
+						env: [],
+						secrets: [],
+						domains: [],
+						exposedPorts: [],
+						volumes: [],
+						configFiles: []
+					}
 				},
 				{
 					name: 'app',
 					primary: false,
 					type: 'docker-image',
-					config: { image: 'img', tag: 'latest', containerPort: 80, env: [], secrets: [], domains: [], volumes: [], configFiles: [] }
+					config: {
+						image: 'img',
+						tag: 'latest',
+						containerPort: 80,
+						env: [],
+						secrets: [],
+						domains: [],
+						exposedPorts: [],
+						volumes: [],
+						configFiles: []
+					}
 				}
 			]
 		};

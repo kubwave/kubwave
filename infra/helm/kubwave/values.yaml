@@ -211,6 +211,11 @@ workloadIngress:
   # where Traefik is host-mapped). A wrong literal here silently routes every
   # auto-domain at the wrong address, so defaulting to empty is the safe choice.
   loadBalancerIp: ''
+  # Public TCP pool: raw TCP container ports (e.g. Postgres for migrations) get one ingress-IP port each; the controller must expose the same range (CLI mirrors it onto Traefik, dev via infra/k3d).
+  tcpPortPool:
+    enabled: true
+    start: 30100
+    size: 20
 
 # ── Tenant namespace hardening (per-environment isolation) ──
 # Defence-in-depth the WORKER applies to every per-environment tenant namespace it provisions.
@@ -223,6 +228,10 @@ tenants:
   # tenant images keep working. Set '' to disable, or 'restricted' for the strict profile (most
   # off-the-shelf images fail it — runAsNonRoot + drop-ALL required).
   podSecurity: baseline
+  # Baseline resources stamped on a tenant pod that configures none: a non-zero request makes the scheduler spread pods and the cluster-autoscaler scale the node pool (per-service values override field-by-field; empty field = unset).
+  defaultResources:
+    cpuRequest: 50m
+    memoryRequest: 128Mi
   # Egress confinement on tenant RUNTIME pods (the build-pod equivalent is builds.networkPolicy):
   # deny the internal/link-local ranges — other namespaces (platform Postgres/registry/API), the
   # kubelet, and the 169.254.169.254 cloud-metadata SSRF target — while still allowing

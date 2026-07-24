@@ -51,3 +51,8 @@ export function isNotFoundError(err: unknown): boolean {
 export function isAlreadyExistsError(err: unknown): boolean {
 	return getStatusCode(err) === 409;
 }
+
+// On a patch/update a 409 is an optimistic-concurrency conflict (stale resourceVersion), to be retried with fresh state.
+export function isConflictError(err: unknown): boolean {
+	return getStatusCode(err) === 409;
+}

@@ -83,6 +83,11 @@ repository, and when the tracked branch gets a new commit it kicks off a fresh b
 automatically — no manual redeploy needed. **GitHub App** services also deploy the moment a push
 webhook arrives, so the poll interval isn't the floor on how fast they react.
 
+When a **root directory** is set, auto-deploy only triggers if the new commit changes files under
+that directory (or under any **additional watch paths** you list — useful for shared monorepo
+packages such as `packages/db`). Turn on **Watch entire repository** to keep the old behavior and
+redeploy on every push regardless of path.
+
 ::callout{type="note"}
 Auto-deploy applies to the **public repo**, **private repo**, and **GitHub App** types. GitHub App services deploy **instantly** on push via the App
 webhook (with polling as a fallback); the others poll on an interval. Image and Dockerfile services are deployed on demand.

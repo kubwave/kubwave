@@ -19,7 +19,7 @@ apps/
   backend     - NestJS API + worker entrypoints.
   console     - Nuxt 4 (Vue 3, Nitro SSR) + shadcn-vue + TanStack Vue Query.
   cli         - Bun single-binary installer (ships embedded Helm chart).
-  docs        - Astro + Starlight public docs (not deployed in-cluster).
+  docs        - Nuxt 4 + Nuxt Content public docs (not deployed in-cluster).
   build-tools - source-build helper image inputs.
 packages/
   api-client  - @kubwave/api-client generated from backend OpenAPI.
@@ -80,7 +80,7 @@ bun run --filter=docs dev
 `bun run dev` runs `scripts/dev.sh`:
 
 1. Recreates the `kubwave` k3d cluster from `infra/k3d/cluster.yaml`.
-2. Waits for Traefik Deployment and CRDs (`middlewares.traefik.io`, `ingressroutes.traefik.io`).
+2. Waits for Traefik Deployment and CRDs (`middlewares.traefik.io`, `ingressroutes.traefik.io`, `ingressroutetcps.traefik.io`).
 3. Ensures namespace `kubwave` exists.
 4. Runs `tilt up`.
 
@@ -154,7 +154,7 @@ Current module groups:
 
 - `auth`, `setup`, `health`
 - `teams`, `projects`, `environments`, `services`, `deployments`
-- `invitations`
+- `git`, `templates`, `invitations`
 - `platform` (`users`, `settings/*`, `version`, `updates`)
 - `worker`
 
@@ -219,13 +219,13 @@ Keep this flow intact. Storing access tokens in cookies, localStorage, or persis
 - TypeScript 6.0.3, Bun 1.3.14, Node >= 24.
 - `noUncheckedIndexedAccess` and `verbatimModuleSyntax` are on.
 - Console alias: `~/*` points to `apps/console/app/*`.
-- CLI needs pre-build stubs: `bun run _prepare-embedded`.
-- Dockerfiles for `backend`, `console`, and docs have `dev` and `prod` targets. CLI has `prod`.
+- CLI needs pre-build stubs: `bun run --filter=cli _prepare-embedded`.
+- Dockerfiles for `backend`, `console`, `docs`, and `cli` have `dev` and `prod` targets.
 - Tilt live updates sync source; package/config changes trigger rebuilds.
 
 ## Docs Site
 
-`apps/docs` is Astro + Starlight. Content lives in `src/content/docs/**`. The sidebar is maintained in `astro.config.mjs`. The docs site is English-only for v1 and is deployed separately from the in-cluster platform.
+`apps/docs` is Nuxt 4 + Nuxt Content. Content lives in `content/**`. Site config is in `nuxt.config.ts`. The docs site is English-only for v1 and is deployed separately from the in-cluster platform.
 
 ## Release Model
 

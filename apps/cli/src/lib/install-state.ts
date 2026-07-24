@@ -6,6 +6,8 @@ import { resolveDependencyState } from '~/lib/dependencies.js';
 import type { DependencyStateInput, DependencyStateMap } from '~/lib/dependency-state.js';
 import { isRecord, readBool, readRecord, readString, readStringMap } from '~/lib/object-path.js';
 import type { InstallConfig } from '~/lib/helm.js';
+import type { UpcloudNodeGroup } from '~/lib/platforms.js';
+import { DEFAULT_TCP_PORT_POOL, resolveTcpPortPoolSettings, type TcpPortPoolSettings } from '@kubwave/kube';
 
 export interface InstallState {
 	domain: string;
@@ -30,6 +32,8 @@ export interface InstallState {
 	registryIngressEnabled: boolean;
 	registryClusterIssuer?: string;
 	clusterIssuerName?: string;
+	upcloudAutoscaling?: { enabled: boolean; clusterUuid: string; nodeGroups?: UpcloudNodeGroup[] };
+	tcpPortPool?: TcpPortPoolSettings;
 }
 
 export type PartialInstallState = Partial<InstallState>;
@@ -64,7 +68,9 @@ export function buildInstallState(config: InstallConfig, platformId: string = 'u
 		registryInsecure: buildRegistry.mode === 'external' ? (buildRegistry.insecure ?? false) : false,
 		registryIngressEnabled: buildRegistry.mode === 'platform',
 		...(buildRegistry.mode === 'platform' ? { registryClusterIssuer: clusterIssuerName } : {}),
-		clusterIssuerName
+		clusterIssuerName,
+		...(config.upcloudAutoscaling ? { upcloudAutoscaling: config.upcloudAutoscaling } : {}),
+		tcpPortPool: config.tcpPortPool ?? DEFAULT_TCP_PORT_POOL
 	};
 }
 
@@ -87,7 +93,9 @@ export function encodeInstallStateData(state: PartialInstallState | undefined): 
 		...(state.registryIngressEnabled !== undefined ? { registry_ingress_enabled: String(state.registryIngressEnabled) } : {}),
 		...(state.registryClusterIssuer ? { registry_cluster_issuer: state.registryClusterIssuer } : {}),
 		...(state.clusterIssuerName ? { cluster_issuer_name: state.clusterIssuerName } : {}),
-		...(dependencies ? { dependencies_json: JSON.stringify(dependencies) } : {})
+		...(dependencies ? { dependencies_json: JSON.stringify(dependencies) } : {}),
+		...(state.upcloudAutoscaling ? { upcloud_autoscaling_json: JSON.stringify(state.upcloudAutoscaling) } : {}),
+		...(state.tcpPortPool ? { tcp_port_pool_json: JSON.stringify(state.tcpPortPool) } : {})
 	};
 }
 
@@ -112,6 +120,8 @@ export function decodeInstallStateData(data: Record<string, string> | undefined)
 				}
 			})
 		: undefined;
+	const upcloudAutoscaling = parseUpcloudAutoscaling(data['upcloud_autoscaling_json']);
+	const tcpPortPool = parseTcpPortPool(data['tcp_port_pool_json']);
 	const registryMode = parseRegistryMode(data['registry_mode']);
 	const state: PartialInstallState = {
 		...(data['domain'] ? { domain: data['domain'] } : {}),
@@ -131,7 +141,9 @@ export function decodeInstallStateData(data: Record<string, string> | undefined)
 		...(data['registry_cluster_issuer'] ? { registryClusterIssuer: data['registry_cluster_issuer'] } : {}),
 		...(data['cluster_issuer_name'] ? { clusterIssuerName: data['cluster_issuer_name'] } : {}),
 		...(traefikValues ? { traefikValues } : {}),
-		...(dependencies ? { dependencies } : {})
+		...(dependencies ? { dependencies } : {}),
+		...(upcloudAutoscaling ? { upcloudAutoscaling } : {}),
+		...(tcpPortPool ? { tcpPortPool } : {})
 	};
 	return Object.keys(state).length > 0 ? state : undefined;
 }
@@ -155,7 +167,9 @@ function hasInstallStateData(data: Record<string, string>): boolean {
 		'registry_cluster_issuer',
 		'cluster_issuer_name',
 		'traefik_values_json',
-		'dependencies_json'
+		'dependencies_json',
+		'upcloud_autoscaling_json',
+		'tcp_port_pool_json'
 	].some(key => data[key] !== undefined);
 }
 
@@ -227,6 +241,7 @@ export async function resolveInstallState(
 	// Marker first, then live release value: readString drops '' (off), but the marker preserves it so the off level survives.
 	const tenantPodSecurity = marker.tenantPodSecurity ?? readString(values, ['tenants', 'podSecurity']);
 	const tenantRuntimeClass = marker.tenantRuntimeClass ?? readString(values, ['tenants', 'runtimeClass', 'default']);
+	const tcpPortPool = marker.tcpPortPool ?? resolveTcpPortPoolSettings(readRecord(values, ['workloadIngress', 'tcpPortPool']), DEFAULT_TCP_PORT_POOL);
 
 	return {
 		domain,
@@ -251,7 +266,9 @@ export async function resolveInstallState(
 		registryInsecure,
 		registryIngressEnabled,
 		...(registryClusterIssuer ? { registryClusterIssuer } : {}),
-		...(clusterIssuerName ? { clusterIssuerName } : {})
+		...(clusterIssuerName ? { clusterIssuerName } : {}),
+		...(marker.upcloudAutoscaling ? { upcloudAutoscaling: marker.upcloudAutoscaling } : {}),
+		tcpPortPool
 	};
 }
 
@@ -355,6 +372,7 @@ export function imageRegistryFromRepository(repository: string | undefined, work
 	return slash > 0 ? repository.slice(0, slash) : undefined;
 }
 
+// Only Hetzner can be inferred from legacy nodeSelector labels; other platforms (e.g. upcloud-uks) require platform_id on the marker.
 function inferPlatformId(nodeSelector: Record<string, string> | undefined): string | undefined {
 	return nodeSelector?.['cfke.io/provider'] === 'hetzner' ? 'cloudfleet-hetzner' : undefined;
 }
@@ -388,4 +406,31 @@ function parseObject(raw: string | undefined): Record<string, unknown> | undefin
 function parseRegistryMode(value: string | undefined): InstallState['registryMode'] | undefined {
 	if (value === 'unconfigured' || value === 'platform' || value === 'external') return value;
 	return undefined;
+}
+
+function parseUpcloudAutoscaling(raw: string | undefined): InstallState['upcloudAutoscaling'] | undefined {
+	const parsed = parseObject(raw);
+	if (!parsed || typeof parsed.enabled !== 'boolean') return undefined;
+	if (typeof parsed.clusterUuid !== 'string' || !parsed.clusterUuid.trim()) return undefined;
+	const nodeGroups = parseUpcloudNodeGroups(parsed.nodeGroups);
+	return { enabled: parsed.enabled, clusterUuid: parsed.clusterUuid, ...(nodeGroups ? { nodeGroups } : {}) };
+}
+
+function parseTcpPortPool(raw: string | undefined): TcpPortPoolSettings | undefined {
+	const parsed = parseObject(raw);
+	return parsed ? resolveTcpPortPoolSettings(parsed, DEFAULT_TCP_PORT_POOL) : undefined;
+}
+
+function parseUpcloudNodeGroups(raw: unknown): UpcloudNodeGroup[] | undefined {
+	if (!Array.isArray(raw)) return undefined;
+	const groups: UpcloudNodeGroup[] = [];
+	for (const item of raw) {
+		if (!isRecord(item)) continue;
+		const name = typeof item.name === 'string' ? item.name.trim() : '';
+		const min = typeof item.min === 'number' ? item.min : Number.NaN;
+		const max = typeof item.max === 'number' ? item.max : Number.NaN;
+		if (!name || !Number.isInteger(min) || !Number.isInteger(max) || min < 0 || max < min) continue;
+		groups.push({ name, min, max });
+	}
+	return groups.length > 0 ? groups : undefined;
 }

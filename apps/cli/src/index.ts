@@ -1,8 +1,10 @@
 #!/usr/bin/env bun
 import { ensureClusterCA } from '~/lib/k8s.js';
+import { ensureBunKubeFetchPatch } from '~/lib/bun-kube-fetch.js';
 
 // Must run before any K8s calls — re-execs with NODE_EXTRA_CA_CERTS if needed
 ensureClusterCA();
+ensureBunKubeFetchPatch();
 
 import { program } from 'commander';
 import { registerAuditCommand } from '~/commands/audit.js';
@@ -27,7 +29,12 @@ registerAuditCommand(program);
 registerVersionCommand(program);
 
 program.hook('preAction', async (_thisCommand, actionCommand) => {
-	await maybeRunStartupSelfUpdate({ commandName: actionCommand.name(), nonInteractive: actionCommand.opts().yes === true });
+	const opts = actionCommand.opts();
+	await maybeRunStartupSelfUpdate({
+		commandName: actionCommand.name(),
+		nonInteractive: opts.yes === true,
+		channel: opts.channel
+	});
 });
 
 program.parse();

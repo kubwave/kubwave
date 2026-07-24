@@ -2,7 +2,7 @@
 import { Check, ChevronsUpDown, LogOut, Monitor, Moon, Sun } from 'lucide-vue-next';
 import type { SessionUser } from '~/composables/use-auth';
 
-defineProps<{ user: SessionUser }>();
+defineProps<{ user: SessionUser; collapsed?: boolean }>();
 
 const { logout } = useAuth();
 const colorMode = useColorMode();
@@ -28,14 +28,20 @@ function selectTheme(event: Event, value: (typeof themes)[number]['value']) {
 		<DropdownMenuTrigger as-child>
 			<button
 				type="button"
-				class="flex w-full items-center gap-2.5 rounded-md p-1.5 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-primary/35 data-[state=open]:bg-accent"
+				:title="collapsed ? `${user.name} · ${user.email}` : undefined"
+				:class="[
+					'flex w-full items-center gap-2.5 rounded-md p-1.5 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-primary/35 data-[state=open]:bg-accent',
+					collapsed ? 'justify-center' : ''
+				]"
 			>
 				<UserAvatar :name="user.name" :email="user.email" />
-				<div class="min-w-0 flex-1">
-					<p class="truncate text-sm leading-tight font-medium">{{ user.name }}</p>
-					<p class="truncate text-xs leading-tight text-muted-foreground">{{ user.email }}</p>
-				</div>
-				<ChevronsUpDown class="size-4 shrink-0 text-muted-foreground" />
+				<template v-if="!collapsed">
+					<div class="min-w-0 flex-1">
+						<p class="truncate text-sm leading-tight font-medium">{{ user.name }}</p>
+						<p class="truncate text-xs leading-tight text-muted-foreground">{{ user.email }}</p>
+					</div>
+					<ChevronsUpDown class="size-4 shrink-0 text-muted-foreground" />
+				</template>
 			</button>
 		</DropdownMenuTrigger>
 

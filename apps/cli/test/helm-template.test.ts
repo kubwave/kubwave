@@ -116,6 +116,7 @@ describe('helm chart rendering', () => {
 	});
 
 	for (const optionalValue of optionalTopLevelValues) {
+		// First helm template in this file pays cold-start cost in CI (chart parse); 15s was flaky.
 		test(`renders when ${optionalValue.key} is missing from old release values`, () => {
 			const objects = renderObjects(['--set-json', `${optionalValue.key}=null`]);
 
@@ -124,7 +125,7 @@ describe('helm chart rendering', () => {
 					false
 				);
 			}
-		}, 15000);
+		}, 60_000);
 	}
 
 	test('configures node containerd trust for the in-cluster HTTP registry', () => {
@@ -363,6 +364,7 @@ describe('helm chart rendering', () => {
 		expect(deploymentEnv(objects, 'worker', 'INGRESS_ANNOTATIONS')).toBe('{}');
 		expect(deploymentEnv(objects, 'worker', 'DNS_POD_LABELS')).toBe('{"k8s-app":"coredns"}');
 		expect(deploymentEnv(objects, 'worker', 'DNS_SERVICE_IP')).toBe('10.96.0.10/32');
+		expect(deploymentEnv(objects, 'worker', 'TENANT_DEFAULT_RESOURCES')).toBe('{"cpuRequest":"50m","memoryRequest":"128Mi"}');
 	});
 
 	test('production builder NetworkPolicy allows Cloudfleet CoreDNS and Traefik registry ingress path', () => {

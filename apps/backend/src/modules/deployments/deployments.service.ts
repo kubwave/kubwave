@@ -1,14 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
-import { db, deploymentLogs, deployments } from '@kubwave/db';
+import { db, deploymentLogs, deployments, environments, projects, services } from '@kubwave/db';
 import type { Deployment, DeploymentLogEntry, DeploymentStatus } from '@kubwave/db';
 import { ServiceNotFoundError } from '../services/services.errors.js';
 import { ServicesService } from '../services/services.service.js';
 import { toConfigView } from '../services/services.config.js';
+import { TeamsService } from '../teams/teams.service.js';
 import { DeploymentNotCancelableError, DeploymentNotFoundError } from './deployments.errors.js';
-import type { DeploymentView } from './deployments.types.js';
+import type { DeploymentView, TeamDeploymentView } from './deployments.types.js';
 
 const DEPLOYMENT_HISTORY_LIMIT = 50;
+const TEAM_DEPLOYMENT_FEED_LIMIT = 15;
 
 function toDeploymentView(row: Deployment): DeploymentView {
 	return {
@@ -25,6 +27,34 @@ function toDeploymentView(row: Deployment): DeploymentView {
 		createdAt: row.createdAt.toISOString(),
 		startedAt: row.startedAt?.toISOString() ?? null,
 		finishedAt: row.finishedAt?.toISOString() ?? null
+	};
+}
+
+function toTeamDeploymentView(row: {
+	id: string;
+	status: string;
+	trigger: Deployment['trigger'];
+	createdAt: Date;
+	finishedAt: Date | null;
+	serviceId: string;
+	serviceName: string;
+	environmentId: string;
+	environmentName: string;
+	projectId: string;
+	projectName: string;
+}): TeamDeploymentView {
+	return {
+		id: row.id,
+		status: row.status as DeploymentStatus,
+		trigger: row.trigger,
+		createdAt: row.createdAt.toISOString(),
+		finishedAt: row.finishedAt?.toISOString() ?? null,
+		serviceId: row.serviceId,
+		serviceName: row.serviceName,
+		environmentId: row.environmentId,
+		environmentName: row.environmentName,
+		projectId: row.projectId,
+		projectName: row.projectName
 	};
 }
 
@@ -45,7 +75,10 @@ function deploymentLogRows(deploymentId: string, entries: DeploymentLogEntry[]) 
 
 @Injectable()
 export class DeploymentsService {
-	constructor(private readonly services: ServicesService) {}
+	constructor(
+		private readonly services: ServicesService,
+		private readonly teams: TeamsService
+	) {}
 
 	async enqueueDeployment(actingUserId: string, serviceId: string): Promise<DeploymentView> {
 		const service = await this.services.loadServiceForUser(actingUserId, serviceId);
@@ -89,6 +122,34 @@ export class DeploymentsService {
 			.limit(DEPLOYMENT_HISTORY_LIMIT);
 
 		return rows.map(toDeploymentView);
+	}
+
+	async listTeamDeployments(actingUserId: string, teamId: string): Promise<TeamDeploymentView[]> {
+		await this.teams.requireTeamRole(actingUserId, teamId, 'member');
+
+		const rows = await db
+			.select({
+				id: deployments.id,
+				status: deployments.status,
+				trigger: deployments.trigger,
+				createdAt: deployments.createdAt,
+				finishedAt: deployments.finishedAt,
+				serviceId: services.id,
+				serviceName: services.name,
+				environmentId: environments.id,
+				environmentName: environments.name,
+				projectId: projects.id,
+				projectName: projects.name
+			})
+			.from(deployments)
+			.innerJoin(services, eq(deployments.serviceId, services.id))
+			.innerJoin(environments, eq(services.environmentId, environments.id))
+			.innerJoin(projects, eq(environments.projectId, projects.id))
+			.where(eq(projects.teamId, teamId))
+			.orderBy(desc(deployments.createdAt))
+			.limit(TEAM_DEPLOYMENT_FEED_LIMIT);
+
+		return rows.map(toTeamDeploymentView);
 	}
 
 	async getDeployment(actingUserId: string, deploymentId: string): Promise<DeploymentView> {

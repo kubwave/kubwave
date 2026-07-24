@@ -699,7 +699,7 @@ describe('in-cluster update phases', () => {
 		const traefikArgs = realDeps.buildTraefikDependencyHelmArgs();
 		expect(traefikArgs).toContain('--repo');
 		expect(traefikArgs).toContain('https://traefik.github.io/charts');
-		expect(traefikArgs).toContain('--reuse-values');
+		expect(traefikArgs).toContain('--reset-values');
 		expect(traefikArgs).not.toContain('--set');
 
 		const certManagerArgs = realDeps.buildCertManagerDependencyHelmArgs();

@@ -241,6 +241,12 @@ export type AutoDeployViewDto = {
 	lastPollError: string | null;
 };
 
+export type ExposedEndpointViewDto = {
+	containerPort: number;
+	publicPort: number;
+	host: string | null;
+};
+
 export type ServiceViewDto = {
 	id: string;
 	environmentId: string;
@@ -253,6 +259,7 @@ export type ServiceViewDto = {
 	autoDeploy: AutoDeployViewDto;
 	internalDomain: string | null;
 	defaultUrl: string | null;
+	exposedEndpoints: Array<ExposedEndpointViewDto>;
 	createdAt: string;
 	updatedAt: string;
 };
@@ -292,6 +299,9 @@ export type ServiceConnectionDto = {
 	database: string;
 	password: string;
 	uri: string;
+	externalHost: string | null;
+	externalPort: number | null;
+	externalUri: string | null;
 };
 
 export type ServiceRuntimeDto = {
@@ -368,6 +378,20 @@ export type ServiceMetricsDto = {
 	current: ServiceMetricsCurrentDto;
 	limits: ServiceMetricsLimitsDto;
 	series: ServiceMetricsSeriesDto;
+};
+
+export type TeamDeploymentViewDto = {
+	id: string;
+	status: 'pending' | 'deploying' | 'canceling' | 'succeeded' | 'failed' | 'superseded' | 'canceled';
+	trigger: 'manual' | 'auto' | 'preview';
+	createdAt: string;
+	finishedAt: string | null;
+	serviceId: string;
+	serviceName: string;
+	environmentId: string;
+	environmentName: string;
+	projectId: string;
+	projectName: string;
 };
 
 export type DeploymentViewDto = {
@@ -614,8 +638,15 @@ export type PlatformVolumesDto = {
 	volumes: Array<PlatformVolumeDto>;
 };
 
+export type TcpPortPoolSettingsDto = {
+	enabled: boolean;
+	start: number;
+	size: number;
+};
+
 export type UpdateRunDto = {
 	id: string;
+	kind: 'version' | 'tcp_port_pool';
 	fromVersion: string;
 	toVersion: string;
 	status: string;
@@ -629,6 +660,13 @@ export type UpdateRunDto = {
 	} | null;
 	triggeredByUserId: string | null;
 	createdAt: string;
+};
+
+export type TcpPortPoolSettingsUpdateDto = {
+	enabled: boolean;
+	start: number;
+	size: number;
+	updateRun: UpdateRunDto;
 };
 
 export type TriggerUpdateDto = {
@@ -1387,6 +1425,21 @@ export type ServiceMetricsGetResponses = {
 
 export type ServiceMetricsGetResponse = ServiceMetricsGetResponses[keyof ServiceMetricsGetResponses];
 
+export type TeamDeploymentsListData = {
+	body?: never;
+	path: {
+		teamId: string;
+	};
+	query?: never;
+	url: '/api/teams/{teamId}/deployments';
+};
+
+export type TeamDeploymentsListResponses = {
+	200: Array<TeamDeploymentViewDto>;
+};
+
+export type TeamDeploymentsListResponse = TeamDeploymentsListResponses[keyof TeamDeploymentsListResponses];
+
 export type ServiceDeploymentsListData = {
 	body?: never;
 	path: {
@@ -1876,6 +1929,32 @@ export type PlatformSettingsPlatformVolumesGetResponses = {
 
 export type PlatformSettingsPlatformVolumesGetResponse =
 	PlatformSettingsPlatformVolumesGetResponses[keyof PlatformSettingsPlatformVolumesGetResponses];
+
+export type PlatformSettingsTcpPortPoolGetData = {
+	body?: never;
+	path?: never;
+	query?: never;
+	url: '/api/platform/settings/tcp-port-pool';
+};
+
+export type PlatformSettingsTcpPortPoolGetResponses = {
+	200: TcpPortPoolSettingsDto;
+};
+
+export type PlatformSettingsTcpPortPoolGetResponse = PlatformSettingsTcpPortPoolGetResponses[keyof PlatformSettingsTcpPortPoolGetResponses];
+
+export type PlatformSettingsTcpPortPoolUpdateData = {
+	body: TcpPortPoolSettingsDto;
+	path?: never;
+	query?: never;
+	url: '/api/platform/settings/tcp-port-pool';
+};
+
+export type PlatformSettingsTcpPortPoolUpdateResponses = {
+	200: TcpPortPoolSettingsUpdateDto;
+};
+
+export type PlatformSettingsTcpPortPoolUpdateResponse = PlatformSettingsTcpPortPoolUpdateResponses[keyof PlatformSettingsTcpPortPoolUpdateResponses];
 
 export type PlatformUpdatesListData = {
 	body?: never;

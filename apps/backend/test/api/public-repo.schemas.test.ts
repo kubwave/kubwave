@@ -31,6 +31,28 @@ describe('publicRepoConfigSchema', () => {
 		expect(publicRepoConfigSchema.safeParse({ ...baseConfig, rootDirectory: '../etc' }).success).toBe(false);
 	});
 
+	test('accepts watchPaths and watchEntireRepo', () => {
+		const result = publicRepoConfigSchema.safeParse({
+			...baseConfig,
+			rootDirectory: 'apps/web',
+			watchPaths: ['packages/db', 'packages/api-client'],
+			watchEntireRepo: true
+		});
+		expect(result.success).toBe(true);
+	});
+
+	test('rejects a watch path that traverses outside the repo', () => {
+		expect(publicRepoConfigSchema.safeParse({ ...baseConfig, watchPaths: ['../etc'] }).success).toBe(false);
+	});
+
+	test('rejects a watch path with a leading slash', () => {
+		expect(publicRepoConfigSchema.safeParse({ ...baseConfig, watchPaths: ['/apps/web'] }).success).toBe(false);
+	});
+
+	test('rejects more than 20 watch paths', () => {
+		expect(publicRepoConfigSchema.safeParse({ ...baseConfig, watchPaths: Array.from({ length: 21 }, (_, i) => `p${i}`) }).success).toBe(false);
+	});
+
 	test('still enforces the shared runtime rules (autoscaling + volume are exclusive)', () => {
 		const result = publicRepoConfigSchema.safeParse({
 			...baseConfig,
@@ -93,6 +115,8 @@ describe('buildStoredPublicRepoConfig', () => {
 				branch: 'release',
 				commit: 'a1b2c3d',
 				rootDirectory: 'apps/web',
+				watchPaths: ['packages/db', '', 'packages/api-client'],
+				watchEntireRepo: true,
 				buildCommand: 'npm run build',
 				startCommand: 'node dist/server.js',
 				builder: 'nixpacks',
@@ -106,8 +130,49 @@ describe('buildStoredPublicRepoConfig', () => {
 		);
 		expect(stored.commit).toBe('a1b2c3d');
 		expect(stored.rootDirectory).toBe('apps/web');
+		expect('watchPaths' in stored).toBe(false);
+		expect(stored.watchEntireRepo).toBe(true);
 		expect(stored.buildCommand).toBe('npm run build');
 		expect(stored.startCommand).toBe('node dist/server.js');
+	});
+
+	test('drops empty watchPaths and false watchEntireRepo', () => {
+		const stored = buildStoredPublicRepoConfig(
+			{
+				repoUrl: 'https://github.com/user/repo',
+				branch: 'main',
+				builder: 'nixpacks',
+				watchPaths: ['', '  '],
+				watchEntireRepo: false,
+				containerPort: 3000,
+				env: [] as { key: string; value: string }[],
+				secrets: [] as { key: string; value: string | null }[],
+				domains: [] as { host: string; port: number }[],
+				volumes: [] as { name: string; mountPath: string; size: string }[]
+			},
+			[]
+		);
+		expect('watchPaths' in stored).toBe(false);
+		expect('watchEntireRepo' in stored).toBe(false);
+	});
+
+	test('keeps watchPaths when watchEntireRepo is off', () => {
+		const stored = buildStoredPublicRepoConfig(
+			{
+				repoUrl: 'https://github.com/user/repo',
+				branch: 'main',
+				builder: 'nixpacks',
+				watchPaths: ['packages/db', '', 'packages/api-client'],
+				containerPort: 3000,
+				env: [] as { key: string; value: string }[],
+				secrets: [] as { key: string; value: string | null }[],
+				domains: [] as { host: string; port: number }[],
+				volumes: [] as { name: string; mountPath: string; size: string }[]
+			},
+			[]
+		);
+		expect(stored.watchPaths).toEqual(['packages/db', 'packages/api-client']);
+		expect('watchEntireRepo' in stored).toBe(false);
 	});
 });
 

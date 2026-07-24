@@ -176,7 +176,7 @@
 /* Faint technical grid for auth and empty canvases. Subtle, never a glow. */
 .bg-grid {
 	background-image:
-		linear-gradient(to right, color-mix(in oklch, var(--foreground) 5%, transparent) 1px, transparent 1px),
-		linear-gradient(to bottom, color-mix(in oklch, var(--foreground) 5%, transparent) 1px, transparent 1px);
+		linear-gradient(to right, color-mix(in oklch, var(--foreground) 9%, transparent) 1px, transparent 1px),
+		linear-gradient(to bottom, color-mix(in oklch, var(--foreground) 9%, transparent) 1px, transparent 1px);
 	background-size: 44px 44px;
 }

@@ -124,6 +124,27 @@ describe('planPreviewServices', () => {
 		expect(url).not.toContain('kubwave-env-BASE');
 	});
 
+	it('strips public TCP exposures from preview copies (pool ports stay with the base service)', () => {
+		const base = [
+			baseService({
+				id: 'svc-db',
+				type: 'docker-image',
+				name: 'db',
+				config: {
+					image: 'postgres',
+					tag: '16',
+					containerPort: 5432,
+					env: [],
+					domains: [],
+					exposedPorts: [{ containerPort: 5432, publicPort: 30100 }],
+					volumes: []
+				} as never
+			})
+		];
+		const { services } = planPreviewServices(base, ctx);
+		expect('exposedPorts' in services[0]!.config).toBe(false);
+	});
+
 	it('rewrites generated default-domain hosts in plaintext env using the base→preview service ids', () => {
 		const previewId = '3448ea31-476b-4a8a-a548-eb64a8250e2d';
 		const base = [

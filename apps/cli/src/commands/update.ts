@@ -17,7 +17,10 @@ import { resolveChannel, type Channel } from '~/lib/channel.js';
 import { resolveLatestRelease, getReleaseByTag, validateTargetForChannel, platformAssetName, type ReleaseInfo } from '~/lib/releases.js';
 import { describeRefresh, refreshAndReExec } from '~/lib/self-refresh.js';
 import { resolveInstallState, resolveInstalledDependencyState, type InstallState, type PartialInstallState } from '~/lib/install-state.js';
+import { withPlatformTcpPortPool } from '~/lib/platforms.js';
+import { TCP_PORT_POOL_SETTINGS_KEY, resolveTcpPortPoolSettings, type TcpPortPoolSettings } from '@kubwave/kube';
 import { buildHelmUpgradeArgs, generateUpgradeValuesFile, writeUpgradeValuesFileTo } from '~/lib/upgrade-plan.js';
+import { reconcileUpcloudAutoscaler } from '~/platforms/upcloud/autoscaling.js';
 import { applyDesiredBuildRegistry, ensureDesiredBuildRegistrySecrets, readDesiredBuildRegistrySettings } from '~/lib/registry-settings.js';
 import { FatalCliError, UserCancelledError, printAndExit } from '~/lib/errors.js';
 
@@ -187,6 +190,7 @@ export async function runUpdate(
 	// In-cluster path skips dependencies above; resolve state here. Local path reuses.
 	const resolvedState = installState ?? (await resolveInstallStateWithProgress(kc, marker?.installState, opts.registry, reporter));
 	await ensurePlatformRegistrySecrets(kc, resolvedState, reporter);
+	await reconcileUpcloudAutoscalerIfEnabled(kc, resolvedState, reporter);
 
 	await runHelmUpgrade(resolvedState, targetVersion, reporter);
 
@@ -249,8 +253,14 @@ export async function runRepairDependencies(reporter: ProgressReporter): Promise
 
 	const marker = await readVersionMarker(kc);
 	const dependencyState = await resolveInstalledDependencyState(kc, marker?.installState);
+	const desiredTcpPortPool = await readDesiredTcpPortPoolSettings();
 
-	await ensureDependenciesSilent(kc, reporter, dependencyState);
+	await ensureDependenciesSilent(
+		kc,
+		reporter,
+		desiredTcpPortPool ? withPlatformTcpPortPool(dependencyState, marker?.installState?.platformId ?? 'unknown', desiredTcpPortPool) : dependencyState
+	);
+	await reconcileUpcloudAutoscalerIfEnabled(kc, marker?.installState, reporter);
 }
 
 // In-cluster dependency wait: verifies readiness through Kubernetes APIs only.
@@ -281,7 +291,11 @@ export async function runHelmPlanPhase(opts: UpdateOpts, reporter: ProgressRepor
 	validateTargetForChannel(target, channel);
 
 	const desiredRegistry = await readDesiredBuildRegistrySettings();
-	const installState = applyDesiredBuildRegistry(await prepareInstallState(kc, marker?.installState, opts.registry, reporter), desiredRegistry);
+	const storedTcpPortPool = await readDesiredTcpPortPoolSettings();
+	const installState = withTcpPortPool(
+		applyDesiredBuildRegistry(await prepareInstallState(kc, marker?.installState, opts.registry, reporter), desiredRegistry),
+		storedTcpPortPool
+	);
 	await ensureDesiredBuildRegistrySecrets(kc, desiredRegistry, installState, reporter);
 
 	reporter.start('Writing upgrade plan...');
@@ -309,9 +323,10 @@ export async function runFinalize(opts: UpdateOpts, reporter: ProgressReporter):
 	const marker = await readVersionMarker(kc);
 	const channel = resolveChannel({ override: opts.channel, markerChannel: marker?.channel });
 	const desiredRegistry = await readDesiredBuildRegistrySettings();
-	const installState = applyDesiredBuildRegistry(
-		await resolveInstallState(kc, { markerState: marker?.installState, registryOverride: opts.registry }),
-		desiredRegistry
+	const storedTcpPortPool = await readDesiredTcpPortPoolSettings();
+	const installState = withTcpPortPool(
+		applyDesiredBuildRegistry(await resolveInstallState(kc, { markerState: marker?.installState, registryOverride: opts.registry }), desiredRegistry),
+		storedTcpPortPool
 	);
 
 	reporter.start('Updating version marker...');
@@ -406,6 +421,16 @@ async function prepareInstallState(
 	return installState;
 }
 
+async function readDesiredTcpPortPoolSettings(): Promise<TcpPortPoolSettings | undefined> {
+	const { getJsonSetting } = await import('~/lib/db.js');
+	const value = await getJsonSetting<unknown>(TCP_PORT_POOL_SETTINGS_KEY);
+	return value == null ? undefined : resolveTcpPortPoolSettings(value);
+}
+
+function withTcpPortPool(installState: InstallState, tcpPortPool: TcpPortPoolSettings | undefined): InstallState {
+	return tcpPortPool ? { ...installState, tcpPortPool } : installState;
+}
+
 async function ensurePlatformRegistrySecrets(
 	kc: ReturnType<typeof loadKubeConfig>,
 	installState: InstallState,
@@ -416,6 +441,19 @@ async function ensurePlatformRegistrySecrets(
 	reporter.start('Ensuring platform registry secrets...');
 	await createRegistrySecrets(kc, buildRegistryEndpointHost(installState.registryHost));
 	reporter.succeed('Platform registry secrets ready');
+}
+
+async function reconcileUpcloudAutoscalerIfEnabled(
+	kc: ReturnType<typeof loadKubeConfig>,
+	installState: InstallState | PartialInstallState | undefined,
+	reporter: ProgressReporter
+): Promise<void> {
+	const autoscaling = installState?.upcloudAutoscaling;
+	if (installState?.platformId !== 'upcloud-uks' || !autoscaling?.enabled || !autoscaling.clusterUuid) return;
+
+	reporter.start('Reconciling UpCloud Cluster Autoscaler...');
+	await reconcileUpcloudAutoscaler(kc, { clusterUuid: autoscaling.clusterUuid, nodeGroups: autoscaling.nodeGroups });
+	reporter.succeed('UpCloud Cluster Autoscaler reconciled');
 }
 
 async function runHelmUpgrade(

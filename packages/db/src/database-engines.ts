@@ -134,6 +134,7 @@ export function buildDatabaseRuntimeConfig(engine: DatabaseEngine, config: Datab
 		domains: [],
 		volumes: [{ name: DATABASE_VOLUME_NAME, mountPath: spec.dataDir, size: config.storage.size }],
 		healthCheck: { enabled: true, type: 'tcp', port: spec.port },
-		resources: config.resources
+		resources: config.resources,
+		...(config.exposedPorts?.length ? { exposedPorts: config.exposedPorts } : {})
 	};
 }

@@ -96,6 +96,9 @@ The Backend Worker orchestrates tenant workloads through a Nest application cont
 | `INGRESS_ANNOTATIONS`          | No       | `{}`          | JSON object of extra annotations on tenant Ingresses. |
 | `INGRESS_LB_IP`                | No       | —             | LoadBalancer IP (set by some providers).              |
 | `INGRESS_CONTROLLER_SERVICE`   | No       | `traefik`     | Name of the ingress controller's Service.             |
+| `TCP_PORT_POOL_ENABLED`        | No       | `false`       | Enable public TCP port exposures (IngressRouteTCP).   |
+| `TCP_PORT_POOL_START`          | No       | `30100`       | First public port of the TCP pool.                    |
+| `TCP_PORT_POOL_SIZE`           | No       | `0`           | Number of ports in the TCP pool.                      |
 | `STORAGE_CLASS_NAME`           | No       | `""`          | Default StorageClass for tenant PVCs.                 |
 
 ### Container registry & builds
@@ -133,6 +136,7 @@ The Backend Worker orchestrates tenant workloads through a Nest application cont
 | `GIT_POLL_BATCH`                    | No       | `20`    | Max repos to poll per tick.                         |
 | `GIT_POLL_SERVICE_INTERVAL_SECONDS` | No       | `60`    | Minimum interval between polls of the same service. |
 | `GIT_LS_REMOTE_TIMEOUT_MS`          | No       | `20000` | Timeout for `git ls-remote` calls.                  |
+| `GIT_DIFF_TIMEOUT_MS`               | No       | `30000` | Timeout for path-filter `git diff` between commits. |
 | `GIT_POLL_ERROR_BACKOFF_SECONDS`    | No       | `300`   | Backoff after a poll error (5 min).                 |
 
 ### PR preview environments
@@ -145,11 +149,11 @@ The Backend Worker orchestrates tenant workloads through a Nest application cont
 
 ### Platform-managed Prometheus
 
-| Variable                  | Required | Default                   | Description                   |
-| ------------------------- | -------- | ------------------------- | ----------------------------- |
-| `PROMETHEUS_IMAGE`        | No       | `prom/prometheus:v2.55.1` | Prometheus container image.   |
-| `PROMETHEUS_RETENTION`    | No       | `7d`                      | TSDB retention.               |
-| `PROMETHEUS_STORAGE_SIZE` | No       | `5Gi`                     | PVC size for Prometheus data. |
+| Variable                  | Required | Default                   | Description                                                                                                                                                  |
+| ------------------------- | -------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `PROMETHEUS_IMAGE`        | No       | `prom/prometheus:v2.55.1` | Prometheus container image.                                                                                                                                  |
+| `PROMETHEUS_RETENTION`    | No       | `7d`                      | TSDB time retention. Size retention is 99% of the volume-autoscaling prometheus cap when autoscaling is enabled, otherwise 99% of `PROMETHEUS_STORAGE_SIZE`. |
+| `PROMETHEUS_STORAGE_SIZE` | No       | `5Gi`                     | PVC size for Prometheus data.                                                                                                                                |
 
 ### Volume autoscaling
 

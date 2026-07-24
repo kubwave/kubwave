@@ -112,6 +112,10 @@ rules:
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses", "networkpolicies"]
     verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  # Public TCP exposures (IngressRouteTCP) and per-service basic auth (Middleware) via Traefik CRDs.
+  - apiGroups: ["traefik.io"]
+    resources: ["ingressroutetcps", "middlewares"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch"]

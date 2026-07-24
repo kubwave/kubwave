@@ -69,6 +69,9 @@ import type {
 	PlatformSettingsSmtpTestResponses,
 	PlatformSettingsSmtpUpdateData,
 	PlatformSettingsSmtpUpdateResponses,
+	PlatformSettingsTcpPortPoolGetResponses,
+	PlatformSettingsTcpPortPoolUpdateData,
+	PlatformSettingsTcpPortPoolUpdateResponses,
 	PlatformSettingsVolumeAutoscalingGetResponses,
 	PlatformSettingsVolumeAutoscalingUpdateData,
 	PlatformSettingsVolumeAutoscalingUpdateResponses,
@@ -106,6 +109,7 @@ import type {
 	SetupInitializeData,
 	SetupInitializeResponses,
 	SetupStatusResponses,
+	TeamDeploymentsListResponses,
 	TeamGitConnectionGetResponses,
 	TeamGitInstallationReposListResponses,
 	TeamGitInstallationReposSyncResponses,
@@ -347,6 +351,7 @@ export type KubwavePlatformSettingsResource = {
 	prPreviews: KubwavePlatformSettingsPrPreviewsResource;
 	registry: KubwavePlatformSettingsRegistryResource;
 	smtp: KubwavePlatformSettingsSmtpResource;
+	tcpPortPool: KubwavePlatformSettingsTcpPortPoolResource;
 	volumeAutoscaling: KubwavePlatformSettingsVolumeAutoscalingResource;
 };
 
@@ -392,6 +397,11 @@ export type KubwavePlatformSettingsSmtpResource = {
 
 export type KubwavePlatformSettingsSmtpTestResource = {
 	post(body: PlatformSettingsSmtpTestData['body']): OperationResult<PlatformSettingsSmtpTestResponses>;
+};
+
+export type KubwavePlatformSettingsTcpPortPoolResource = {
+	get(): OperationResult<PlatformSettingsTcpPortPoolGetResponses>;
+	put(body: PlatformSettingsTcpPortPoolUpdateData['body']): OperationResult<PlatformSettingsTcpPortPoolUpdateResponses>;
 };
 
 export type KubwavePlatformSettingsVolumeAutoscalingResource = {
@@ -512,10 +522,15 @@ export type KubwaveTeamsResource = {
 export type KubwaveTeamsTeamIdResource = {
 	patch(body: TeamsRenameData['body']): OperationResult<TeamsRenameResponses>;
 	delete(): OperationResult<TeamsDeleteResponses>;
+	deployments: KubwaveTeamsTeamIdDeploymentsResource;
 	git: KubwaveTeamsTeamIdGitResource;
 	members: KubwaveTeamsTeamIdMembersResource;
 	projects: KubwaveTeamsTeamIdProjectsResource;
 	sshKeys: KubwaveTeamsTeamIdSshKeysResource;
+};
+
+export type KubwaveTeamsTeamIdDeploymentsResource = {
+	get(): OperationResult<TeamDeploymentsListResponses>;
 };
 
 export type KubwaveTeamsTeamIdGitResource = {
@@ -739,6 +754,10 @@ export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClie
 						post: (body: PlatformSettingsSmtpTestData['body']) => apiResult(raw.platformSettingsSmtpTest({ body }))
 					}
 				},
+				tcpPortPool: {
+					get: () => apiResult(raw.platformSettingsTcpPortPoolGet({})),
+					put: (body: PlatformSettingsTcpPortPoolUpdateData['body']) => apiResult(raw.platformSettingsTcpPortPoolUpdate({ body }))
+				},
 				volumeAutoscaling: {
 					get: () => apiResult(raw.platformSettingsVolumeAutoscalingGet({})),
 					put: (body: PlatformSettingsVolumeAutoscalingUpdateData['body']) => apiResult(raw.platformSettingsVolumeAutoscalingUpdate({ body }))
@@ -822,6 +841,9 @@ export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClie
 			(teamId: string) => ({
 				patch: (body: TeamsRenameData['body']) => apiResult(raw.teamsRename({ path: { teamId: teamId }, body })),
 				delete: () => apiResult(raw.teamsDelete({ path: { teamId: teamId } })),
+				deployments: {
+					get: () => apiResult(raw.teamDeploymentsList({ path: { teamId: teamId } }))
+				},
 				git: {
 					connection: {
 						get: () => apiResult(raw.teamGitConnectionGet({ path: { teamId: teamId } }))

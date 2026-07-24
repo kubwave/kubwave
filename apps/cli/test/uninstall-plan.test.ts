@@ -146,6 +146,10 @@ const api = {
 		if (crdNotFound.has(name)) throw { code: 404 };
 		const error = crdDeleteErrors.get(name);
 		if (error) throw error;
+	},
+	readNamespacedDeployment: async ({ name }: { name: string; namespace: string }) => {
+		apiCalls.push(`read-deployment:${name}`);
+		throw { code: 404 };
 	}
 };
 

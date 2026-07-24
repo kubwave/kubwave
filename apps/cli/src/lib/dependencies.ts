@@ -7,8 +7,15 @@ import { stampHelmReleaseOwnership } from '~/lib/helm-ownership.js';
 import { isNotFoundError } from '~/lib/k8s-errors.js';
 import { parseDurationMs } from '~/lib/duration.js';
 import { mergeDependencyState, type DependencyStateInput, type DependencyStateMap, type TraefikDependencyState } from '~/lib/dependency-state.js';
-import { readRecord, readString } from '~/lib/object-path.js';
-import { TRAEFIK_CHART, TRAEFIK_CHART_NAME, TRAEFIK_CHART_VERSION, TRAEFIK_REPO_URL, writeTraefikValuesFile } from '~/lib/traefik.js';
+import { isRecord, readRecord, readString } from '~/lib/object-path.js';
+import {
+	TRAEFIK_CHART,
+	TRAEFIK_CHART_NAME,
+	TRAEFIK_CHART_VERSION,
+	TRAEFIK_REPO_URL,
+	buildTraefikHelmValues,
+	writeTraefikValuesFile
+} from '~/lib/traefik.js';
 
 // repo/chart for the helm-repo-add path; bare name for the inline --repo form (helm reads repo/chart under --repo literally and fails to find it).
 const CERT_MANAGER_NAMESPACE = 'cert-manager';
@@ -148,7 +155,7 @@ export function buildTraefikDependencyHelmArgs(config: TraefikDependencyState = 
 		'--namespace',
 		config.namespace,
 		'--create-namespace',
-		'--reuse-values',
+		'--reset-values',
 		'--version',
 		TRAEFIK_CHART_VERSION,
 		...(valuesFilePath ? ['-f', valuesFilePath] : [])
@@ -187,6 +194,10 @@ const DEPENDENCIES: ClusterDependency[] = [
 				const list = await api.listIngressClass();
 				const traefik = list.items.find(ic => ic.metadata?.name === config.ingressClassName);
 				if (traefik) {
+					// Installed, but the release may predate newer desired values (e.g. the TCP port pool) — the repair phase re-applies them.
+					if (await traefikReleaseValuesDrifted(config)) {
+						return { installed: false, message: 'Traefik release values differ from the CLI defaults (TCP port pool); an update re-applies them' };
+					}
 					return { installed: true, message: 'Traefik IngressClass found' };
 				}
 				if (list.items.length > 0) {
@@ -200,14 +211,15 @@ const DEPENDENCIES: ClusterDependency[] = [
 		},
 		install: async (kc, state, context) => {
 			const config = state.traefik;
-			const valuesFile = writeTraefikValuesFile(config);
+			const existingValues = await readTraefikReleaseValues(config);
+			const valuesFile = writeTraefikValuesFile(config, existingValues);
 			await helmRepoAddAndInstall(
 				{ name: 'traefik', url: TRAEFIK_REPO_URL },
 				TRAEFIK_CHART,
 				config.releaseName,
 				config.namespace,
-				// Pin the validated chart version + --reuse-values so a partial pre-existing release keeps operator overrides; the rendered values file overlays last.
-				['--version', TRAEFIK_CHART_VERSION, '--reuse-values', '-f', valuesFile],
+				// Reset chart values so shrinking a managed TCP pool removes obsolete Traefik Service ports and entrypoints.
+				['--version', TRAEFIK_CHART_VERSION, '--reset-values', '-f', valuesFile],
 				{ wait: false, context }
 			);
 			await stampHelmReleaseOwnership(kc, config.releaseName, config.namespace);
@@ -332,6 +344,57 @@ export function buildUpdateDependencyValues(state: DependencyStateInput | Depend
 
 export function getDependencies(): ClusterDependency[] {
 	return DEPENDENCIES;
+}
+
+// Drift = a desired key missing/different in the live user-supplied values; extra live keys and unreadable releases don't count.
+async function traefikReleaseValuesDrifted(config: TraefikDependencyState): Promise<boolean> {
+	const values = await tryReadTraefikReleaseValues(config);
+	if (!values) return false;
+	try {
+		return !valuesSubsetOf(values, buildTraefikHelmValues(config));
+	} catch {
+		return false;
+	}
+}
+
+async function readTraefikReleaseValues(config: TraefikDependencyState): Promise<Record<string, unknown>> {
+	const { stdout, stderr, exitCode } = await execHelm(['get', 'values', config.releaseName, '-n', config.namespace, '-o', 'json']);
+	if (exitCode !== 0) {
+		if (/release: not found/i.test(stderr)) return {};
+		throw new FatalCliError(`Could not read existing Traefik Helm values; refusing to reset them:\n${stderr}`);
+	}
+	if (!stdout.trim()) return {};
+	try {
+		const values: unknown = JSON.parse(stdout);
+		if (isRecord(values)) return values;
+	} catch {
+		// The error below provides the same safe failure for malformed Helm output.
+	}
+	throw new FatalCliError('Could not parse existing Traefik Helm values; refusing to reset them.');
+}
+
+async function tryReadTraefikReleaseValues(config: TraefikDependencyState): Promise<Record<string, unknown> | undefined> {
+	const { stdout, exitCode } = await execHelm(['get', 'values', config.releaseName, '-n', config.namespace, '-o', 'json']);
+	if (exitCode !== 0) return undefined;
+	if (!stdout.trim()) return {};
+	try {
+		const values: unknown = JSON.parse(stdout);
+		if (isRecord(values)) return values;
+	} catch {
+		return undefined;
+	}
+	return undefined;
+}
+
+function valuesSubsetOf(live: unknown, desired: unknown): boolean {
+	if (isRecord(desired)) {
+		if (!isRecord(live)) return false;
+		return Object.entries(desired).every(([key, value]) => valuesSubsetOf(live[key], value));
+	}
+	if (Array.isArray(desired)) {
+		return Array.isArray(live) && live.length === desired.length && desired.every((item, i) => valuesSubsetOf(live[i], item));
+	}
+	return live === desired;
 }
 
 export async function checkDependencies(
@@ -555,7 +618,7 @@ async function isTraefikDeploymentReady(api: AppsV1Api, controller: TraefikDepen
 	return isDeploymentReady(await api.readNamespacedDeployment({ namespace: controller.namespace, name: controller.releaseName }));
 }
 
-function isDeploymentReady(dep: { spec?: { replicas?: number }; status?: { readyReplicas?: number; updatedReplicas?: number } }): boolean {
+export function isDeploymentReady(dep: { spec?: { replicas?: number }; status?: { readyReplicas?: number; updatedReplicas?: number } }): boolean {
 	const desired = dep.spec?.replicas ?? 1;
 	const ready = dep.status?.readyReplicas ?? 0;
 	const updated = dep.status?.updatedReplicas ?? 0;

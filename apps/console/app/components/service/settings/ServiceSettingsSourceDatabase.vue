@@ -125,6 +125,24 @@ const maskedPassword = computed(() => (connection.value ? (revealed.value ? conn
 					</Button>
 				</div>
 			</div>
+			<div v-if="connection?.externalUri" class="flex items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2">
+				<div class="min-w-0">
+					<p class="text-xs font-medium">External (public)</p>
+					<span class="block truncate font-mono text-xs text-muted-foreground">
+						{{ revealed ? connection.externalUri : connection.externalUri.replace(connection.password, '••••') }}
+					</span>
+				</div>
+				<Button
+					type="button"
+					size="icon"
+					variant="ghost"
+					class="size-7 shrink-0"
+					aria-label="Copy external connection string"
+					@click="copy(connection.externalUri!, 'External connection string')"
+				>
+					<Copy class="size-3.5" />
+				</Button>
+			</div>
 		</section>
 	</div>
 </template>

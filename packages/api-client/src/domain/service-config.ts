@@ -31,6 +31,11 @@ export interface ServiceDomain {
 	port: number;
 }
 
+export interface ServicePortExposure {
+	containerPort: number;
+	publicPort: number;
+}
+
 export interface ResourceConfig {
 	cpuRequest?: string;
 	cpuLimit?: string;
@@ -71,6 +76,7 @@ export interface RuntimeConfig<TSecret> {
 	env: Array<EnvVar>;
 	secrets: Array<TSecret>;
 	domains: Array<ServiceDomain>;
+	exposedPorts?: Array<ServicePortExposure>;
 	volumes: Array<ServiceVolume>;
 	healthCheck?: HealthCheckConfig;
 	resources?: ResourceConfig;
@@ -91,6 +97,8 @@ export interface PublicRepoServiceConfig<TSecret = SecretView> extends RuntimeCo
 	branch: string;
 	commit?: string;
 	rootDirectory?: string;
+	watchPaths?: string[];
+	watchEntireRepo?: boolean;
 	buildCommand?: string;
 	startCommand?: string;
 	builder: 'nixpacks' | 'dockerfile';

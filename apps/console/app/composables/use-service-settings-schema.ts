@@ -67,6 +67,8 @@ export const serviceSettingsSchema = z
 		branch: z.string(),
 		commit: z.string(),
 		rootDirectory: z.string(),
+		watchPaths: z.string(),
+		watchEntireRepo: z.boolean(),
 		buildCommand: z.string(),
 		startCommand: z.string(),
 		// private-repo only: the team deploy key id. Empty for every other type.
@@ -87,6 +89,8 @@ export const serviceSettingsSchema = z
 		// `value`: new plaintext typed; `hasValue`: secret exists on server (value never sent back). Blank on hasValue → keep unchanged.
 		secrets: z.array(z.object({ _id: z.string(), key: z.string(), value: z.string(), hasValue: z.boolean() })),
 		domains: z.array(z.object({ _id: z.string(), host: z.string(), port: z.string() })),
+		// Public TCP exposures; publicPort is server-allocated on save (read-only display, '' for unsaved rows).
+		exposedPorts: z.array(z.object({ _id: z.string(), containerPort: z.string(), publicPort: z.string() })),
 		// `subPath` (optional) mounts a subdirectory of the volume; backend validates it, so it's loose here like name/mountPath.
 		volumes: z.array(z.object({ _id: z.string(), name: z.string(), mountPath: z.string(), size: z.string(), subPath: z.string().optional() })),
 		// docker-image only: files rendered + mounted into the container; `content` may be large/multiline (and may hold secrets).
@@ -108,16 +112,38 @@ export const serviceSettingsSchema = z
 			targetCpuUtilizationPercentage: z.string(),
 			targetMemoryUtilizationPercentage: z.string()
 		}),
+		basicAuth: z.object({
+			enabled: z.boolean(),
+			username: z.string(),
+			password: z.string(),
+			hasPassword: z.boolean()
+		}),
 		// Repo types only (ignored otherwise); just the toggle — the poll cadence is a global worker setting.
 		autoDeploy: z.object({
 			enabled: z.boolean()
 		})
 	})
 	.superRefine((val, ctx) => {
+		if (val.basicAuth.enabled && !val.basicAuth.username.trim()) {
+			ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'A username is required when basic auth is enabled.', path: ['basicAuth', 'username'] });
+		}
+		if (val.basicAuth.enabled && !val.basicAuth.hasPassword && !val.basicAuth.password) {
+			ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'A password is required when basic auth is enabled.', path: ['basicAuth', 'password'] });
+		}
 		val.domains.forEach((d, i) => {
 			if (d.host.trim() && !isValidPort(d.port.trim())) {
 				ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Use a port between 1 and 65535.', path: ['domains', i, 'port'] });
 			}
+		});
+		const seenExposedPorts = new Set<string>();
+		val.exposedPorts.forEach((p, i) => {
+			const port = p.containerPort.trim();
+			if (!isValidPort(port)) {
+				ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Use a port between 1 and 65535.', path: ['exposedPorts', i, 'containerPort'] });
+			} else if (seenExposedPorts.has(port)) {
+				ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Each exposed port must be different.', path: ['exposedPorts', i, 'containerPort'] });
+			}
+			seenExposedPorts.add(port);
 		});
 		if (val.healthCheck.enabled && val.healthCheck.type === 'http' && !val.healthCheck.path.trim()) {
 			ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Path is required for HTTP health checks.', path: ['healthCheck', 'path'] });
@@ -281,6 +307,7 @@ export function snapshot(service: Service): ServiceSettingsValues {
 	const hc = service.config.healthCheck;
 	const res = service.config.resources;
 	const as = service.config.autoscaling;
+	const ba = (service.config as { basicAuth?: { enabled?: boolean; username?: string; hasPassword?: boolean } }).basicAuth;
 
 	return {
 		name: service.name,
@@ -292,6 +319,8 @@ export function snapshot(service: Service): ServiceSettingsValues {
 		branch: 'branch' in service.config ? service.config.branch : '',
 		commit: 'commit' in service.config ? (service.config.commit ?? '') : '',
 		rootDirectory: 'rootDirectory' in service.config ? (service.config.rootDirectory ?? '') : '',
+		watchPaths: 'watchPaths' in service.config ? (service.config.watchPaths ?? []).join('\n') : '',
+		watchEntireRepo: 'watchEntireRepo' in service.config ? service.config.watchEntireRepo === true : false,
 		buildCommand: 'buildCommand' in service.config ? (service.config.buildCommand ?? '') : '',
 		startCommand: 'startCommand' in service.config ? (service.config.startCommand ?? '') : '',
 		sshKeyId: 'sshKeyId' in service.config ? service.config.sshKeyId : '',
@@ -306,6 +335,11 @@ export function snapshot(service: Service): ServiceSettingsValues {
 		env: service.config.env.map(entry => ({ _id: crypto.randomUUID(), key: entry.key, value: entry.value })),
 		secrets: (service.config.secrets ?? []).map(entry => ({ _id: crypto.randomUUID(), key: entry.key, value: '', hasValue: entry.hasValue })),
 		domains: (service.config.domains ?? []).map(entry => ({ _id: crypto.randomUUID(), host: entry.host, port: String(entry.port) })),
+		exposedPorts: (service.config.exposedPorts ?? []).map(entry => ({
+			_id: crypto.randomUUID(),
+			containerPort: String(entry.containerPort),
+			publicPort: String(entry.publicPort)
+		})),
 		volumes: (service.config.volumes ?? []).map(entry => ({
 			_id: crypto.randomUUID(),
 			name: entry.name,
@@ -346,6 +380,12 @@ export function snapshot(service: Service): ServiceSettingsValues {
 			maxReplicas: as?.maxReplicas?.toString() ?? '',
 			targetCpuUtilizationPercentage: as?.targetCpuUtilizationPercentage?.toString() ?? '',
 			targetMemoryUtilizationPercentage: as?.targetMemoryUtilizationPercentage?.toString() ?? ''
+		},
+		basicAuth: {
+			enabled: ba?.enabled ?? false,
+			username: ba?.username ?? '',
+			password: '',
+			hasPassword: ba?.hasPassword ?? false
 		},
 		autoDeploy: {
 			enabled: service.autoDeploy?.enabled ?? false

@@ -161,6 +161,18 @@ describe('reconcileCanceling', () => {
 		expect(insertLogsCalls).toHaveLength(1);
 	});
 
+	test('failed rollback with an empty error still records a retry (does not stay canceling forever)', async () => {
+		previousRow = [{ id: 'dep-1', serviceId: 'svc-1', type: 'docker-image', status: 'succeeded' }];
+		reconcileOutcome = { state: 'failed', error: '' };
+		await reconcileCanceling(kc, cancelingRow, 'env-1', 'svc.example.com');
+		expect(finalizeCalls).toEqual([]);
+		expect(updateSets[0]).toMatchObject({
+			rollbackAttempts: 1,
+			phase: 'rollback-retrying',
+			lastError: 'Cancel rollback failed: unknown error'
+		});
+	});
+
 	test('with a previous whose rollback fails for the third time: finalizes failed', async () => {
 		previousRow = [{ id: 'dep-1', serviceId: 'svc-1', type: 'docker-image', status: 'succeeded' }];
 		reconcileOutcome = { state: 'failed', error: 'bad image' };
@@ -186,5 +198,40 @@ describe('reconcileCanceling', () => {
 		phaseReturning = []; // row moved on between select and update
 		await reconcileCanceling(kc, cancelingRow, 'env-1', 'svc.example.com');
 		expect(insertLogsCalls).toEqual([]);
+	});
+
+	test('unhealthy progressing (error: CrashLoopBackOff) counts as a rollback failure, not endless progress', async () => {
+		previousRow = [{ id: 'dep-1', serviceId: 'svc-1', type: 'docker-image', status: 'succeeded' }];
+		reconcileOutcome = { state: 'progressing', phase: 'error: CrashLoopBackOff: boom', events: [] };
+		await reconcileCanceling(kc, cancelingRow, 'env-1', 'svc.example.com');
+		expect(finalizeCalls).toEqual([]);
+		expect(updateSets[0]).toMatchObject({
+			rollbackAttempts: 1,
+			phase: 'rollback-retrying',
+			lastError: 'Cancel rollback failed: CrashLoopBackOff: boom'
+		});
+	});
+
+	test('unhealthy progressing on the third rollback attempt finalizes failed and unblocks the service', async () => {
+		previousRow = [{ id: 'dep-1', serviceId: 'svc-1', type: 'docker-image', status: 'succeeded' }];
+		reconcileOutcome = { state: 'progressing', phase: 'error: CrashLoopBackOff: boom', events: [] };
+		await reconcileCanceling(kc, { ...cancelingRow, rollbackAttempts: 2 } as never, 'env-1', 'svc.example.com');
+		expect(finalizeCalls[0]).toMatchObject({
+			fields: {
+				status: 'failed',
+				phase: 'failed',
+				lastError: 'Cancel rollback failed: CrashLoopBackOff: boom',
+				rollbackAttempts: 3
+			}
+		});
+	});
+
+	test('github-repo build-phase cancel with a running build job deletes artifacts like other build types', async () => {
+		hasRunningBuildJob = true;
+		await reconcileCanceling(kc, { ...cancelingRow, type: 'github-repo', phase: 'building' } as never, 'env-1', 'svc.example.com');
+		expect(deletedBuildArtifacts).toEqual(['dep-2']);
+		expect(finalizeCalls[0]).toMatchObject({
+			fields: { status: 'canceled', phase: 'canceled', lastError: null }
+		});
 	});
 });

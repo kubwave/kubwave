@@ -3,6 +3,7 @@ import * as z from 'zod';
 import { ArrowLeft, ChevronDown, ChevronRight, Copy } from 'lucide-vue-next';
 import type { Service, SshKey } from '~/utils/types';
 import { isPrivateRepoSshUrl, privateRepoSshUrlMessage } from '~/utils/private-repo-url';
+import { watchPathConfigFields } from '~/utils/repo-watch-paths';
 
 const props = defineProps<{ environmentId: string }>();
 const emit = defineEmits<{ created: [Service]; back: []; done: [] }>();
@@ -22,6 +23,8 @@ const schema = z.object({
 		.or(z.literal(''))
 		.optional(),
 	rootDirectory: z.string().trim().optional(),
+	watchPaths: z.string().optional(),
+	watchEntireRepo: z.boolean(),
 	buildCommand: z.string().trim().optional(),
 	startCommand: z.string().trim().optional(),
 	// Poll the branch and redeploy on a new commit; interval defaults to 60s, tunable in settings.
@@ -48,6 +51,8 @@ const { form, isSubmitting, values } = useAppForm({
 		dockerfilePath: '',
 		commit: '',
 		rootDirectory: '',
+		watchPaths: '',
+		watchEntireRepo: false,
 		buildCommand: '',
 		startCommand: '',
 		autoDeploy: false,
@@ -68,6 +73,7 @@ const { form, isSubmitting, values } = useAppForm({
 					...(value.builder === 'dockerfile' && value.dockerfilePath?.trim() ? { dockerfilePath: value.dockerfilePath.trim() } : {}),
 					...(value.commit?.trim() ? { commit: value.commit.trim() } : {}),
 					...(value.rootDirectory?.trim() ? { rootDirectory: value.rootDirectory.trim() } : {}),
+					...watchPathConfigFields(value.watchPaths ?? '', value.watchEntireRepo),
 					...(value.builder !== 'dockerfile' && value.buildCommand?.trim() ? { buildCommand: value.buildCommand.trim() } : {}),
 					...(value.builder !== 'dockerfile' && value.startCommand?.trim() ? { startCommand: value.startCommand.trim() } : {}),
 					containerPort: null,
@@ -87,6 +93,8 @@ const { form, isSubmitting, values } = useAppForm({
 });
 
 const isDockerfile = computed(() => values.value.builder === 'dockerfile');
+const autoDeployOn = computed(() => values.value.autoDeploy);
+const showWatchFields = computed(() => autoDeployOn.value && !values.value.watchEntireRepo);
 
 const selectedKey = computed<SshKey | null>(() => (sshKeys.value ?? []).find(k => k.id === values.value.sshKeyId) ?? null);
 const hasNoKeys = computed(() => !keysLoading.value && (sshKeys.value ?? []).length === 0);
@@ -215,6 +223,27 @@ async function copyPublicKey() {
 				<Switch v-bind="componentField" :disabled="isSubmitting" />
 			</div>
 		</Field>
+
+		<template v-if="autoDeployOn">
+			<Field v-slot="{ componentField }" name="watchEntireRepo">
+				<div class="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+					<div>
+						<p class="text-sm font-medium">Watch entire repository</p>
+						<p class="text-xs text-muted-foreground">Ignore the root directory and watch paths; deploy on any commit.</p>
+					</div>
+					<Switch v-bind="componentField" :disabled="isSubmitting" />
+				</div>
+			</Field>
+			<Field
+				v-if="showWatchFields"
+				v-slot="{ componentField }"
+				name="watchPaths"
+				label="Additional watch paths"
+				description="One repo-relative path per line. With a root directory set, only those paths (plus the root) trigger auto-deploy."
+			>
+				<Textarea v-bind="componentField" placeholder="packages/shared" class="min-h-20 font-mono text-xs" :disabled="isSubmitting" />
+			</Field>
+		</template>
 
 		<Field v-slot="{ componentField }" name="description" label="Description">
 			<Input v-bind="componentField" placeholder="Customer-facing web service" :disabled="isSubmitting" />

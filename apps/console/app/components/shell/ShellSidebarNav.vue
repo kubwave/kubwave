@@ -9,7 +9,7 @@ interface NavItem {
 	exact?: boolean;
 }
 
-const props = defineProps<{ isAdmin: boolean }>();
+const props = withDefaults(defineProps<{ isAdmin: boolean; collapsed?: boolean }>(), { collapsed: false });
 
 const { teams, isPending } = useTeamContext();
 // Keep the Team links while loading so users who have teams never see them flash away.
@@ -38,28 +38,36 @@ function isActive(item: NavItem): boolean {
 </script>
 
 <template>
-	<div class="flex flex-col gap-5">
-		<div v-for="group in groups" :key="group.label ?? 'main'" class="flex flex-col gap-0.5">
-			<p v-if="group.label" class="px-3 pb-1 text-[0.7rem] font-medium tracking-wider text-muted-subtle uppercase">
-				{{ group.label }}
-			</p>
-			<NuxtLink
-				v-for="item in group.items"
-				:key="item.to"
-				:to="item.to"
-				:class="[
-					'group relative flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-[color,background-color] duration-150 ease-out',
-					isActive(item) ? 'bg-accent font-medium text-foreground' : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
-				]"
-			>
-				<span
-					v-if="isActive(item)"
-					aria-hidden="true"
-					class="absolute top-1/2 left-0 h-4 w-0.5 origin-left -translate-y-1/2 rounded-full bg-primary transition-[opacity,transform] duration-150 ease-out"
-				/>
-				<component :is="item.icon" :class="['size-4 shrink-0', isActive(item) ? 'text-foreground' : 'text-muted-foreground/80']" />
-				{{ item.label }}
-			</NuxtLink>
+	<TooltipProvider>
+		<div class="flex flex-col gap-5">
+			<div v-for="group in groups" :key="group.label ?? 'main'" class="flex flex-col gap-0.5">
+				<p v-if="group.label && !collapsed" class="px-3 pb-1 text-[0.7rem] font-medium tracking-wider text-muted-subtle uppercase">
+					{{ group.label }}
+				</p>
+				<Tooltip v-for="item in group.items" :key="item.to" :disabled="!collapsed">
+					<TooltipTrigger as-child>
+						<NuxtLink
+							:to="item.to"
+							:class="[
+								'group relative flex items-center gap-2.5 rounded-md py-2 text-sm transition-[color,background-color] duration-150 ease-out',
+								collapsed ? 'justify-center px-0' : 'px-3',
+								isActive(item) ? 'bg-accent font-medium text-foreground' : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
+							]"
+						>
+							<span
+								v-if="isActive(item)"
+								aria-hidden="true"
+								class="absolute top-1/2 left-0 h-4 w-0.5 origin-left -translate-y-1/2 rounded-full bg-primary transition-[opacity,transform] duration-150 ease-out"
+							/>
+							<component :is="item.icon" :class="['size-4 shrink-0', isActive(item) ? 'text-foreground' : 'text-muted-foreground/80']" />
+							<span v-if="!collapsed" class="truncate">{{ item.label }}</span>
+						</NuxtLink>
+					</TooltipTrigger>
+					<TooltipContent side="right" :side-offset="8">
+						{{ item.label }}
+					</TooltipContent>
+				</Tooltip>
+			</div>
 		</div>
-	</div>
+	</TooltipProvider>
 </template>

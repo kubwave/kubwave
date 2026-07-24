@@ -24,6 +24,7 @@ describe('resolveTemplateServiceConfig', () => {
 			env: [{ key: 'host', value: '{{ services.db.host }}' }],
 			secrets: [{ key: 'pw', value: '{{ secrets.db_password }}' }],
 			domains: [],
+			exposedPorts: [],
 			volumes: [],
 			configFiles: []
 		};
@@ -40,6 +41,7 @@ describe('resolveTemplateServiceConfig', () => {
 			env: [],
 			secrets: [],
 			domains: [],
+			exposedPorts: [],
 			volumes: [],
 			configFiles: [{ path: '/home/kong/kong.yml', content: 'key: {{ secrets.db_password }} host: {{ services.db.host }}' }]
 		};

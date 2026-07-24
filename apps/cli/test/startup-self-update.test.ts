@@ -175,6 +175,31 @@ describe('startup self-update', () => {
 		).rejects.toThrow('reexec');
 	});
 
+	test('prefers the command --channel flag over the stable default', async () => {
+		const out = reporter();
+		await expect(
+			maybeRunStartupSelfUpdate({
+				commandName: 'install',
+				channel: 'preview',
+				currentVersion: '1.0.0',
+				stdinIsTTY: true,
+				stdoutIsTTY: true,
+				reporter: out,
+				resolveLatest: async channel => {
+					expect(channel).toBe('preview');
+					return release;
+				},
+				describe: () => ({ current: '1.0.0', target: '1.2.3', needed: true }),
+				getAssetName: () => 'kubwave-darwin-arm64',
+				confirm: async () => true,
+				env: {},
+				refresh: async () => {
+					throw new Error('reexec');
+				}
+			})
+		).rejects.toThrow('reexec');
+	});
+
 	test('continues when interactive user declines', async () => {
 		let refreshed = false;
 		await maybeRunStartupSelfUpdate({

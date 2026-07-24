@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
 	DEFAULT_HA_SETTINGS,
+	DEFAULT_TCP_PORT_POOL,
 	DEFAULT_METRICS_PROVIDER,
 	DEFAULT_MAX_CONCURRENT_DEPLOYMENTS,
 	DEFAULT_MAX_PREVIEWS_PER_PROJECT,
@@ -13,6 +14,7 @@ import {
 	resolveDeploymentConcurrencySettings,
 	resolveHaSettings,
 	resolvePrPreviewSettings,
+	resolveTcpPortPoolSettings,
 	resolveVolumeAutoscaling,
 	VOLUME_AUTOSCALING_SETTINGS_KEY
 } from '../src/platform/settings';
@@ -34,6 +36,17 @@ describe('settings constants', () => {
 			growthPercent: 50,
 			caps: { postgres: '100Gi', registry: '200Gi', prometheus: '50Gi' }
 		});
+	});
+});
+
+describe('resolveTcpPortPoolSettings', () => {
+	test('uses the public TCP defaults when no stored setting exists', () => {
+		expect(resolveTcpPortPoolSettings(null)).toEqual(DEFAULT_TCP_PORT_POOL);
+	});
+
+	test('keeps a valid stored pool and rejects invalid stored ranges', () => {
+		expect(resolveTcpPortPoolSettings({ enabled: true, start: 31000, size: 5 })).toEqual({ enabled: true, start: 31000, size: 5 });
+		expect(resolveTcpPortPoolSettings({ enabled: true, start: 65535, size: 2 })).toEqual(DEFAULT_TCP_PORT_POOL);
 	});
 });
 
