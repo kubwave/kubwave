@@ -17,7 +17,6 @@ coverage
 
 # Secrets
 *.pem
-# GCP service-account keys (e.g. cloud-sa.json for the PD CSI driver) — never commit
 cloud-sa.json
 *-sa.json
 *-credentials.json
@@ -25,12 +24,11 @@ cloud-sa.json
 # AI
 .superpowers/
 .playwright-mcp
-.claude
+.claude/settings.local.json
 .codex
 .pi
 .omo
 /.omo/
-# Root-only: the superpowers specs/plans scratch dir. Anchored so it never matches apps/docs (the docs site).
 /docs/
 
 # Editor
