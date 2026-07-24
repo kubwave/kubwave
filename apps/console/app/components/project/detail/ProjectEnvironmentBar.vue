@@ -35,6 +35,12 @@ const envModalTarget = ref<Environment | null>(null);
 
 const activeEnv = computed(() => environments.value.find(env => env.id === selectedEnvId.value) ?? environments.value[0] ?? null);
 
+const deleteTitle = computed(() => {
+	if (activeEnv.value?.kind === 'preview') return 'Preview environments cannot be deleted';
+	if (persistentEnvironments.value.length <= 1) return 'The last environment cannot be deleted';
+	return 'Delete environment';
+});
+
 function openCreate() {
 	envModalTarget.value = null;
 	envModalOpen.value = true;
@@ -114,20 +120,26 @@ function envTabState(env: Environment) {
 			</template>
 		</div>
 
-		<div class="flex shrink-0 flex-wrap gap-1.5">
-			<Button variant="ghost" size="sm" :disabled="!activeEnv || activeEnv?.kind === 'preview'" @click="openRename">
+		<div class="flex shrink-0 items-center gap-1">
+			<Button
+				variant="ghost"
+				size="icon"
+				class="size-8 text-muted-foreground"
+				:title="activeEnv?.kind === 'preview' ? 'Preview environments cannot be renamed' : 'Rename environment'"
+				:disabled="!activeEnv || activeEnv?.kind === 'preview'"
+				@click="openRename"
+			>
 				<Pencil />
-				Rename
 			</Button>
 			<Button
 				variant="ghost"
-				size="sm"
-				class="text-muted-foreground hover:text-destructive"
+				size="icon"
+				class="size-8 text-muted-foreground hover:text-destructive"
+				:title="deleteTitle"
 				:disabled="!activeEnv || activeEnv?.kind === 'preview' || persistentEnvironments.length <= 1"
 				@click="onDeleteEnvironment"
 			>
 				<Trash2 />
-				Delete
 			</Button>
 		</div>
 	</div>

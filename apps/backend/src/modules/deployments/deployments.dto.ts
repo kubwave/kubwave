@@ -87,3 +87,38 @@ export class DeploymentBuildLogsDto {
 	@ApiProperty({ type: [DeploymentBuildLogContainerDto] })
 	containers!: DeploymentBuildLogContainerDto[];
 }
+
+export class TeamDeploymentViewDto {
+	@ApiProperty({ type: String, format: 'uuid' })
+	id!: string;
+
+	@ApiProperty({ enum: deploymentStatuses })
+	status!: DeploymentView['status'];
+
+	@ApiProperty({ enum: deploymentTriggers })
+	trigger!: DeploymentView['trigger'];
+
+	@ApiProperty({ type: String })
+	createdAt!: string;
+
+	@ApiProperty({ type: String, nullable: true })
+	finishedAt!: string | null;
+
+	@ApiProperty({ type: String, format: 'uuid' })
+	serviceId!: string;
+
+	@ApiProperty({ type: String })
+	serviceName!: string;
+
+	@ApiProperty({ type: String, format: 'uuid' })
+	environmentId!: string;
+
+	@ApiProperty({ type: String })
+	environmentName!: string;
+
+	@ApiProperty({ type: String, format: 'uuid' })
+	projectId!: string;
+
+	@ApiProperty({ type: String })
+	projectName!: string;
+}

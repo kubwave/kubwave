@@ -35,6 +35,7 @@ const {
 	buildPrometheusService,
 	prometheusEnabled,
 	providerFromRow,
+	prometheusRetentionLimitSize,
 	retentionSizeArg,
 	reconcilePlatformPrometheus
 } = await import('~/modules/worker/jobs/platform/prometheus');
@@ -118,10 +119,20 @@ describe('buildPrometheusPVC', () => {
 	});
 });
 
+describe('prometheusRetentionLimitSize', () => {
+	test('uses the prometheus cap when volume autoscaling is enabled so the PVC can grow first', () => {
+		expect(prometheusRetentionLimitSize({ enabled: true, caps: { postgres: '100Gi', registry: '200Gi', prometheus: '50Gi' } }, '5Gi')).toBe('50Gi');
+	});
+
+	test('stays on the provisioned PVC size when autoscaling is off', () => {
+		expect(prometheusRetentionLimitSize({ enabled: false, caps: { postgres: '100Gi', registry: '200Gi', prometheus: '50Gi' } }, '5Gi')).toBe('5Gi');
+	});
+});
+
 describe('retentionSizeArg', () => {
-	test('80% of the PVC size, floored to MiB (5Gi default → 4096MiB)', () => {
-		expect(retentionSizeArg('5Gi')).toBe('--storage.tsdb.retention.size=4096MiB');
-		expect(retentionSizeArg('10Gi')).toBe('--storage.tsdb.retention.size=8192MiB');
+	test('99% of the limit size, floored to MiB (5Gi → 5068MiB)', () => {
+		expect(retentionSizeArg('5Gi')).toBe('--storage.tsdb.retention.size=5068MiB');
+		expect(retentionSizeArg('50Gi')).toBe('--storage.tsdb.retention.size=50688MiB');
 	});
 
 	test('unparseable size → null (no arg, Prometheus falls back to retention.time only)', () => {
@@ -131,9 +142,14 @@ describe('retentionSizeArg', () => {
 });
 
 describe('prometheus deployment args', () => {
-	test('carries the retention.size cap so the TSDB can never fill the volume', () => {
+	test('carries retention.size at 99% of the limit so the TSDB leaves filesystem headroom', () => {
 		const args = buildPrometheusDeployment('kubwave').spec?.template?.spec?.containers?.[0]?.args ?? [];
-		expect(args).toContain('--storage.tsdb.retention.size=4096MiB');
+		expect(args).toContain('--storage.tsdb.retention.size=5068MiB');
+	});
+
+	test('honours an explicit retention limit (e.g. the autoscaling cap)', () => {
+		const args = buildPrometheusDeployment('kubwave', 'prom/prometheus:test', '50Gi').spec?.template?.spec?.containers?.[0]?.args ?? [];
+		expect(args).toContain('--storage.tsdb.retention.size=50688MiB');
 	});
 });
 

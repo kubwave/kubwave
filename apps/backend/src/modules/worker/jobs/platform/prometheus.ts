@@ -8,7 +8,14 @@ import {
 	type V1PersistentVolumeClaim,
 	type V1Service
 } from '@kubernetes/client-node';
-import { DEFAULT_METRICS_PROVIDER, METRICS_SETTINGS_KEY, parseMemoryToBytes, PROMETHEUS_NAME, PROMETHEUS_PVC_NAME } from '@kubwave/kube';
+import {
+	DEFAULT_METRICS_PROVIDER,
+	METRICS_SETTINGS_KEY,
+	parseMemoryToBytes,
+	PROMETHEUS_NAME,
+	PROMETHEUS_PVC_NAME,
+	type VolumeAutoscalingSettings
+} from '@kubwave/kube';
 import { env } from '../../../../shared/config/worker-env.js';
 import {
 	deleteIgnoreMissing,
@@ -18,6 +25,7 @@ import {
 	readServiceOrNull,
 	replaceWithRetry
 } from '../../../../shared/cluster/ops.js';
+import { readAutoscalingSettings } from './volume-autoscaling/common.js';
 
 // Platform-managed Prometheus: converge a single-replica stack scraping the kubelet via the apiserver node proxy; other providers tear it down.
 
@@ -25,6 +33,8 @@ const CONFIG_NAME = 'kubwave-prometheus-config';
 const PVC_NAME = PROMETHEUS_PVC_NAME;
 const SERVICE_ACCOUNT = 'kubwave-prometheus';
 const PROMETHEUS_PORT = 9090;
+// Leave a sliver of headroom under the retention limit so the filesystem never hits 100%.
+const RETENTION_SIZE_FRACTION = 0.99;
 
 export { PROMETHEUS_NAME };
 
@@ -35,18 +45,26 @@ function labels(): Record<string, string> {
 	return { 'app.kubernetes.io/name': PROMETHEUS_NAME, 'app.kubernetes.io/managed-by': 'kubwave-worker' };
 }
 
-export function retentionSizeArg(pvcSize: string): string | null {
-	const bytes = parseMemoryToBytes(pvcSize);
+// When volume autoscaling is on, retain up to the prometheus cap so the PVC can grow first; otherwise stay within the provisioned PVC.
+export function prometheusRetentionLimitSize(
+	autoscaling: Pick<VolumeAutoscalingSettings, 'enabled' | 'caps'>,
+	storageSize: string = env.prometheusStorageSize
+): string {
+	return autoscaling.enabled ? autoscaling.caps.prometheus : storageSize;
+}
+
+export function retentionSizeArg(limitSize: string): string | null {
+	const bytes = parseMemoryToBytes(limitSize);
 
 	if (!bytes) return null;
 
-	const mib = Math.floor((bytes * 0.8) / 1024 ** 2);
+	const mib = Math.floor((bytes * RETENTION_SIZE_FRACTION) / 1024 ** 2);
 
 	return `--storage.tsdb.retention.size=${mib}MiB`;
 }
 
-function deploymentArgs(): string[] {
-	const sizeArg = retentionSizeArg(env.prometheusStorageSize);
+function deploymentArgs(retentionLimitSize: string = env.prometheusStorageSize): string[] {
+	const sizeArg = retentionSizeArg(retentionLimitSize);
 	return [
 		'--config.file=/etc/prometheus/prometheus.yml',
 		'--storage.tsdb.path=/prometheus',
@@ -56,8 +74,8 @@ function deploymentArgs(): string[] {
 	];
 }
 
-function specHash(image: string): string {
-	const inputs = JSON.stringify({ image, args: deploymentArgs(), config: buildPrometheusConfig() });
+function specHash(image: string, retentionLimitSize: string = env.prometheusStorageSize): string {
+	const inputs = JSON.stringify({ image, args: deploymentArgs(retentionLimitSize), config: buildPrometheusConfig() });
 
 	return createHash('sha256').update(inputs).digest('hex').slice(0, 16);
 }
@@ -157,7 +175,11 @@ export function buildPrometheusService(namespace: string): V1Service {
 	};
 }
 
-export function buildPrometheusDeployment(namespace: string, image: string = env.prometheusImage): V1Deployment {
+export function buildPrometheusDeployment(
+	namespace: string,
+	image: string = env.prometheusImage,
+	retentionLimitSize: string = env.prometheusStorageSize
+): V1Deployment {
 	return {
 		apiVersion: 'apps/v1',
 		kind: 'Deployment',
@@ -168,7 +190,7 @@ export function buildPrometheusDeployment(namespace: string, image: string = env
 			strategy: { type: 'Recreate' },
 			selector: { matchLabels: labels() },
 			template: {
-				metadata: { labels: labels(), annotations: { [SPEC_HASH_ANNOTATION]: specHash(image) } },
+				metadata: { labels: labels(), annotations: { [SPEC_HASH_ANNOTATION]: specHash(image, retentionLimitSize) } },
 				spec: {
 					serviceAccountName: SERVICE_ACCOUNT,
 					securityContext: { fsGroup: 65534, runAsNonRoot: true, runAsUser: 65534 },
@@ -176,7 +198,7 @@ export function buildPrometheusDeployment(namespace: string, image: string = env
 						{
 							name: 'prometheus',
 							image,
-							args: deploymentArgs(),
+							args: deploymentArgs(retentionLimitSize),
 							ports: [{ containerPort: PROMETHEUS_PORT }],
 							resources: { requests: { cpu: '100m', memory: '256Mi' }, limits: { cpu: '500m', memory: '1Gi' } },
 							volumeMounts: [
@@ -238,19 +260,21 @@ export async function reconcilePlatformPrometheus(kc: KubeConfig): Promise<void>
 		await coreApi.createNamespacedService({ namespace, body: buildPrometheusService(namespace) });
 	}
 
+	const retentionLimitSize = prometheusRetentionLimitSize(await readAutoscalingSettings());
+
 	// Create if missing, else replace only when the spec hash changed — replacing rolls the pod to load the new prometheus.yml; unchanged skips to avoid churn.
 	const existingDeployment = await readDeploymentOrNull(appsApi, namespace, PROMETHEUS_NAME);
 	if (!existingDeployment) {
-		await appsApi.createNamespacedDeployment({ namespace, body: buildPrometheusDeployment(namespace) });
+		await appsApi.createNamespacedDeployment({ namespace, body: buildPrometheusDeployment(namespace, env.prometheusImage, retentionLimitSize) });
 	} else {
 		const currentHash = existingDeployment.spec?.template?.metadata?.annotations?.[SPEC_HASH_ANNOTATION];
-		const desiredHash = specHash(env.prometheusImage);
+		const desiredHash = specHash(env.prometheusImage, retentionLimitSize);
 
 		if (currentHash !== desiredHash) {
 			await replaceWithRetry({
 				label: `Deployment ${PROMETHEUS_NAME}`,
 				read: () => readDeploymentOrNull(appsApi, namespace, PROMETHEUS_NAME),
-				build: () => buildPrometheusDeployment(namespace),
+				build: () => buildPrometheusDeployment(namespace, env.prometheusImage, retentionLimitSize),
 				carryOver: (fresh, desired) => ({
 					...desired,
 					metadata: { ...desired.metadata, resourceVersion: fresh.metadata?.resourceVersion ?? undefined }

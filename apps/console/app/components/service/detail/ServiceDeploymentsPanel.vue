@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useQuery } from '@tanstack/vue-query';
-import { Ban, ChevronRight, Loader2, RefreshCw } from 'lucide-vue-next';
+import { Ban, ChevronRight, Loader2, RefreshCw, Rocket } from 'lucide-vue-next';
 import { queryKeys } from '~/utils/query-keys';
 import { formatDateTime } from '~/utils/format';
 import { canCancelDeployment, deploymentStatusColor, hasBuildStep, isDeploymentBuilding, shouldPollDeploymentLogs } from '~/utils/deployments';
@@ -73,6 +73,15 @@ const { data: buildLogsData, isPending: buildLogsPending } = useQuery({
 
 const eventLogs = computed(() => eventLogsData.value?.logs ?? []);
 const buildContainers = computed(() => buildLogsData.value?.containers.filter(container => container.content.length > 0) ?? []);
+
+// Long build errors render as a wall of text — clamp to the first line/chars with an expander.
+const expandedErrors = ref<Record<string, boolean>>({});
+const ERROR_CLAMP = 220;
+function errorText(deployment: Deployment): string {
+	const raw = deployment.lastError ?? '';
+	if (expandedErrors.value[deployment.id] || raw.length <= ERROR_CLAMP) return raw;
+	return `${raw.slice(0, ERROR_CLAMP).trimEnd()}…`;
+}
 </script>
 
 <template>
@@ -81,9 +90,12 @@ const buildContainers = computed(() => buildLogsData.value?.containers.filter(co
 		Loading deployments…
 	</div>
 
-	<div v-else-if="deployments.length === 0" class="rounded-lg border border-dashed px-4 py-12 text-center text-sm text-muted-foreground">
-		No deployments yet. Deploy this service to roll its config out.
-	</div>
+	<EmptyState
+		v-else-if="deployments.length === 0"
+		:icon="Rocket"
+		title="No deployments yet"
+		description="Deploy this service to roll its config out."
+	/>
 
 	<ul v-else class="flex flex-col gap-2">
 		<li v-for="deployment in deployments" :key="deployment.id" class="overflow-hidden rounded-lg border">
@@ -109,7 +121,17 @@ const buildContainers = computed(() => buildLogsData.value?.containers.filter(co
 				</Button>
 			</div>
 			<div v-if="expanded === deployment.id" class="max-h-136 overflow-x-hidden overflow-y-auto border-t bg-muted/30 px-4 py-3">
-				<p v-if="deployment.lastError" class="mb-2 font-mono text-xs wrap-break-word text-destructive">{{ deployment.lastError }}</p>
+				<p v-if="deployment.lastError" class="mb-2 font-mono text-xs wrap-break-word text-destructive">
+					{{ errorText(deployment) }}
+					<button
+						v-if="deployment.lastError.length > ERROR_CLAMP"
+						type="button"
+						class="ml-1 font-sans underline underline-offset-2"
+						@click="expandedErrors = { ...expandedErrors, [deployment.id]: !expandedErrors[deployment.id] }"
+					>
+						{{ expandedErrors[deployment.id] ? 'Show less' : 'Show full error' }}
+					</button>
+				</p>
 
 				<section class="grid gap-2">
 					<div class="flex items-center gap-2">

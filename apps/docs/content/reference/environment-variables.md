@@ -149,11 +149,11 @@ The Backend Worker orchestrates tenant workloads through a Nest application cont
 
 ### Platform-managed Prometheus
 
-| Variable                  | Required | Default                   | Description                   |
-| ------------------------- | -------- | ------------------------- | ----------------------------- |
-| `PROMETHEUS_IMAGE`        | No       | `prom/prometheus:v2.55.1` | Prometheus container image.   |
-| `PROMETHEUS_RETENTION`    | No       | `7d`                      | TSDB retention.               |
-| `PROMETHEUS_STORAGE_SIZE` | No       | `5Gi`                     | PVC size for Prometheus data. |
+| Variable                  | Required | Default                   | Description                                                                                                                                                  |
+| ------------------------- | -------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `PROMETHEUS_IMAGE`        | No       | `prom/prometheus:v2.55.1` | Prometheus container image.                                                                                                                                  |
+| `PROMETHEUS_RETENTION`    | No       | `7d`                      | TSDB time retention. Size retention is 99% of the volume-autoscaling prometheus cap when autoscaling is enabled, otherwise 99% of `PROMETHEUS_STORAGE_SIZE`. |
+| `PROMETHEUS_STORAGE_SIZE` | No       | `5Gi`                     | PVC size for Prometheus data.                                                                                                                                |
 
 ### Volume autoscaling
 

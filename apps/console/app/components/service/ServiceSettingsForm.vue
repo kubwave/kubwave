@@ -402,76 +402,78 @@ async function onDelete() {
 				</button>
 			</nav>
 
-			<div class="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 py-4">
-				<!-- Narrow-width section picker (replaces the rail) -->
-				<Select v-model="groupModel" class="lg:hidden">
-					<SelectTrigger class="w-full lg:hidden">
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem v-for="item in groupSelectItems" :key="item.value" :value="item.value">{{ item.label }}</SelectItem>
-					</SelectContent>
-				</Select>
+			<div class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+				<div class="mx-auto flex w-full max-w-2xl flex-col gap-6">
+					<!-- Narrow-width section picker (replaces the rail) -->
+					<Select v-model="groupModel" class="lg:hidden">
+						<SelectTrigger class="w-full lg:hidden">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem v-for="item in groupSelectItems" :key="item.value" :value="item.value">{{ item.label }}</SelectItem>
+						</SelectContent>
+					</Select>
 
-				<div v-show="group === 'general'">
-					<ServiceSettingsGeneralSection :state :saving :service />
-				</div>
+					<div v-show="group === 'general'">
+						<ServiceSettingsGeneralSection :state :saving :service />
+					</div>
 
-				<div v-show="group === 'source'" class="flex flex-col gap-6">
-					<ServiceSettingsSourceSection :state :saving :service />
-					<template v-if="service.type === 'docker-image'">
-						<Separator />
-						<ServiceSettingsCommandSection
+					<div v-show="group === 'source'" class="flex flex-col gap-6">
+						<ServiceSettingsSourceSection :state :saving :service />
+						<template v-if="service.type === 'docker-image'">
+							<Separator />
+							<ServiceSettingsCommandSection
+								:state
+								:saving
+								:add-command="addCommand"
+								:remove-command="removeCommand"
+								:add-arg="addArg"
+								:remove-arg="removeArg"
+							/>
+						</template>
+					</div>
+
+					<div v-show="group === 'resources'" class="flex flex-col gap-6">
+						<ServiceSettingsResourcesSection :state :saving :service :add-volume="addVolume" :remove-volume="removeVolume" />
+						<template v-if="service.type === 'docker-image'">
+							<Separator />
+							<ServiceSettingsConfigFilesSection :state :saving :service :add-config-file="addConfigFile" :remove-config-file="removeConfigFile" />
+						</template>
+					</div>
+
+					<div v-show="group === 'networking'">
+						<ServiceSettingsNetworkingSection
 							:state
 							:saving
-							:add-command="addCommand"
-							:remove-command="removeCommand"
-							:add-arg="addArg"
-							:remove-arg="removeArg"
+							:service
+							:add-domain="addDomain"
+							:remove-domain="removeDomain"
+							:add-exposed-port="addExposedPort"
+							:remove-exposed-port="removeExposedPort"
 						/>
-					</template>
-				</div>
+					</div>
 
-				<div v-show="group === 'resources'" class="flex flex-col gap-6">
-					<ServiceSettingsResourcesSection :state :saving :service :add-volume="addVolume" :remove-volume="removeVolume" />
-					<template v-if="service.type === 'docker-image'">
-						<Separator />
-						<ServiceSettingsConfigFilesSection :state :saving :service :add-config-file="addConfigFile" :remove-config-file="removeConfigFile" />
-					</template>
-				</div>
+					<div v-show="group === 'variables'">
+						<ServiceSettingsVariablesSection
+							:state
+							:saving
+							:service
+							:shown-secrets="shownSecrets"
+							:add-env="addEnv"
+							:remove-env="removeEnv"
+							:add-secret="addSecret"
+							:remove-secret="removeSecret"
+							:toggle-secret="toggleSecret"
+						/>
+					</div>
 
-				<div v-show="group === 'networking'">
-					<ServiceSettingsNetworkingSection
-						:state
-						:saving
-						:service
-						:add-domain="addDomain"
-						:remove-domain="removeDomain"
-						:add-exposed-port="addExposedPort"
-						:remove-exposed-port="removeExposedPort"
-					/>
-				</div>
+					<div v-show="group === 'danger'">
+						<ServiceSettingsDangerSection :service @delete="onDelete" />
+					</div>
 
-				<div v-show="group === 'variables'">
-					<ServiceSettingsVariablesSection
-						:state
-						:saving
-						:service
-						:shown-secrets="shownSecrets"
-						:add-env="addEnv"
-						:remove-env="removeEnv"
-						:add-secret="addSecret"
-						:remove-secret="removeSecret"
-						:toggle-secret="toggleSecret"
-					/>
+					<!-- Clearance so long content scrolls clear of the floating save bar -->
+					<div v-if="dirty" class="h-16 shrink-0" aria-hidden="true" />
 				</div>
-
-				<div v-show="group === 'danger'">
-					<ServiceSettingsDangerSection :service @delete="onDelete" />
-				</div>
-
-				<!-- Clearance so long content scrolls clear of the floating save bar -->
-				<div v-if="dirty" class="h-16 shrink-0" aria-hidden="true" />
 			</div>
 		</div>
 

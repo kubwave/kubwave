@@ -2,8 +2,8 @@
 import { MarkerType, VueFlow, useVueFlow, type Edge, type NodeDragEvent } from '@vue-flow/core';
 import { Background, BackgroundVariant } from '@vue-flow/background';
 import '@vue-flow/core/dist/style.css';
-import { Container, Crosshair, Loader2, Plus, Trash2 } from 'lucide-vue-next';
-import { FLOW_LAYOUT_GRID_SIZE, FLOW_LAYOUT_SNAP_GRID, snapFlowPosition } from '~/composables/use-flow-layout';
+import { Container, Crosshair, LayoutGrid, Loader2, Plus, Trash2, ZoomIn, ZoomOut } from 'lucide-vue-next';
+import { FLOW_LAYOUT_GRID_SIZE, FLOW_LAYOUT_SNAP_GRID, fallbackFlowPosition, snapFlowPosition } from '~/composables/use-flow-layout';
 import { deriveServiceConnections } from '~/utils/service-connections';
 import type { FlowLayoutNode, FlowNodePosition, Service, ServiceRuntime } from '~/utils/types';
 import type { ServiceNodeData } from './ServiceNode.vue';
@@ -20,12 +20,25 @@ const emit = defineEmits<{
 	select: [Service];
 	create: [];
 	delete: [Service];
+	tidy: [];
 	nodeDragStart: [{ serviceId: string }];
 	nodePositionChange: [{ serviceId: string; position: FlowNodePosition }];
 }>();
 
 // This component hosts <VueFlow>, so the store is available here without an explicit provider.
-const { fitView } = useVueFlow();
+const { fitView, zoomIn, zoomOut } = useVueFlow();
+
+// fit-view-on-init fires before services/layout resolve, leaving off-canvas nodes invisible.
+// Refit when the service set changes (cached first render, env switch, create/delete) — never on drag saves.
+// The timeout lets Vue Flow measure the freshly added node before fitting.
+watch(
+	() => props.services.map(service => service.id).join('\0'),
+	serviceIds => {
+		if (!serviceIds) return;
+		setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 60);
+	},
+	{ immediate: true }
+);
 
 const wrapperRef = ref<HTMLDivElement | null>(null);
 const draggingPositions = ref<Record<string, FlowNodePosition | undefined>>({});
@@ -52,12 +65,8 @@ function onSelect(service: Service) {
 	emit('select', service);
 }
 
-function fallbackPosition(index: number): FlowNodePosition {
-	return snapFlowPosition({ x: (index % 3) * 304, y: Math.floor(index / 3) * 188 });
-}
-
 function positionOf(service: Service, index: number): FlowNodePosition {
-	const position = draggingPositions.value[service.id] ?? props.flowLayoutById[service.id]?.position ?? fallbackPosition(index);
+	const position = draggingPositions.value[service.id] ?? props.flowLayoutById[service.id]?.position ?? fallbackFlowPosition(index);
 	return snapFlowPosition(position);
 }
 
@@ -156,8 +165,9 @@ function settleDraggingPositions() {
 
 watch(() => props.flowLayoutById, settleDraggingPositions, { deep: true });
 
+// Clamp to the positive quadrant so a node can never be dropped off-canvas.
 function nodePosition(event: NodeDragEvent): FlowNodePosition {
-	return snapFlowPosition({ x: event.node.position.x, y: event.node.position.y });
+	return snapFlowPosition({ x: Math.max(0, event.node.position.x), y: Math.max(0, event.node.position.y) });
 }
 
 function onNodeDragStart(event: NodeDragEvent) {
@@ -195,13 +205,48 @@ function openMenu(event: MouseEvent, service: Service | null) {
 			Loading
 		</div>
 
+		<div class="absolute top-3 right-3 z-10 flex items-center gap-2">
+			<div class="flex items-center gap-0.5 rounded-md border bg-background p-0.5 shadow-sm">
+				<Button type="button" variant="ghost" size="icon" class="size-7 text-muted-foreground" title="Zoom out" @click="zoomOut()">
+					<ZoomOut />
+				</Button>
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon"
+					class="size-7 text-muted-foreground"
+					title="Fit view"
+					@click="fitView({ padding: 0.2, duration: 300 })"
+				>
+					<Crosshair />
+				</Button>
+				<Button type="button" variant="ghost" size="icon" class="size-7 text-muted-foreground" title="Zoom in" @click="zoomIn()">
+					<ZoomIn />
+				</Button>
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon"
+					class="size-7 text-muted-foreground"
+					title="Tidy up layout"
+					:disabled="services.length < 2"
+					@click="emit('tidy')"
+				>
+					<LayoutGrid />
+				</Button>
+			</div>
+			<Button type="button" size="sm" @click="emit('create')">
+				<Plus />
+				Create service
+			</Button>
+		</div>
+
 		<div class="absolute inset-0">
 			<VueFlow
 				:nodes="nodes"
 				:edges="edges"
 				:min-zoom="0.4"
 				:max-zoom="1.5"
-				fit-view-on-init
 				:snap-to-grid="true"
 				:snap-grid="FLOW_LAYOUT_SNAP_GRID"
 				:nodes-connectable="false"
@@ -269,7 +314,7 @@ function openMenu(event: MouseEvent, service: Service | null) {
 			<div>
 				<Container class="mx-auto size-9 text-muted-foreground/60" />
 				<p class="mt-2 text-sm text-muted-foreground">No services in this environment.</p>
-				<p class="mt-1 text-xs text-muted-foreground/70">Right-click the canvas to create one.</p>
+				<p class="mt-1 text-xs text-muted-foreground/70">Use Create service above, or right-click the canvas.</p>
 			</div>
 		</div>
 	</div>

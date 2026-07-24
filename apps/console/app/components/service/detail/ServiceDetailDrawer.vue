@@ -65,7 +65,7 @@ const imageLabel = computed(() => {
 
 <template>
 	<Sheet v-model:open="open">
-		<SheetContent side="right" class="w-full max-w-none gap-0 p-0 sm:max-w-none lg:max-w-[70rem]">
+		<SheetContent side="right" class="w-full max-w-none gap-0 p-0 sm:max-w-none lg:max-w-4xl">
 			<SheetHeader v-if="service" class="flex w-full flex-row items-start gap-3 border-b p-4">
 				<span class="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary ring-1 ring-primary/15">
 					<Container class="size-5" />
@@ -115,7 +115,7 @@ const imageLabel = computed(() => {
 				</Tabs>
 
 				<div v-show="tab === 'overview'" class="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-					<ServiceOverviewTab :service="service" :runtime="runtime" :latest-deployment="latestDeployment" />
+					<ServiceOverviewTab :service="service" :runtime="runtime" :latest-deployment="latestDeployment" @open-settings="tab = 'settings'" />
 				</div>
 
 				<div v-show="tab === 'metrics'" class="min-h-0 flex-1 overflow-y-auto px-4 py-3">

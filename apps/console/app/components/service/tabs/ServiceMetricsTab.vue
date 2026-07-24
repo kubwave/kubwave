@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Cpu, Loader2, MemoryStick, Network } from 'lucide-vue-next';
+import { Activity, Cpu, Loader2, MemoryStick, Network } from 'lucide-vue-next';
 import type { Service } from '~/utils/types';
 import { formatBytes, percentOf } from '~/utils/format';
 import { formatCpu, formatRate, makeMetricsTimeFormatter } from '~/utils/metrics-format';
@@ -59,9 +59,11 @@ const replicaWord = computed(() => (metrics.value && 'replicas' in metrics.value
 				</button>
 			</div>
 		</div>
-		<div class="rounded-lg border border-dashed px-4 py-12 text-center text-sm text-muted-foreground">
-			No metrics in this range yet. Prometheus may still be warming up, or the service has not run during this window.
-		</div>
+		<EmptyState
+			:icon="Activity"
+			title="No metrics yet"
+			description="Prometheus may still be warming up, or the service has not run during this window."
+		/>
 	</div>
 
 	<div v-else class="flex flex-col gap-4">

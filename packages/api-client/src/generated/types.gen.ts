@@ -380,6 +380,20 @@ export type ServiceMetricsDto = {
 	series: ServiceMetricsSeriesDto;
 };
 
+export type TeamDeploymentViewDto = {
+	id: string;
+	status: 'pending' | 'deploying' | 'canceling' | 'succeeded' | 'failed' | 'superseded' | 'canceled';
+	trigger: 'manual' | 'auto' | 'preview';
+	createdAt: string;
+	finishedAt: string | null;
+	serviceId: string;
+	serviceName: string;
+	environmentId: string;
+	environmentName: string;
+	projectId: string;
+	projectName: string;
+};
+
 export type DeploymentViewDto = {
 	id: string;
 	serviceId: string;
@@ -1410,6 +1424,21 @@ export type ServiceMetricsGetResponses = {
 };
 
 export type ServiceMetricsGetResponse = ServiceMetricsGetResponses[keyof ServiceMetricsGetResponses];
+
+export type TeamDeploymentsListData = {
+	body?: never;
+	path: {
+		teamId: string;
+	};
+	query?: never;
+	url: '/api/teams/{teamId}/deployments';
+};
+
+export type TeamDeploymentsListResponses = {
+	200: Array<TeamDeploymentViewDto>;
+};
+
+export type TeamDeploymentsListResponse = TeamDeploymentsListResponses[keyof TeamDeploymentsListResponses];
 
 export type ServiceDeploymentsListData = {
 	body?: never;

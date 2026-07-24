@@ -153,6 +153,8 @@ import type {
 	SetupInitializeResponses,
 	SetupStatusData,
 	SetupStatusResponses,
+	TeamDeploymentsListData,
+	TeamDeploymentsListResponses,
 	TeamGitConnectionGetData,
 	TeamGitConnectionGetResponses,
 	TeamGitInstallationReposListData,
@@ -799,6 +801,18 @@ export const serviceMetricsGet = <ThrowOnError extends boolean = false>(
 	(options.client ?? client).get<ServiceMetricsGetResponses, unknown, ThrowOnError>({
 		security: [{ scheme: 'bearer', type: 'http' }],
 		url: '/api/services/{serviceId}/metrics',
+		...options
+	});
+
+/**
+ * List recent deployments across a team
+ */
+export const teamDeploymentsList = <ThrowOnError extends boolean = false>(
+	options: Options<TeamDeploymentsListData, ThrowOnError>
+): RequestResult<TeamDeploymentsListResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).get<TeamDeploymentsListResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/teams/{teamId}/deployments',
 		...options
 	});
 

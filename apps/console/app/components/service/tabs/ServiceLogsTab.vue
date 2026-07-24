@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Copy, Download, Loader2, Pause, Play } from 'lucide-vue-next';
+import { Copy, Download, Loader2, Pause, Play, ScrollText } from 'lucide-vue-next';
 import type { Service, ServiceLogEntry } from '~/utils/types';
 
 const props = defineProps<{ service: Service; active: boolean }>();
@@ -25,9 +25,16 @@ function toText(items: ServiceLogEntry[], showPod: boolean): string {
 
 const pod = ref<string | 'all'>('all');
 const follow = ref(true);
+const query = ref('');
 
 const serviceId = computed(() => props.service.id);
 const { entries, pods, available, isLoading } = useServiceLogs(serviceId, () => props.active, follow, pod);
+
+const filteredEntries = computed(() => {
+	const q = query.value.trim().toLowerCase();
+	if (!q) return entries.value;
+	return entries.value.filter(e => e.message.toLowerCase().includes(q) || e.pod.toLowerCase().includes(q));
+});
 
 const showPodColumn = computed(() => pod.value === 'all' && pods.value.length > 1);
 
@@ -65,7 +72,7 @@ async function onCopy() {
 		return;
 	}
 	try {
-		await navigator.clipboard.writeText(toText(entries.value, showPodColumn.value));
+		await navigator.clipboard.writeText(toText(filteredEntries.value, showPodColumn.value));
 		toast.success('Logs copied');
 	} catch {
 		toast.error('Could not copy logs');
@@ -73,7 +80,7 @@ async function onCopy() {
 }
 
 function onDownload() {
-	const blob = new Blob([toText(entries.value, showPodColumn.value)], { type: 'text/plain' });
+	const blob = new Blob([toText(filteredEntries.value, showPodColumn.value)], { type: 'text/plain' });
 	const url = URL.createObjectURL(blob);
 	const a = document.createElement('a');
 	a.href = url;
@@ -95,6 +102,7 @@ function onDownload() {
 						<SelectItem v-for="item in podItems" :key="item.value" :value="item.value" class="font-mono text-xs">{{ item.label }}</SelectItem>
 					</SelectContent>
 				</Select>
+				<Input v-model="query" type="search" placeholder="Filter logs…" class="h-8 w-44 text-xs" />
 			</div>
 			<div class="flex items-center gap-1.5">
 				<Button type="button" variant="outline" size="sm" @click="follow = !follow">
@@ -131,19 +139,26 @@ function onDownload() {
 			<Loader2 class="size-4 animate-spin" />
 			Loading logs…
 		</div>
-		<div v-else-if="!available && entries.length === 0" class="rounded-lg border border-dashed px-4 py-12 text-center text-sm text-muted-foreground">
-			No logs yet. Deploy and run this service to see its output here.
-		</div>
-		<div v-else-if="entries.length === 0" class="rounded-lg border border-dashed px-4 py-12 text-center text-sm text-muted-foreground">
-			This service is running but hasn’t produced any log output.
-		</div>
+		<EmptyState
+			v-else-if="!available && entries.length === 0"
+			:icon="ScrollText"
+			title="No logs yet"
+			description="Deploy and run this service to see its output here."
+		/>
+		<EmptyState
+			v-else-if="entries.length === 0"
+			:icon="ScrollText"
+			title="No log output"
+			description="This service is running but hasn’t produced any log output."
+		/>
 		<div
 			v-else
 			ref="scrollerRef"
 			class="min-h-0 flex-1 overflow-y-auto rounded-xl bg-muted/50 p-3 font-mono text-xs leading-relaxed ring ring-border"
 			@scroll="onScroll"
 		>
-			<div v-for="(e, i) in entries" :key="`${e.pod}-${e.timestamp ?? ''}-${i}`" class="flex gap-2 break-all whitespace-pre-wrap">
+			<p v-if="filteredEntries.length === 0" class="py-6 text-center font-sans text-muted-foreground">No logs match the filter.</p>
+			<div v-for="(e, i) in filteredEntries" :key="`${e.pod}-${e.timestamp ?? ''}-${i}`" class="flex gap-2 break-all whitespace-pre-wrap">
 				<span class="shrink-0 tabular-nums text-muted-foreground/60 select-none">{{ formatTime(e.timestamp) }}</span>
 				<span v-if="showPodColumn" class="shrink-0 text-muted-foreground/50 select-none">{{ shortPod(e.pod) }}</span>
 				<span :class="e.message ? 'text-foreground/90' : 'text-muted-foreground'">{{ e.message || ' ' }}</span>
