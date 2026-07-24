@@ -1,6 +1,6 @@
-import { spawn } from 'node:child_process';
 import { errorMessage } from '../../../../shared/worker-common/errors.js';
 import { prepareGitAuthEnv } from './git-auth.js';
+import { runGit } from './run-git.js';
 
 // Resolve branch HEAD via git ls-remote; private repos auth with the team deploy key decrypted into a 0600 temp file, removed afterwards.
 
@@ -45,41 +45,12 @@ export async function resolveRemoteHead(opts: ResolveHeadOptions): Promise<strin
 
 	try {
 		const wantedRef = toRemoteRef(opts.branch);
-		const proc = spawn('git', ['ls-remote', opts.repoUrl, wantedRef], { env: auth.env });
-
 		// Surface the timeout as an error: a signal-killed git otherwise looks like a clean empty exit, misread as "branch deleted".
-		let timedOut = false;
-		const timer = setTimeout(() => {
-			timedOut = true;
-			proc.kill();
-		}, opts.timeoutMs);
-		try {
-			const { stdout, stderr, code, signal } = await new Promise<{
-				stdout: string;
-				stderr: string;
-				code: number | null;
-				signal: NodeJS.Signals | null;
-			}>((resolve, reject) => {
-				let stdout = '';
-				let stderr = '';
-				proc.stdout?.on('data', (chunk: Buffer) => {
-					stdout += chunk.toString();
-				});
-				proc.stderr?.on('data', (chunk: Buffer) => {
-					stderr += chunk.toString();
-				});
-				proc.on('error', reject);
-				proc.on('close', (code, signal) => resolve({ stdout, stderr, code, signal }));
-			});
-			if (timedOut) throw new Error(`git ls-remote timed out after ${opts.timeoutMs}ms`);
-			if (code !== 0) {
-				const detail = stderr.trim() || stdout.trim() || `git exited ${code ?? `signal ${signal}`}`;
-				throw new Error(`git ls-remote failed: ${detail}`);
-			}
-			return parseLsRemote(stdout, opts.branch);
-		} finally {
-			clearTimeout(timer);
-		}
+		const stdout = await runGit(['ls-remote', opts.repoUrl, wantedRef], {
+			env: auth.env,
+			timeoutMs: opts.timeoutMs
+		});
+		return parseLsRemote(stdout, opts.branch);
 	} catch (err) {
 		throw new Error(errorMessage(err));
 	} finally {

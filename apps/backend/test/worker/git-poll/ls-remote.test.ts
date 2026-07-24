@@ -130,7 +130,7 @@ describe('resolveRemoteHead (public)', () => {
 	it('throws with the stderr detail on a non-zero git exit', async () => {
 		stubSpawn({ stdout: '', stderr: 'fatal: repository not found', exitCode: 128 });
 		await expect(resolveRemoteHead({ repoUrl: 'https://x/r.git', branch: 'main', timeoutMs: 1000 })).rejects.toThrow(
-			'git ls-remote failed: fatal: repository not found'
+			'git ls-remote https://x/r.git refs/heads/main failed: fatal: repository not found'
 		);
 	});
 
