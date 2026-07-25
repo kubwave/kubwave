@@ -221,6 +221,10 @@ export function buildProductionValues(input: ProductionValuesInput): Record<stri
 		worker: {
 			serviceAccount: { create: true },
 			image: image('backend'),
+			// The chart default is 'false' for the Tilt dev profile (so local template edits aren't masked
+			// by the remote catalog). Prod must poll, else the catalog is pinned to the image and new
+			// templates on main only appear after a release+update. Deep-merges with the chart's worker.env.
+			env: { TEMPLATE_CATALOG_POLL_ENABLED: 'true' },
 			...nodeSelector
 		},
 		postgres: {
