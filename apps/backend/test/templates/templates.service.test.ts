@@ -272,6 +272,19 @@ describe('TemplatesService.instantiate', () => {
 		expect(created).toHaveLength(0);
 	});
 
+	test('forwards template resources into the created service config', async () => {
+		const withResources: CatalogTemplate = {
+			...ghost,
+			services: ghost.services.map(s =>
+				s.name === 'ghost' ? { ...s, config: { ...s.config, resources: { cpuRequest: '100m', memoryLimit: '1Gi' } } } : s
+			)
+		};
+		const { svc, created } = makeService(withResources);
+		await svc.instantiate('u', 'env', 'ghost', 'myblog', { url: 'https://blog.test' });
+		expect(created[1]!.config.resources).toEqual({ cpuRequest: '100m', memoryLimit: '1Gi' });
+		expect(created[0]!.config.resources).toBeUndefined();
+	});
+
 	test('rejects intra-batch name collision and creates zero services', async () => {
 		const collidingTemplate: CatalogTemplate = {
 			id: 'collide',

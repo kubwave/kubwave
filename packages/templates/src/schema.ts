@@ -40,6 +40,18 @@ const jwtSecretSchema = z.object({
 });
 export const templateSecretSchema = z.discriminatedUnion('generate', [passwordSecretSchema, jwtSecretSchema]);
 
+// Mirrors the backend resourceConfigSchema so build-catalog rejects quantities the API would: the
+// from-template path hand-builds CreateServiceInput and never re-runs the services controller's zod.
+const cpuQuantity = /^(\d+(\.\d+)?|\d+m)$/;
+const memoryQuantity = /^\d+(\.\d+)?[EPTGMK]i?$/;
+
+export const templateResourcesSchema = z.object({
+	cpuRequest: z.string().regex(cpuQuantity, 'Enter a valid CPU quantity (e.g. 250m, 1)').optional(),
+	cpuLimit: z.string().regex(cpuQuantity, 'Enter a valid CPU quantity (e.g. 500m, 2)').optional(),
+	memoryRequest: z.string().regex(memoryQuantity, 'Enter a valid memory quantity (e.g. 256Mi, 1Gi)').optional(),
+	memoryLimit: z.string().regex(memoryQuantity, 'Enter a valid memory quantity (e.g. 512Mi, 1Gi)').optional()
+});
+
 // Placeholders ({{ ... }}) allowed in string fields; resolution + strict validation happen later (build-time reference check, runtime createService zod).
 const templateServiceConfigSchema = z.object({
 	image: z.string().min(1),
@@ -59,7 +71,9 @@ const templateServiceConfigSchema = z.object({
 	configFiles: z.array(z.object({ path: z.string().min(1), content: z.string() })).default([]),
 	// Optional container entrypoint/command override (e.g. Supabase edge-runtime `start --main-service ...`).
 	command: z.array(z.string()).optional(),
-	args: z.array(z.string()).optional()
+	args: z.array(z.string()).optional(),
+	// Per-service CPU/memory requests and limits; unset fields fall back to the cluster-wide default.
+	resources: templateResourcesSchema.optional()
 });
 
 export const templateServiceSchema = z.object({

@@ -87,7 +87,8 @@ export class TemplatesService {
 					volumes: config.volumes,
 					configFiles: config.configFiles,
 					...(config.command ? { command: config.command } : {}),
-					...(config.args ? { args: config.args } : {})
+					...(config.args ? { args: config.args } : {}),
+					...(config.resources ? { resources: config.resources } : {})
 				}
 			};
 			const service = await this.services.createService(actingUserId, environmentId, input, serviceIds[i]!);

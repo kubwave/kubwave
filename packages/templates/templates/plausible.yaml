@@ -32,6 +32,7 @@ services:
       domains: []
       volumes:
         - { name: data, mountPath: /var/lib/postgresql/data, size: 1Gi, subPath: pgdata }
+      resources: { cpuRequest: 100m, cpuLimit: 500m, memoryRequest: 384Mi, memoryLimit: 512Mi }
   - name: clickhouse
     primary: false
     type: docker-image
@@ -98,6 +99,8 @@ services:
                     </default>
                 </profiles>
             </clickhouse>
+      # Request covers the 500MiB mark_cache_size configured above plus ClickHouse's baseline RSS.
+      resources: { cpuRequest: 200m, cpuLimit: 1000m, memoryRequest: 1Gi, memoryLimit: 2Gi }
   - name: plausible
     primary: true
     type: docker-image
@@ -120,3 +123,4 @@ services:
         - { host: '{{ inputs.domain }}', port: 8000 }
       volumes:
         - { name: data, mountPath: /var/lib/plausible, size: 1Gi }
+      resources: { cpuRequest: 100m, cpuLimit: 500m, memoryRequest: 256Mi, memoryLimit: 512Mi }

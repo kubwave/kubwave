@@ -48,4 +48,37 @@ describe('resolveTemplateServiceConfig', () => {
 		const out = resolveTemplateServiceConfig(config, ctx);
 		expect(out.configFiles[0]).toEqual({ path: '/home/kong/kong.yml', content: 'key: pw123 host: svc-abc' });
 	});
+
+	test('passes resources through unchanged', () => {
+		const config = {
+			image: 'ghost',
+			tag: '5',
+			containerPort: 2368,
+			env: [],
+			secrets: [],
+			domains: [],
+			exposedPorts: [],
+			volumes: [],
+			configFiles: [],
+			resources: { cpuRequest: '100m', cpuLimit: '500m', memoryRequest: '512Mi', memoryLimit: '1Gi' }
+		};
+		const out = resolveTemplateServiceConfig(config, ctx);
+		expect(out.resources).toEqual({ cpuRequest: '100m', cpuLimit: '500m', memoryRequest: '512Mi', memoryLimit: '1Gi' });
+	});
+
+	test('omits resources when the template declares none', () => {
+		const config = {
+			image: 'ghost',
+			tag: '5',
+			containerPort: 2368,
+			env: [],
+			secrets: [],
+			domains: [],
+			exposedPorts: [],
+			volumes: [],
+			configFiles: []
+		};
+		const out = resolveTemplateServiceConfig(config, ctx);
+		expect(out.resources).toBeUndefined();
+	});
 });
