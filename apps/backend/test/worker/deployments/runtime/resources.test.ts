@@ -61,6 +61,66 @@ describe('resourcesMatch', () => {
 	});
 });
 
+// The per-service DTO constrains quantities, but TENANT_DEFAULT_RESOURCES is parsed from unvalidated
+// env JSON, so an operator's defaults reach here in any form Kubernetes accepts. The API server only
+// echoes back the string it was given when that string is already canonical, so `.5` reads back as
+// `500m` — comparison has to be numeric or the reconciler rewrites the Deployment every tick.
+describe('resourcesMatch across Kubernetes quantity forms', () => {
+	test('a leading-decimal cpu default matches its canonicalized milli form', () => {
+		const live: V1ResourceRequirements = { requests: { cpu: '500m' } };
+		expect(resourcesMatch({ resources: live }, configWith(undefined), { cpuRequest: '.5' })).toBe(true);
+	});
+
+	test('a trailing-decimal cpu matches its whole form', () => {
+		const live: V1ResourceRequirements = { limits: { cpu: '5' } };
+		expect(resourcesMatch({ resources: live }, configWith({ cpuLimit: '5.' }))).toBe(true);
+	});
+
+	test('exponent notation matches the expanded form', () => {
+		const live: V1ResourceRequirements = { limits: { memory: '1G' } };
+		expect(resourcesMatch({ resources: live }, configWith({ memoryLimit: '1e9' }))).toBe(true);
+	});
+
+	test('a negative exponent matches its milli form', () => {
+		const live: V1ResourceRequirements = { requests: { cpu: '1m' } };
+		expect(resourcesMatch({ resources: live }, configWith({ cpuRequest: '1e-3' }))).toBe(true);
+	});
+
+	test('an explicitly signed exponent matches the expanded form', () => {
+		const live: V1ResourceRequirements = { limits: { memory: '1000' } };
+		expect(resourcesMatch({ resources: live }, configWith({ memoryLimit: '1e+3' }))).toBe(true);
+	});
+
+	// `E` is both the exa suffix and an exponent marker; only a following integer makes it an exponent.
+	test('uppercase E reads as an exponent with digits and as the exa suffix without', () => {
+		const live: V1ResourceRequirements = { limits: { memory: '1000' } };
+		expect(resourcesMatch({ resources: live }, configWith({ memoryLimit: '1E3' }))).toBe(true);
+		expect(resourcesMatch({ resources: live }, configWith({ memoryLimit: '1E' }))).toBe(false);
+	});
+
+	test('differing decimal-form quantities stay a mismatch', () => {
+		const live: V1ResourceRequirements = { requests: { cpu: '600m' } };
+		expect(resourcesMatch({ resources: live }, configWith(undefined), { cpuRequest: '.5' })).toBe(false);
+	});
+
+	// Kubernetes rejects an exponent stacked on a binary suffix; parsing it anyway would let two
+	// strings the API server can never store compare equal and mask a real drift.
+	test('an exponent combined with a binary suffix is not compared numerically', () => {
+		const live: V1ResourceRequirements = { limits: { memory: '1024000' } };
+		expect(resourcesMatch({ resources: live }, configWith({ memoryLimit: '1e3Ki' }))).toBe(false);
+	});
+
+	test('a bare exponent marker is not a quantity', () => {
+		const live: V1ResourceRequirements = { limits: { memory: '1000' } };
+		expect(resourcesMatch({ resources: live }, configWith({ memoryLimit: '1e' }))).toBe(false);
+	});
+
+	test('an out-of-range exponent falls back to string equality instead of allocating', () => {
+		expect(resourcesMatch({ resources: { limits: { memory: '1e999999999' } } }, configWith({ memoryLimit: '1e999999999' }))).toBe(true);
+		expect(resourcesMatch({ resources: { limits: { memory: '1' } } }, configWith({ memoryLimit: '1e999999999' }))).toBe(false);
+	});
+});
+
 const DEFAULTS = { cpuRequest: '50m', memoryRequest: '128Mi' };
 
 describe('buildResources defaults', () => {

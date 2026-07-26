@@ -41,17 +41,28 @@ const SUFFIX_MULTIPLIER: Record<string, bigint> = {
 	Pi: NANO * 1024n ** 5n,
 	Ei: NANO * 1024n ** 6n
 };
-const QUANTITY_PATTERN = /^([+-]?)(\d+)(?:\.(\d+))?(Ki|Mi|Gi|Ti|Pi|Ei|[numkMGTPE])?$/;
+// Mirrors the apimachinery grammar: `<digits>`, `<digits>.<digits>`, `<digits>.` or `.<digits>`,
+// then at most one suffix — a decimal exponent XOR an SI/binary suffix, never both (`1e3Ki` is not
+// a quantity). `E` is exa on its own and an exponent marker only when digits follow it.
+const QUANTITY_PATTERN = /^([+-]?)(\d+\.?\d*|\.\d+)(?:[eE]([+-]?\d+)|(Ki|Mi|Gi|Ti|Pi|Ei|[numkMGTPE]))?$/;
+// Past this the value is far outside the int64 range a quantity can hold, and 10n ** exponent would
+// allocate for a string the API server would reject anyway.
+const MAX_EXPONENT = 100;
 
 // Value of a quantity string in nano-units, or null when it isn't one we can compare numerically.
 function parseQuantity(value: string): bigint | null {
 	const match = QUANTITY_PATTERN.exec(value.trim());
 	if (!match) return null;
-	const [, sign, whole, fraction = '', suffix = ''] = match;
+	const [, sign, digits = '', exponent, suffix = ''] = match;
 	const multiplier = SUFFIX_MULTIPLIER[suffix];
 	if (multiplier == null) return null;
-	const divisor = 10n ** BigInt(fraction.length);
-	const scaled = BigInt(whole + fraction) * multiplier;
+	const [whole = '', fraction = ''] = digits.split('.');
+	const power = exponent ? Number(exponent) : 0;
+	if (Math.abs(power) > MAX_EXPONENT) return null;
+	let scaled = BigInt(whole + fraction) * multiplier;
+	let divisor = 10n ** BigInt(fraction.length);
+	if (power >= 0) scaled *= 10n ** BigInt(power);
+	else divisor *= 10n ** BigInt(-power);
 	// Finer than nano-units: not representable here, so let the caller fall back to string equality.
 	if (scaled % divisor !== 0n) return null;
 	return (sign === '-' ? -1n : 1n) * (scaled / divisor);
