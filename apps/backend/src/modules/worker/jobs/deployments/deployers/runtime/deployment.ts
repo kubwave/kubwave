@@ -16,6 +16,7 @@ import {
 	PSS_RESTRICTED,
 	TENANT_ADD_CAPABILITIES,
 	TENANT_DROP_CAPABILITIES,
+	TENANT_FS_GROUP,
 	TENANT_SECCOMP_PROFILE_TYPE
 } from './runtime.types.js';
 
@@ -28,10 +29,13 @@ function tenantContainerSecurityContext(podSecurityEnforce?: string): V1Security
 	};
 }
 
-// Pod securityContext: always the seccomp sandbox; under `restricted` also pin runAsNonRoot so kubwave's own pods pass admission (root images then fail by design).
+// Pod securityContext: always the seccomp sandbox and the volume fsGroup; under `restricted` also pin runAsNonRoot so kubwave's own pods pass admission (root images then fail by design).
 function tenantPodSecurityContext(podSecurityEnforce?: string): V1PodSecurityContext {
 	return {
 		seccompProfile: { type: TENANT_SECCOMP_PROFILE_TYPE },
+		fsGroup: TENANT_FS_GROUP,
+		// OnRootMismatch skips the recursive chown when the volume root already has the right ownership - a full walk is O(files) on every pod start.
+		fsGroupChangePolicy: 'OnRootMismatch',
 		...(podSecurityEnforce === PSS_RESTRICTED ? { runAsNonRoot: true } : {})
 	};
 }
@@ -155,6 +159,8 @@ export function deploymentMatchesConfig(
 	// Pod/container hardening: derive desired values from the same builders buildDeployment uses so build and match can't drift; a pre-hardening Deployment mismatches and rolls once.
 	const desiredRunAsNonRoot = tenantPodSecurityContext(podSecurityEnforce).runAsNonRoot ?? null;
 	if ((existing.spec?.template?.spec?.securityContext?.runAsNonRoot ?? null) !== desiredRunAsNonRoot) return false;
+	const desiredFsGroup = tenantPodSecurityContext(podSecurityEnforce).fsGroup ?? null;
+	if ((existing.spec?.template?.spec?.securityContext?.fsGroup ?? null) !== desiredFsGroup) return false;
 	const desiredContainerSc = tenantContainerSecurityContext(podSecurityEnforce);
 	const containerSc = container.securityContext;
 	if (containerSc?.allowPrivilegeEscalation !== desiredContainerSc.allowPrivilegeEscalation) return false;
