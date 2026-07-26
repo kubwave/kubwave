@@ -111,7 +111,9 @@ services:
       command:
         - sh
         - -c
-        - /entrypoint.sh db createdb && /entrypoint.sh db migrate && /entrypoint.sh run
+        # The BEAM sizes its port/fd tables from RLIMIT_NOFILE, which containerd leaves at ~1e9 here;
+        # unclamped it allocates multiple GB before logging a line and gets OOM-killed at any limit.
+        - ulimit -n 65536; /entrypoint.sh db createdb && /entrypoint.sh db migrate && /entrypoint.sh run
       env:
         - { key: BASE_URL, value: 'https://{{ inputs.domain }}' }
         - { key: TMPDIR, value: /var/lib/plausible/tmp }
@@ -123,4 +125,5 @@ services:
         - { host: '{{ inputs.domain }}', port: 8000 }
       volumes:
         - { name: data, mountPath: /var/lib/plausible, size: 1Gi }
-      resources: { cpuRequest: 100m, cpuLimit: 500m, memoryRequest: 256Mi, memoryLimit: 512Mi }
+      # Measured ~400MiB resident once booted, so the request covers idle and the limit leaves headroom for ingestion.
+      resources: { cpuRequest: 100m, cpuLimit: 500m, memoryRequest: 448Mi, memoryLimit: 768Mi }
