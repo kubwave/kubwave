@@ -19,7 +19,7 @@ const insertLogsCalls: Array<{ id: string }> = [];
 const deletedBuildArtifacts: string[] = [];
 let hasRunningBuildJob = false;
 
-mock.module('~/shared/config/worker-env', () => ({ env: { ingressControllerNamespace: 'kube-system' } }));
+mock.module('~/shared/config/worker-env', () => ({ env: { ingressControllerNamespace: 'kube-system', reconcileIntervalMs: 5000 } }));
 mock.module('@kubwave/db', () => ({
 	deployments: {
 		id: 'id',
@@ -173,12 +173,20 @@ describe('reconcileCanceling', () => {
 		});
 	});
 
-	test('with a previous whose rollback fails for the third time: finalizes failed', async () => {
+	test('with a previous whose rollback fails one short of the limit: still records a retry', async () => {
 		previousRow = [{ id: 'dep-1', serviceId: 'svc-1', type: 'docker-image', status: 'succeeded' }];
 		reconcileOutcome = { state: 'failed', error: 'bad image' };
-		await reconcileCanceling(kc, { ...cancelingRow, rollbackAttempts: 2 } as never, 'env-1', 'svc.example.com');
+		await reconcileCanceling(kc, { ...cancelingRow, rollbackAttempts: 4 } as never, 'env-1', 'svc.example.com');
+		expect(finalizeCalls).toEqual([]);
+		expect(updateSets[0]).toMatchObject({ rollbackAttempts: 5, phase: 'rollback-retrying' });
+	});
+
+	test('with a previous whose rollback fails on the final attempt: finalizes failed', async () => {
+		previousRow = [{ id: 'dep-1', serviceId: 'svc-1', type: 'docker-image', status: 'succeeded' }];
+		reconcileOutcome = { state: 'failed', error: 'bad image' };
+		await reconcileCanceling(kc, { ...cancelingRow, rollbackAttempts: 5 } as never, 'env-1', 'svc.example.com');
 		expect(finalizeCalls[0]).toMatchObject({
-			fields: { status: 'failed', phase: 'failed', lastError: 'Cancel rollback failed: bad image', rollbackAttempts: 3 }
+			fields: { status: 'failed', phase: 'failed', lastError: 'Cancel rollback failed: bad image', rollbackAttempts: 6 }
 		});
 	});
 
@@ -212,16 +220,16 @@ describe('reconcileCanceling', () => {
 		});
 	});
 
-	test('unhealthy progressing on the third rollback attempt finalizes failed and unblocks the service', async () => {
+	test('unhealthy progressing on the final rollback attempt finalizes failed and unblocks the service', async () => {
 		previousRow = [{ id: 'dep-1', serviceId: 'svc-1', type: 'docker-image', status: 'succeeded' }];
 		reconcileOutcome = { state: 'progressing', phase: 'error: CrashLoopBackOff: boom', events: [] };
-		await reconcileCanceling(kc, { ...cancelingRow, rollbackAttempts: 2 } as never, 'env-1', 'svc.example.com');
+		await reconcileCanceling(kc, { ...cancelingRow, rollbackAttempts: 5 } as never, 'env-1', 'svc.example.com');
 		expect(finalizeCalls[0]).toMatchObject({
 			fields: {
 				status: 'failed',
 				phase: 'failed',
 				lastError: 'Cancel rollback failed: CrashLoopBackOff: boom',
-				rollbackAttempts: 3
+				rollbackAttempts: 6
 			}
 		});
 	});

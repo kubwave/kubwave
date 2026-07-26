@@ -3,6 +3,9 @@ import type { V1Deployment } from '@kubernetes/client-node';
 // Tenant workloads get a shorter rollout deadline (300s vs K8s default 600s) so broken rollouts surface promptly; the grace window covers late-ready pods.
 export const SERVICE_ROLLOUT_PROGRESS_DEADLINE_SECONDS = 300;
 export const SERVICE_ROLLOUT_FAILURE_GRACE_SECONDS = 60;
+// Tenant pods carry no readinessProbe, so a container counts as ready the moment it starts. Requiring it to hold
+// that state keeps an instantly-crashing pod out of availableReplicas, which is what the rollout gate reads.
+export const SERVICE_ROLLOUT_MIN_READY_SECONDS = 15;
 
 // Labels identifying the K8s objects the worker creates; the worker is the only writer, everything else reads through these.
 export const LABEL_MANAGED_BY = 'app.kubernetes.io/managed-by';
@@ -122,6 +125,8 @@ export function deploymentRuntimeStatus(dep: V1Deployment | null, now: Date = ne
 	}
 
 	if (counts.readyReplicas >= desired && counts.availableReplicas >= desired) return { status: 'running', ...counts };
+	// Ready but not yet available: the pod is serving out minReadySeconds, which is progress, not degradation.
+	if (counts.readyReplicas >= desired) return { status: 'progressing', ...counts };
 	if (counts.readyReplicas > 0) return { status: 'degraded', ...counts };
 	return { status: 'progressing', ...counts };
 }
