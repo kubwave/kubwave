@@ -37,6 +37,24 @@ describe('resourcesMatch', () => {
 		expect(resourcesMatch({}, configWith({ memoryLimit: '512Mi' }))).toBe(false);
 	});
 
+	// The API server stores quantities canonicalized, so what we write back is not what we read:
+	// `1000m` returns as `1`. Comparing the raw strings never converges and the reconciler
+	// rewrites the Deployment on every tick.
+	test('quantities equal after canonicalization read as equal', () => {
+		const live: V1ResourceRequirements = { limits: { cpu: '1' } };
+		expect(resourcesMatch({ resources: live }, configWith({ cpuLimit: '1000m' }))).toBe(true);
+	});
+
+	test('binary memory suffixes compare by value', () => {
+		const live: V1ResourceRequirements = { limits: { memory: '1Gi' } };
+		expect(resourcesMatch({ resources: live }, configWith({ memoryLimit: '1024Mi' }))).toBe(true);
+	});
+
+	test('a fractional cpu matches its milli form', () => {
+		const live: V1ResourceRequirements = { requests: { cpu: '500m' } };
+		expect(resourcesMatch({ resources: live }, configWith({ cpuRequest: '0.5' }))).toBe(true);
+	});
+
 	test('container has resources but config is empty', () => {
 		const live: V1ResourceRequirements = { limits: { memory: '512Mi' } };
 		expect(resourcesMatch({ resources: live }, configWith(undefined))).toBe(false);
