@@ -99,7 +99,6 @@ services:
                     </default>
                 </profiles>
             </clickhouse>
-      # Request covers the 500MiB mark_cache_size configured above plus ClickHouse's baseline RSS.
       resources: { cpuRequest: 200m, cpuLimit: 1000m, memoryRequest: 1Gi, memoryLimit: 2Gi }
   - name: plausible
     primary: true
@@ -111,7 +110,7 @@ services:
       command:
         - sh
         - -c
-        - /entrypoint.sh db createdb && /entrypoint.sh db migrate && /entrypoint.sh run
+        - ulimit -n 65536; /entrypoint.sh db createdb && /entrypoint.sh db migrate && /entrypoint.sh run
       env:
         - { key: BASE_URL, value: 'https://{{ inputs.domain }}' }
         - { key: TMPDIR, value: /var/lib/plausible/tmp }
@@ -123,4 +122,4 @@ services:
         - { host: '{{ inputs.domain }}', port: 8000 }
       volumes:
         - { name: data, mountPath: /var/lib/plausible, size: 1Gi }
-      resources: { cpuRequest: 100m, cpuLimit: 500m, memoryRequest: 256Mi, memoryLimit: 512Mi }
+      resources: { cpuRequest: 100m, cpuLimit: 500m, memoryRequest: 448Mi, memoryLimit: 768Mi }
