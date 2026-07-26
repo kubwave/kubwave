@@ -318,13 +318,13 @@
           "command": [
             "sh",
             "-c",
-            "/entrypoint.sh db createdb && /entrypoint.sh db migrate && /entrypoint.sh run"
+            "ulimit -n 65536; /entrypoint.sh db createdb && /entrypoint.sh db migrate && /entrypoint.sh run"
           ],
           "resources": {
             "cpuRequest": "100m",
             "cpuLimit": "500m",
-            "memoryRequest": "256Mi",
-            "memoryLimit": "512Mi"
+            "memoryRequest": "448Mi",
+            "memoryLimit": "768Mi"
           }
         }
       }
