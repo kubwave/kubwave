@@ -167,10 +167,10 @@ export function deploymentMatchesConfig(
 	if (!stringArraysEqual(container.args, config.args)) return false;
 
 	// Pod/container hardening: derive desired values from the same builders buildDeployment uses so build and match can't drift; a pre-hardening Deployment mismatches and rolls once.
-	const desiredRunAsNonRoot = tenantPodSecurityContext(podSecurityEnforce).runAsNonRoot ?? null;
-	if ((existing.spec?.template?.spec?.securityContext?.runAsNonRoot ?? null) !== desiredRunAsNonRoot) return false;
-	const desiredFsGroup = tenantPodSecurityContext(podSecurityEnforce).fsGroup ?? null;
-	if ((existing.spec?.template?.spec?.securityContext?.fsGroup ?? null) !== desiredFsGroup) return false;
+	const desiredPodSc = tenantPodSecurityContext(podSecurityEnforce);
+	if ((existing.spec?.template?.spec?.securityContext?.runAsNonRoot ?? null) !== (desiredPodSc.runAsNonRoot ?? null)) return false;
+	if ((existing.spec?.template?.spec?.securityContext?.fsGroup ?? null) !== (desiredPodSc.fsGroup ?? null)) return false;
+	if ((existing.spec?.template?.spec?.securityContext?.fsGroupChangePolicy ?? null) !== (desiredPodSc.fsGroupChangePolicy ?? null)) return false;
 	const desiredContainerSc = tenantContainerSecurityContext(podSecurityEnforce);
 	const containerSc = container.securityContext;
 	if (containerSc?.allowPrivilegeEscalation !== desiredContainerSc.allowPrivilegeEscalation) return false;

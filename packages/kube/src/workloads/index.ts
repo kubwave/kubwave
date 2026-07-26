@@ -125,6 +125,8 @@ export function deploymentRuntimeStatus(dep: V1Deployment | null, now: Date = ne
 	}
 
 	if (counts.readyReplicas >= desired && counts.availableReplicas >= desired) return { status: 'running', ...counts };
+	// Ready but not yet available: the pod is serving out minReadySeconds, which is progress, not degradation.
+	if (counts.readyReplicas >= desired) return { status: 'progressing', ...counts };
 	if (counts.readyReplicas > 0) return { status: 'degraded', ...counts };
 	return { status: 'progressing', ...counts };
 }

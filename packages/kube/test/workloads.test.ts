@@ -326,6 +326,13 @@ describe('deploymentRuntimeStatus', () => {
 		expect(deploymentRuntimeStatus(d, NOW).status).toBe('degraded');
 	});
 
+	test('all ready but not yet available (serving out minReadySeconds) → progressing, not degraded', () => {
+		// desired=1, updated=1, ready=1, available=0: the pod is Ready but hasn't held that state
+		// long enough to count as Available yet. This must not read as degraded.
+		const d = dep({ replicas: 1, updatedReplicas: 1, readyReplicas: 1, availableReplicas: 0, statusReplicas: 1 });
+		expect(deploymentRuntimeStatus(d, NOW).status).toBe('progressing');
+	});
+
 	test('all updated, zero ready, none available → progressing (final fall-through)', () => {
 		// updated==desired but nothing ready yet; not degraded.
 		const d = dep({ replicas: 2, updatedReplicas: 2, readyReplicas: 0, availableReplicas: 0, statusReplicas: 3 });

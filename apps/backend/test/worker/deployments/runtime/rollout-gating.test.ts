@@ -18,7 +18,7 @@ describe('rollout success gating', () => {
 	// reconcile tick landing in that window finalizes a crash-looping service as succeeded.
 	test('requires a pod to stay ready before it counts as available', () => {
 		const spec = buildDeployment(deployment, NAMESPACE, config(), IMAGE_REF).spec!;
-		expect(spec.minReadySeconds).toBe(SERVICE_ROLLOUT_MIN_READY_SECONDS);
+		expect(spec.minReadySeconds).toBe(15);
 	});
 
 	test('the window is long enough to outlast an instant crash loop', () => {

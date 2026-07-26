@@ -100,6 +100,13 @@ describe('deploymentMatchesConfig with hardening', () => {
 		delete built.spec!.template!.spec!.securityContext!.fsGroup;
 		expect(deploymentMatchesConfig(built, cfg, IMAGE_REF, SERVICE_ID)).toBe(false);
 	});
+
+	test('a Deployment with the wrong fsGroup is a mismatch', () => {
+		const cfg = config();
+		const built = buildDeployment(deployment, NAMESPACE, cfg, IMAGE_REF);
+		built.spec!.template!.spec!.securityContext!.fsGroup = 999;
+		expect(deploymentMatchesConfig(built, cfg, IMAGE_REF, SERVICE_ID)).toBe(false);
+	});
 });
 
 describe('buildDeployment runtimeClass', () => {
