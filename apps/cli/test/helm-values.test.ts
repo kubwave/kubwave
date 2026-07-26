@@ -233,6 +233,14 @@ describe('helm values generation', () => {
 		expect(values.workloadIngress.loadBalancerIp).toBe('');
 	});
 
+	test('enables the template catalog poller for prod installs', () => {
+		// The chart default is 'false' for the Tilt dev profile (serve the bundled catalog so local
+		// template edits aren't masked). Inheriting that in prod pins the catalog to the image, so new
+		// templates on main only show up after a release+update instead of the 30-minute poll.
+		const values = buildValues(config) as { worker: { env: Record<string, string> } };
+		expect(values.worker.env.TEMPLATE_CATALOG_POLL_ENABLED).toBe('true');
+	});
+
 	test('platform registry mode emits TLS ingress, htpasswd, and builder hairpin egress', () => {
 		const values = buildValues({ ...config, buildRegistry: { mode: 'platform' } }) as {
 			registry: Record<string, unknown>;
