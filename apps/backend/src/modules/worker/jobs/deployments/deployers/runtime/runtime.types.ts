@@ -13,6 +13,10 @@ export const TENANT_ADD_CAPABILITIES: string[] = ['NET_BIND_SERVICE'];
 // Pod Security Standards `restricted` enforce level; selecting it also pins runAsNonRoot so kubwave's own Deployments pass the namespace admission check.
 export const PSS_RESTRICTED = 'restricted';
 
+// Supplemental GID owning every tenant volume. K8s adds it to each container's groups and chowns the volume root:<gid> g+rwxs,
+// so images running as an arbitrary non-root UID can write their own PVC (a fresh PVC otherwise mounts root:root 755).
+export const TENANT_FS_GROUP = 1000;
+
 // Pod-template annotation hashing the encrypted secrets; a change flips the hash to force a rollout (K8s won't restart pods when a secretKeyRef'd Secret changes on its own).
 export const ANNOTATION_SECRETS_CHECKSUM = 'kubwave/secrets-checksum';
 

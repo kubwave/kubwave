@@ -1,6 +1,14 @@
 import type { V1Deployment, V1EnvVar, V1PodSecurityContext, V1SecurityContext } from '@kubernetes/client-node';
 import type { Deployment, ResourceConfig, RuntimeConfig, ServiceDomain } from '@kubwave/db';
-import { fileKey, pvcName, resourceName, secretName, selectorLabels, SERVICE_ROLLOUT_PROGRESS_DEADLINE_SECONDS } from '@kubwave/kube';
+import {
+	fileKey,
+	pvcName,
+	resourceName,
+	secretName,
+	selectorLabels,
+	SERVICE_ROLLOUT_MIN_READY_SECONDS,
+	SERVICE_ROLLOUT_PROGRESS_DEADLINE_SECONDS
+} from '@kubwave/kube';
 import { commonLabels } from '../../../../../../shared/cluster/networking.js';
 import { autoscalingEnabled } from './autoscaling.js';
 import { buildProbes, probesMatch } from './probes.js';
@@ -16,6 +24,7 @@ import {
 	PSS_RESTRICTED,
 	TENANT_ADD_CAPABILITIES,
 	TENANT_DROP_CAPABILITIES,
+	TENANT_FS_GROUP,
 	TENANT_SECCOMP_PROFILE_TYPE
 } from './runtime.types.js';
 
@@ -28,10 +37,13 @@ function tenantContainerSecurityContext(podSecurityEnforce?: string): V1Security
 	};
 }
 
-// Pod securityContext: always the seccomp sandbox; under `restricted` also pin runAsNonRoot so kubwave's own pods pass admission (root images then fail by design).
+// Pod securityContext: always the seccomp sandbox and the volume fsGroup; under `restricted` also pin runAsNonRoot so kubwave's own pods pass admission (root images then fail by design).
 function tenantPodSecurityContext(podSecurityEnforce?: string): V1PodSecurityContext {
 	return {
 		seccompProfile: { type: TENANT_SECCOMP_PROFILE_TYPE },
+		fsGroup: TENANT_FS_GROUP,
+		// OnRootMismatch skips the recursive chown when the volume root already has the right ownership - a full walk is O(files) on every pod start.
+		fsGroupChangePolicy: 'OnRootMismatch',
 		...(podSecurityEnforce === PSS_RESTRICTED ? { runAsNonRoot: true } : {})
 	};
 }
@@ -84,6 +96,7 @@ export function buildDeployment(
 			// Volume-backed services use Recreate: RollingUpdate would need the single RWO PVC on two nodes (Multi-Attach) and stall.
 			...(hasVolume(config) ? { strategy: { type: 'Recreate' } } : {}),
 			progressDeadlineSeconds: SERVICE_ROLLOUT_PROGRESS_DEADLINE_SECONDS,
+			minReadySeconds: SERVICE_ROLLOUT_MIN_READY_SECONDS,
 			selector: { matchLabels: selectorLabels(deployment.serviceId) },
 			template: {
 				metadata: {
@@ -135,6 +148,7 @@ export function deploymentMatchesConfig(
 	const desiredStrategy = hasVolume(config) ? 'Recreate' : 'RollingUpdate';
 	if ((existing.spec?.strategy?.type ?? 'RollingUpdate') !== desiredStrategy) return false;
 	if ((existing.spec?.progressDeadlineSeconds ?? null) !== SERVICE_ROLLOUT_PROGRESS_DEADLINE_SECONDS) return false;
+	if ((existing.spec?.minReadySeconds ?? null) !== SERVICE_ROLLOUT_MIN_READY_SECONDS) return false;
 	// Pod-level seccomp profile - a pre-hardening Deployment has none, so this rolls it once.
 	if ((existing.spec?.template?.spec?.securityContext?.seccompProfile?.type ?? null) !== TENANT_SECCOMP_PROFILE_TYPE) return false;
 	// RuntimeClass: a pre-isolation Deployment has none; a level switch rolls it once. Empty <-> undefined.
@@ -153,8 +167,10 @@ export function deploymentMatchesConfig(
 	if (!stringArraysEqual(container.args, config.args)) return false;
 
 	// Pod/container hardening: derive desired values from the same builders buildDeployment uses so build and match can't drift; a pre-hardening Deployment mismatches and rolls once.
-	const desiredRunAsNonRoot = tenantPodSecurityContext(podSecurityEnforce).runAsNonRoot ?? null;
-	if ((existing.spec?.template?.spec?.securityContext?.runAsNonRoot ?? null) !== desiredRunAsNonRoot) return false;
+	const desiredPodSc = tenantPodSecurityContext(podSecurityEnforce);
+	if ((existing.spec?.template?.spec?.securityContext?.runAsNonRoot ?? null) !== (desiredPodSc.runAsNonRoot ?? null)) return false;
+	if ((existing.spec?.template?.spec?.securityContext?.fsGroup ?? null) !== (desiredPodSc.fsGroup ?? null)) return false;
+	if ((existing.spec?.template?.spec?.securityContext?.fsGroupChangePolicy ?? null) !== (desiredPodSc.fsGroupChangePolicy ?? null)) return false;
 	const desiredContainerSc = tenantContainerSecurityContext(podSecurityEnforce);
 	const containerSc = container.securityContext;
 	if (containerSc?.allowPrivilegeEscalation !== desiredContainerSc.allowPrivilegeEscalation) return false;

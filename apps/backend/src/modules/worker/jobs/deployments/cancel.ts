@@ -1,7 +1,7 @@
 import { and, desc, eq, lt } from 'drizzle-orm';
 import { CoreV1Api, NetworkingV1Api, type KubeConfig } from '@kubernetes/client-node';
 import { db, deployments, type Deployment, type DeploymentLogEntry } from '@kubwave/db';
-import { environmentNamespace } from '@kubwave/kube';
+import { environmentNamespace, SERVICE_ROLLOUT_MIN_READY_SECONDS } from '@kubwave/kube';
 import { env } from '../../../../shared/config/worker-env.js';
 import { ensureEnvironmentNamespace } from '../../../../shared/cluster/namespaces.js';
 import { tenantIsolation } from '../../../../shared/cluster/isolation.js';
@@ -10,7 +10,10 @@ import { ingressOptions } from './ingress-options.js';
 import { deleteBuildArtifactsForDeployment, hasRunningBuildJobForDeployment } from './builds/service.js';
 import { finalize, insertLogs, logEntry, phaseEntry } from './logs.js';
 
-const MAX_CANCEL_ROLLBACK_ATTEMPTS = 3;
+// The budget must outlast minReadySeconds: a rollback pod needs to hold ready for that long before
+// it counts as available, so a fixed low attempt count could exhaust itself before the rollback is
+// even given a chance to succeed. 3 covers genuinely-failing rollbacks on top of that ready window.
+const MAX_CANCEL_ROLLBACK_ATTEMPTS = 3 + Math.ceil((SERVICE_ROLLOUT_MIN_READY_SECONDS * 1000) / env.reconcileIntervalMs);
 const BUILD_SERVICE_TYPES = new Set<Deployment['type']>(['dockerfile', 'public-repo', 'private-repo', 'github-repo']);
 
 function isBuildDeployment(row: Deployment): boolean {

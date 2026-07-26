@@ -43,6 +43,15 @@ describe('buildDeployment tenant pod hardening', () => {
 		expect(spec.securityContext?.runAsNonRoot).toBe(true);
 		expect(spec.securityContext?.seccompProfile?.type).toBe('RuntimeDefault');
 	});
+
+	test('sets fsGroup so non-root images can write to their PVC, at every level', () => {
+		expect(podSpec({ podSecurityEnforce: 'baseline' }).securityContext?.fsGroup).toBe(1000);
+		expect(podSpec({ podSecurityEnforce: 'restricted' }).securityContext?.fsGroup).toBe(1000);
+	});
+
+	test('uses OnRootMismatch so a large existing volume is not re-chowned on every start', () => {
+		expect(podSpec({ podSecurityEnforce: 'baseline' }).securityContext?.fsGroupChangePolicy).toBe('OnRootMismatch');
+	});
 });
 
 describe('deploymentMatchesConfig with hardening', () => {
@@ -83,6 +92,20 @@ describe('deploymentMatchesConfig with hardening', () => {
 		const built = buildDeployment(deployment, NAMESPACE, cfg, IMAGE_REF, { podSecurityEnforce: 'restricted' });
 		built.spec!.template!.spec!.containers[0]!.securityContext!.capabilities!.drop = ['NET_RAW'];
 		expect(deploymentMatchesConfig(built, cfg, IMAGE_REF, SERVICE_ID, 'restricted')).toBe(false);
+	});
+
+	test('a pre-fsGroup Deployment is a mismatch, so it rolls once to make its volume writable', () => {
+		const cfg = config();
+		const built = buildDeployment(deployment, NAMESPACE, cfg, IMAGE_REF);
+		delete built.spec!.template!.spec!.securityContext!.fsGroup;
+		expect(deploymentMatchesConfig(built, cfg, IMAGE_REF, SERVICE_ID)).toBe(false);
+	});
+
+	test('a Deployment with the wrong fsGroup is a mismatch', () => {
+		const cfg = config();
+		const built = buildDeployment(deployment, NAMESPACE, cfg, IMAGE_REF);
+		built.spec!.template!.spec!.securityContext!.fsGroup = 999;
+		expect(deploymentMatchesConfig(built, cfg, IMAGE_REF, SERVICE_ID)).toBe(false);
 	});
 });
 
