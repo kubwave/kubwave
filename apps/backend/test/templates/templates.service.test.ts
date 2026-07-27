@@ -2,7 +2,7 @@ process.env.DATABASE_URL ??= 'postgres://u:p@localhost:5432/test';
 
 import { createHmac } from 'node:crypto';
 import { describe, expect, test } from 'bun:test';
-import type { CatalogTemplate } from '@kubwave/templates';
+import { loadBundledCatalog, type CatalogTemplate } from '@kubwave/templates';
 import type { ServicesService } from '~/modules/services/services.service';
 import type { TemplateCatalogService } from '~/modules/templates/template-catalog.service';
 
@@ -249,6 +249,75 @@ describe('TemplatesService.instantiate', () => {
 		// Signature verifies against the generated jwt_secret value.
 		const expected = createHmac('sha256', jwtSecret).update(`${header}.${payload}`).digest('base64url');
 		expect(signature).toBe(expected);
+	});
+
+	test('generates a hex secret as 64 hex chars', async () => {
+		const tmpl: CatalogTemplate = {
+			id: 'kds',
+			name: 'KDS',
+			description: 'x',
+			category: 'developer-tools',
+			tags: [],
+			logo: 'kds.svg',
+			logoSvg: '<svg/>',
+			documentation: 'https://kodus.io',
+			schemaVersion: 1,
+			version: 1,
+			inputs: [],
+			secrets: [{ key: 'crypto_key', generate: 'hex' }],
+			services: [
+				{
+					name: 'api',
+					primary: true,
+					type: 'docker-image',
+					config: {
+						image: 'img',
+						tag: '1',
+						containerPort: 3001,
+						env: [],
+						secrets: [{ key: 'API_CRYPTO_KEY', value: '{{ secrets.crypto_key }}' }],
+						domains: [],
+						exposedPorts: [],
+						volumes: [],
+						configFiles: []
+					}
+				}
+			]
+		};
+		const { svc, created } = makeService(tmpl);
+		await svc.instantiate('u', 'env', 'kds', 'kds', {});
+		const secrets = created[0]!.config.secrets as Array<{ key: string; value: string }>;
+		expect(secrets.find(s => s.key === 'API_CRYPTO_KEY')!.value).toMatch(/^[0-9a-f]{64}$/);
+	});
+
+	test('instantiates the real kodus catalog entry: 7 services, 64-hex crypto keys, resolved host/input wiring', async () => {
+		const kodus = loadBundledCatalog().find(t => t.id === 'kodus');
+		expect(kodus).toBeDefined();
+		const { svc, created } = makeService(kodus!);
+		await svc.instantiate('u', 'env', 'kodus', 'kodus', { web_domain: 'kodus.example.com', webhook_domain: 'hooks.example.com' });
+
+		expect(created.map(c => c.name)).toEqual([
+			'kodus-postgres',
+			'kodus-mongodb',
+			'kodus-rabbitmq',
+			'kodus-api',
+			'kodus-worker',
+			'kodus-webhooks',
+			'kodus'
+		]);
+
+		const api = created.find(c => c.name === 'kodus-api')!;
+		const apiSecrets = api.config.secrets as Array<{ key: string; value: string }>;
+		expect(apiSecrets.find(s => s.key === 'API_CRYPTO_KEY')!.value).toMatch(/^[0-9a-f]{64}$/);
+		expect(apiSecrets.find(s => s.key === 'CODE_MANAGEMENT_SECRET')!.value).toMatch(/^[0-9a-f]{64}$/);
+		expect(apiSecrets.find(s => s.key === 'API_JWT_SECRET')!.value).not.toMatch(/^[0-9a-f]{64}$/);
+
+		const web = created.find(c => c.name === 'kodus')!;
+		const webEnv = web.config.env as Array<{ key: string; value: string }>;
+		expect(webEnv.find(e => e.key === 'WEB_HOSTNAME_API')!.value).toBe(`svc-${api.id}`);
+
+		const apiEnv = api.config.env as Array<{ key: string; value: string }>;
+		expect(apiEnv.find(e => e.key === 'API_GITHUB_CODE_MANAGEMENT_WEBHOOK')!.value).toBe('https://hooks.example.com/github/webhook');
 	});
 
 	test('rejects an unknown template', async () => {

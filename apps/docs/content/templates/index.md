@@ -45,4 +45,6 @@ them by hand.
 ::
 ::link-card{title="Uptime Kuma" to="/templates/uptime-kuma/" description="Self-hosted uptime monitoring with a status page."}
 ::
+::link-card{title="Kodus" to="/templates/kodus/" description="Self-hosted AI code reviewer — posts inline LLM review suggestions on your pull requests. Bring your own LLM key."}
+::
 ::

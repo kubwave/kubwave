@@ -64,6 +64,11 @@ export function generatePassword(bytes = 24): string {
 	return randomBytes(bytes).toString('base64url');
 }
 
+// Hex for apps that hex-decode their keys: Buffer.from(base64url, 'hex') silently truncates at the first non-hex char.
+export function generateHexKey(bytes = 32): string {
+	return randomBytes(bytes).toString('hex');
+}
+
 // JWT base64url (RFC 7515): Node's 'base64url' encoding is the unpadded +→-, /→_ form JWS expects.
 function base64UrlEncode(input: Buffer | string): string {
 	return Buffer.from(input).toString('base64url');

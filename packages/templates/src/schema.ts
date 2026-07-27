@@ -38,7 +38,12 @@ const jwtSecretSchema = z.object({
 	claims: z.record(z.string(), z.string()),
 	expiresInDays: z.number().int().positive().default(3650)
 });
-export const templateSecretSchema = z.discriminatedUnion('generate', [passwordSecretSchema, jwtSecretSchema]);
+// A distinct kind for apps that hex-decode their keys (see generateHexKey in @kubwave/crypto for the why).
+const hexSecretSchema = z.object({
+	key: identifier,
+	generate: z.literal('hex')
+});
+export const templateSecretSchema = z.discriminatedUnion('generate', [passwordSecretSchema, jwtSecretSchema, hexSecretSchema]);
 
 // Mirrors the backend resourceConfigSchema so build-catalog rejects quantities the API would: the
 // from-template path hand-builds CreateServiceInput and never re-runs the services controller's zod.

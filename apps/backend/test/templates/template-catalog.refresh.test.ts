@@ -55,6 +55,16 @@ describe('refreshTemplateCatalog', () => {
 		expect(res.count).toBe(1);
 	});
 
+	test('skips an entry whose secret uses an unknown generate kind, keeps valid entries', async () => {
+		const s = store();
+		const bad = { ...entry('kodus'), secrets: [{ key: 'crypto_key', generate: 'futurekind' }] };
+		const fetchFn = (async () => jsonResponse([entry('a'), bad])) as unknown as typeof fetch;
+		const res = await refreshTemplateCatalog({ sourceUrl: 'https://x', get: s.get, set: s.set, fetchFn });
+		expect(res.count).toBe(1);
+		const state = s.map.get(TEMPLATE_CATALOG_SETTINGS_KEY) as TemplateCatalogState;
+		expect(state.catalog.map(t => t.id)).toEqual(['a']);
+	});
+
 	test('304 keeps the previously stored catalog', async () => {
 		const s = store();
 		await s.set(TEMPLATE_CATALOG_SETTINGS_KEY, { catalog: [entry('a')], lastEtag: 'W/"1"', lastCheckedAt: null } satisfies TemplateCatalogState);

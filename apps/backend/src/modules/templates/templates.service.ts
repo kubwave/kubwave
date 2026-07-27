@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { generatePassword, signJwtHs256 } from '@kubwave/crypto';
+import { generateHexKey, generatePassword, signJwtHs256 } from '@kubwave/crypto';
 import { internalServiceName } from '@kubwave/kube';
 import { ApiError } from '../../shared/errors/api-error.js';
 import { ServicesService } from '../services/services.service.js';
@@ -37,14 +37,24 @@ export class TemplatesService {
 		// A jwt secret signs with an earlier secret's value; catalog build validates declaration order, so the signing key already exists here.
 		const secrets: Record<string, string> = {};
 		for (const secret of template.secrets) {
-			if (secret.generate === 'jwt') {
-				const signingKey = secrets[secret.signWith];
-				if (signingKey === undefined) throw new ApiError(500, 'template_invalid');
-				const iat = Math.floor(Date.now() / 1000);
-				const exp = iat + secret.expiresInDays * 86400;
-				secrets[secret.key] = signJwtHs256({ ...secret.claims, iat, exp }, signingKey);
-			} else {
-				secrets[secret.key] = generatePassword();
+			switch (secret.generate) {
+				case 'jwt': {
+					const signingKey = secrets[secret.signWith];
+					if (signingKey === undefined) throw new ApiError(500, 'template_invalid');
+					const iat = Math.floor(Date.now() / 1000);
+					const exp = iat + secret.expiresInDays * 86400;
+					secrets[secret.key] = signJwtHs256({ ...secret.claims, iat, exp }, signingKey);
+					break;
+				}
+				case 'hex':
+					secrets[secret.key] = generateHexKey();
+					break;
+				case 'password':
+					secrets[secret.key] = generatePassword();
+					break;
+				default:
+					secret satisfies never;
+					throw new ApiError(500, 'template_invalid');
 			}
 		}
 

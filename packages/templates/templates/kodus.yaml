@@ -1,0 +1,289 @@
+id: kodus
+name: Kodus
+description: Self-hosted AI code reviewer — subscribes to your Git provider's webhooks, builds an AST graph of the repo, and posts inline LLM review suggestions on pull requests. Bring your own LLM key.
+category: developer-tools
+tags: [ai, code-review, git, developer-tools]
+logo: kodus.svg
+documentation: https://docs.kodus.io/how_to_deploy/en/deploy_kodus/kubernetes
+schemaVersion: 1
+version: 1
+inputs:
+  - key: web_domain
+    label: Public domain
+    type: string
+    required: true
+    placeholder: kodus.example.com
+  - key: webhook_domain
+    label: Webhook domain
+    type: string
+    required: true
+    placeholder: kodus-webhooks.example.com
+secrets:
+  - { key: pg_password, generate: password }
+  - { key: mongo_password, generate: password }
+  - { key: rabbitmq_password, generate: password }
+  - { key: jwt_secret, generate: password }
+  - { key: jwt_refresh_secret, generate: password }
+  - { key: nextauth_secret, generate: password }
+  - { key: code_management_webhook_token, generate: password }
+  # 64 hex chars: Kodus reads these with Buffer.from(x, 'hex'); a base64url value would truncate at the first non-hex char and silently break at-rest encryption.
+  - { key: crypto_key, generate: hex }
+  - { key: code_management_secret, generate: hex }
+services:
+  - name: postgres
+    primary: false
+    type: docker-image
+    config:
+      image: pgvector/pgvector
+      tag: pg16
+      containerPort: 5432
+      env:
+        - { key: POSTGRES_USER, value: kodusdev }
+        - { key: POSTGRES_DB, value: kodus_db }
+      secrets:
+        - { key: POSTGRES_PASSWORD, value: '{{ secrets.pg_password }}' }
+      volumes:
+        # subPath mounts <volume>/pgdata at the data dir so initdb sees an empty directory, not the ext4 lost+found the PV creates at its root.
+        - { name: data, mountPath: /var/lib/postgresql/data, size: 10Gi, subPath: pgdata }
+      configFiles:
+        # pgvector is bundled but not enabled by default; without it Kodus's first migration dies with "type vector does not exist".
+        - path: /docker-entrypoint-initdb.d/init.sql
+          content: |
+            CREATE EXTENSION IF NOT EXISTS vector;
+      resources: { cpuRequest: 250m, cpuLimit: 1000m, memoryRequest: 512Mi, memoryLimit: 1Gi }
+  - name: mongodb
+    primary: false
+    type: docker-image
+    config:
+      image: mongo
+      tag: '8'
+      containerPort: 27017
+      env:
+        - { key: MONGO_INITDB_ROOT_USERNAME, value: kodusdev }
+      secrets:
+        - { key: MONGO_INITDB_ROOT_PASSWORD, value: '{{ secrets.mongo_password }}' }
+      volumes:
+        - { name: data, mountPath: /data/db, size: 10Gi }
+      resources: { cpuRequest: 100m, cpuLimit: 500m, memoryRequest: 256Mi, memoryLimit: 1Gi }
+  - name: rabbitmq
+    primary: false
+    type: docker-image
+    config:
+      # Kodus's own image: bakes the delayed-message-exchange plugin and pre-creates the kodus-ai + kodus-ast vhosts. Pinned to the broker version, not the app IMAGE_TAG.
+      image: ghcr.io/kodustech/kodus-rabbitmq
+      tag: 4.2.2-kodus
+      containerPort: 5672
+      # Upstream compose sets this as `command`, which in compose overrides CMD. Our `command` maps to ENTRYPOINT, so it must be `args` (CMD) to stay under the image's docker-entrypoint.sh + vhost-provisioning script.
+      args: ['/usr/local/bin/init-definitions.sh']
+      env:
+        - { key: RABBITMQ_DEFAULT_USER, value: kodus }
+      secrets:
+        - { key: RABBITMQ_DEFAULT_PASS, value: '{{ secrets.rabbitmq_password }}' }
+      volumes:
+        - { name: data, mountPath: /var/lib/rabbitmq, size: 8Gi }
+      configFiles:
+        # In a container RabbitMQ sizes its relative disk_free_limit/watermark against the node's RAM, not the pod limit, so the disk_free_limit balloons and a permanent disk alarm blocks all publishers. Pin it to the 1Gi limit. The image auto-merges conf.d; a subPath mount adds this file without shadowing the image's own conf.d defaults.
+        - path: /etc/rabbitmq/conf.d/30-memory-override.conf
+          content: |
+            total_memory_available_override_value = 1073741824
+      resources: { cpuRequest: 100m, cpuLimit: 500m, memoryRequest: 256Mi, memoryLimit: 1Gi }
+  - name: api
+    primary: false
+    type: docker-image
+    config:
+      image: ghcr.io/kodustech/kodus-ai-api
+      tag: 2.1.27
+      containerPort: 3001
+      env:
+        - { key: API_NODE_ENV, value: production }
+        # Load-bearing: drives SSL-off for the in-cluster datastores and keeps the Mongo connection off its managed-cluster code path. Do not "fix" to production.
+        - { key: API_DATABASE_ENV, value: development }
+        - { key: API_DATABASE_DISABLE_SSL, value: 'true' }
+        - { key: API_LOG_LEVEL, value: error }
+        - { key: API_LOG_PRETTY, value: 'false' }
+        - { key: API_CLOUD_MODE, value: 'false' }
+        - { key: API_MCP_SERVER_ENABLED, value: 'false' }
+        - { key: API_HOST, value: 0.0.0.0 }
+        - { key: API_PORT, value: '3001' }
+        - { key: API_WEBHOOKS_PORT, value: '3332' }
+        - { key: WORKER_ROLE, value: code-review }
+        - { key: SANDBOX_PROVIDER, value: local }
+        # Kodus has no in-code defaults for these; an unset expression crashes bootstrap with "Cannot read properties of undefined (reading 'toLowerCase')" in the Nest scheduler.
+        - { key: API_CRON_CHECK_IF_PR_SHOULD_BE_APPROVED, value: '*/2 * * * *' }
+        - { key: API_CRON_SYNC_CODE_REVIEW_REACTIONS, value: '0 0 * * *' }
+        - { key: API_CRON_KODY_LEARNING, value: '0 0 * * 6' }
+        - { key: API_RABBITMQ_ENABLED, value: 'true' }
+        - { key: API_RABBITMQ_WAIT, value: 'true' }
+        - { key: RABBITMQ_HOSTNAME, value: '{{ services.rabbitmq.host }}' }
+        - { key: RABBITMQ_DEFAULT_USER, value: kodus }
+        - { key: API_PG_DB_HOST, value: '{{ services.postgres.host }}' }
+        - { key: API_PG_DB_PORT, value: '5432' }
+        - { key: API_PG_DB_USERNAME, value: kodusdev }
+        - { key: API_PG_DB_DATABASE, value: kodus_db }
+        - { key: API_MG_DB_HOST, value: '{{ services.mongodb.host }}' }
+        - { key: API_MG_DB_PORT, value: '27017' }
+        - { key: API_MG_DB_USERNAME, value: kodusdev }
+        - { key: API_MG_DB_DATABASE, value: kodus_db }
+        - { key: API_MG_DB_AUTH_SOURCE, value: admin }
+        - { key: API_FRONTEND_URL, value: 'https://{{ inputs.web_domain }}' }
+        - { key: API_USER_INVITE_BASE_URL, value: 'https://{{ inputs.web_domain }}' }
+        - { key: NEXTAUTH_URL, value: 'https://{{ inputs.web_domain }}' }
+        - { key: API_GITHUB_CODE_MANAGEMENT_WEBHOOK, value: 'https://{{ inputs.webhook_domain }}/github/webhook' }
+        - { key: API_GITLAB_CODE_MANAGEMENT_WEBHOOK, value: 'https://{{ inputs.webhook_domain }}/gitlab/webhook' }
+        - { key: GLOBAL_BITBUCKET_CODE_MANAGEMENT_WEBHOOK, value: 'https://{{ inputs.webhook_domain }}/bitbucket/webhook' }
+        - { key: GLOBAL_AZURE_REPOS_CODE_MANAGEMENT_WEBHOOK, value: 'https://{{ inputs.webhook_domain }}/azure-repos/webhook' }
+        # Only the api migrates: concurrent migrators race on CREATE TYPE and crash-loop the first boot. Seeds are idempotent.
+        - { key: RUN_MIGRATIONS, value: 'true' }
+        - { key: RUN_SEEDS, value: 'true' }
+      secrets:
+        - { key: API_PG_DB_PASSWORD, value: '{{ secrets.pg_password }}' }
+        - { key: API_MG_DB_PASSWORD, value: '{{ secrets.mongo_password }}' }
+        - { key: RABBITMQ_DEFAULT_PASS, value: '{{ secrets.rabbitmq_password }}' }
+        - { key: API_RABBITMQ_URI, value: 'amqp://kodus:{{ secrets.rabbitmq_password }}@{{ services.rabbitmq.host }}:5672/kodus-ai' }
+        - { key: API_JWT_SECRET, value: '{{ secrets.jwt_secret }}' }
+        - { key: API_JWT_REFRESH_SECRET, value: '{{ secrets.jwt_refresh_secret }}' }
+        - { key: API_CRYPTO_KEY, value: '{{ secrets.crypto_key }}' }
+        - { key: CODE_MANAGEMENT_SECRET, value: '{{ secrets.code_management_secret }}' }
+        - { key: CODE_MANAGEMENT_WEBHOOK_TOKEN, value: '{{ secrets.code_management_webhook_token }}' }
+        - { key: NEXTAUTH_SECRET, value: '{{ secrets.nextauth_secret }}' }
+      resources: { cpuRequest: 250m, cpuLimit: 1000m, memoryRequest: 640Mi, memoryLimit: 1Gi }
+  - name: worker
+    primary: false
+    type: docker-image
+    config:
+      image: ghcr.io/kodustech/kodus-ai-worker
+      tag: 2.1.27
+      # No HTTP listener: the worker only consumes RabbitMQ jobs, so it has no port and no Service.
+      containerPort: null
+      env:
+        - { key: API_NODE_ENV, value: production }
+        - { key: API_DATABASE_ENV, value: development }
+        - { key: API_DATABASE_DISABLE_SSL, value: 'true' }
+        - { key: API_LOG_LEVEL, value: error }
+        - { key: API_LOG_PRETTY, value: 'false' }
+        - { key: API_CLOUD_MODE, value: 'false' }
+        - { key: API_MCP_SERVER_ENABLED, value: 'false' }
+        - { key: API_HOST, value: 0.0.0.0 }
+        - { key: API_PORT, value: '3001' }
+        - { key: API_WEBHOOKS_PORT, value: '3332' }
+        - { key: WORKER_ROLE, value: code-review }
+        - { key: SANDBOX_PROVIDER, value: local }
+        # Kodus has no in-code defaults for these; an unset expression crashes bootstrap with "Cannot read properties of undefined (reading 'toLowerCase')" in the Nest scheduler.
+        - { key: API_CRON_CHECK_IF_PR_SHOULD_BE_APPROVED, value: '*/2 * * * *' }
+        - { key: API_CRON_SYNC_CODE_REVIEW_REACTIONS, value: '0 0 * * *' }
+        - { key: API_CRON_KODY_LEARNING, value: '0 0 * * 6' }
+        - { key: API_RABBITMQ_ENABLED, value: 'true' }
+        - { key: API_RABBITMQ_WAIT, value: 'true' }
+        - { key: RABBITMQ_HOSTNAME, value: '{{ services.rabbitmq.host }}' }
+        - { key: RABBITMQ_DEFAULT_USER, value: kodus }
+        - { key: API_PG_DB_HOST, value: '{{ services.postgres.host }}' }
+        - { key: API_PG_DB_PORT, value: '5432' }
+        - { key: API_PG_DB_USERNAME, value: kodusdev }
+        - { key: API_PG_DB_DATABASE, value: kodus_db }
+        - { key: API_MG_DB_HOST, value: '{{ services.mongodb.host }}' }
+        - { key: API_MG_DB_PORT, value: '27017' }
+        - { key: API_MG_DB_USERNAME, value: kodusdev }
+        - { key: API_MG_DB_DATABASE, value: kodus_db }
+        - { key: API_MG_DB_AUTH_SOURCE, value: admin }
+        - { key: API_FRONTEND_URL, value: 'https://{{ inputs.web_domain }}' }
+        - { key: API_USER_INVITE_BASE_URL, value: 'https://{{ inputs.web_domain }}' }
+        - { key: NEXTAUTH_URL, value: 'https://{{ inputs.web_domain }}' }
+        - { key: API_GITHUB_CODE_MANAGEMENT_WEBHOOK, value: 'https://{{ inputs.webhook_domain }}/github/webhook' }
+        - { key: API_GITLAB_CODE_MANAGEMENT_WEBHOOK, value: 'https://{{ inputs.webhook_domain }}/gitlab/webhook' }
+        - { key: GLOBAL_BITBUCKET_CODE_MANAGEMENT_WEBHOOK, value: 'https://{{ inputs.webhook_domain }}/bitbucket/webhook' }
+        - { key: GLOBAL_AZURE_REPOS_CODE_MANAGEMENT_WEBHOOK, value: 'https://{{ inputs.webhook_domain }}/azure-repos/webhook' }
+        - { key: RUN_MIGRATIONS, value: 'false' }
+        - { key: RUN_SEEDS, value: 'false' }
+      secrets:
+        - { key: API_PG_DB_PASSWORD, value: '{{ secrets.pg_password }}' }
+        - { key: API_MG_DB_PASSWORD, value: '{{ secrets.mongo_password }}' }
+        - { key: RABBITMQ_DEFAULT_PASS, value: '{{ secrets.rabbitmq_password }}' }
+        - { key: API_RABBITMQ_URI, value: 'amqp://kodus:{{ secrets.rabbitmq_password }}@{{ services.rabbitmq.host }}:5672/kodus-ai' }
+        - { key: API_JWT_SECRET, value: '{{ secrets.jwt_secret }}' }
+        - { key: API_JWT_REFRESH_SECRET, value: '{{ secrets.jwt_refresh_secret }}' }
+        - { key: API_CRYPTO_KEY, value: '{{ secrets.crypto_key }}' }
+        - { key: CODE_MANAGEMENT_SECRET, value: '{{ secrets.code_management_secret }}' }
+        - { key: CODE_MANAGEMENT_WEBHOOK_TOKEN, value: '{{ secrets.code_management_webhook_token }}' }
+        - { key: NEXTAUTH_SECRET, value: '{{ secrets.nextauth_secret }}' }
+      resources: { cpuRequest: 250m, cpuLimit: 2000m, memoryRequest: 1Gi, memoryLimit: 2Gi }
+  - name: webhooks
+    primary: false
+    type: docker-image
+    config:
+      image: ghcr.io/kodustech/kodus-ai-webhook
+      tag: 2.1.27
+      containerPort: 3332
+      env:
+        - { key: API_NODE_ENV, value: production }
+        - { key: API_DATABASE_ENV, value: development }
+        - { key: API_DATABASE_DISABLE_SSL, value: 'true' }
+        - { key: API_LOG_LEVEL, value: error }
+        - { key: API_LOG_PRETTY, value: 'false' }
+        - { key: API_CLOUD_MODE, value: 'false' }
+        - { key: API_MCP_SERVER_ENABLED, value: 'false' }
+        - { key: API_HOST, value: 0.0.0.0 }
+        - { key: API_PORT, value: '3001' }
+        - { key: API_WEBHOOKS_PORT, value: '3332' }
+        - { key: WORKER_ROLE, value: code-review }
+        - { key: SANDBOX_PROVIDER, value: local }
+        # Kodus has no in-code defaults for these; an unset expression crashes bootstrap with "Cannot read properties of undefined (reading 'toLowerCase')" in the Nest scheduler.
+        - { key: API_CRON_CHECK_IF_PR_SHOULD_BE_APPROVED, value: '*/2 * * * *' }
+        - { key: API_CRON_SYNC_CODE_REVIEW_REACTIONS, value: '0 0 * * *' }
+        - { key: API_CRON_KODY_LEARNING, value: '0 0 * * 6' }
+        - { key: API_RABBITMQ_ENABLED, value: 'true' }
+        - { key: API_RABBITMQ_WAIT, value: 'true' }
+        - { key: RABBITMQ_HOSTNAME, value: '{{ services.rabbitmq.host }}' }
+        - { key: RABBITMQ_DEFAULT_USER, value: kodus }
+        - { key: API_PG_DB_HOST, value: '{{ services.postgres.host }}' }
+        - { key: API_PG_DB_PORT, value: '5432' }
+        - { key: API_PG_DB_USERNAME, value: kodusdev }
+        - { key: API_PG_DB_DATABASE, value: kodus_db }
+        - { key: API_MG_DB_HOST, value: '{{ services.mongodb.host }}' }
+        - { key: API_MG_DB_PORT, value: '27017' }
+        - { key: API_MG_DB_USERNAME, value: kodusdev }
+        - { key: API_MG_DB_DATABASE, value: kodus_db }
+        - { key: API_MG_DB_AUTH_SOURCE, value: admin }
+        - { key: API_FRONTEND_URL, value: 'https://{{ inputs.web_domain }}' }
+        - { key: API_USER_INVITE_BASE_URL, value: 'https://{{ inputs.web_domain }}' }
+        - { key: NEXTAUTH_URL, value: 'https://{{ inputs.web_domain }}' }
+        - { key: API_GITHUB_CODE_MANAGEMENT_WEBHOOK, value: 'https://{{ inputs.webhook_domain }}/github/webhook' }
+        - { key: API_GITLAB_CODE_MANAGEMENT_WEBHOOK, value: 'https://{{ inputs.webhook_domain }}/gitlab/webhook' }
+        - { key: GLOBAL_BITBUCKET_CODE_MANAGEMENT_WEBHOOK, value: 'https://{{ inputs.webhook_domain }}/bitbucket/webhook' }
+        - { key: GLOBAL_AZURE_REPOS_CODE_MANAGEMENT_WEBHOOK, value: 'https://{{ inputs.webhook_domain }}/azure-repos/webhook' }
+        - { key: RUN_MIGRATIONS, value: 'false' }
+        - { key: RUN_SEEDS, value: 'false' }
+      secrets:
+        - { key: API_PG_DB_PASSWORD, value: '{{ secrets.pg_password }}' }
+        - { key: API_MG_DB_PASSWORD, value: '{{ secrets.mongo_password }}' }
+        - { key: RABBITMQ_DEFAULT_PASS, value: '{{ secrets.rabbitmq_password }}' }
+        - { key: API_RABBITMQ_URI, value: 'amqp://kodus:{{ secrets.rabbitmq_password }}@{{ services.rabbitmq.host }}:5672/kodus-ai' }
+        - { key: API_JWT_SECRET, value: '{{ secrets.jwt_secret }}' }
+        - { key: API_JWT_REFRESH_SECRET, value: '{{ secrets.jwt_refresh_secret }}' }
+        - { key: API_CRYPTO_KEY, value: '{{ secrets.crypto_key }}' }
+        - { key: CODE_MANAGEMENT_SECRET, value: '{{ secrets.code_management_secret }}' }
+        - { key: CODE_MANAGEMENT_WEBHOOK_TOKEN, value: '{{ secrets.code_management_webhook_token }}' }
+        - { key: NEXTAUTH_SECRET, value: '{{ secrets.nextauth_secret }}' }
+      domains:
+        - { host: '{{ inputs.webhook_domain }}', port: 3332 }
+      resources: { cpuRequest: 100m, cpuLimit: 500m, memoryRequest: 256Mi, memoryLimit: 512Mi }
+  - name: web
+    primary: true
+    type: docker-image
+    config:
+      image: ghcr.io/kodustech/kodus-ai-web
+      tag: 2.1.27
+      containerPort: 3000
+      env:
+        - { key: WEB_NODE_ENV, value: self-hosted }
+        # Internal cluster host only, no scheme/path: the web app proxies server-side to the API. A public host would hairpin out to the ingress and fail.
+        - { key: WEB_HOSTNAME_API, value: '{{ services.api.host }}' }
+        - { key: WEB_PORT_API, value: '3001' }
+        - { key: WEB_PORT, value: '3000' }
+        - { key: NEXTAUTH_URL, value: 'https://{{ inputs.web_domain }}' }
+      secrets:
+        # NEXTAUTH_SECRET and WEB_NEXTAUTH_SECRET must be the same value (upstream requirement).
+        - { key: NEXTAUTH_SECRET, value: '{{ secrets.nextauth_secret }}' }
+        - { key: WEB_NEXTAUTH_SECRET, value: '{{ secrets.nextauth_secret }}' }
+      domains:
+        - { host: '{{ inputs.web_domain }}', port: 3000 }
+      resources: { cpuRequest: 100m, cpuLimit: 500m, memoryRequest: 256Mi, memoryLimit: 512Mi }
