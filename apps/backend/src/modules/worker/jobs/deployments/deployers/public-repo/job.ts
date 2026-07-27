@@ -19,7 +19,9 @@ const KNOWN_HOSTS_FILE = `${SSH_DIR}/known_hosts`;
 // The GitHub token auth goes through http.<origin>.extraheader (never the URL), so it can't leak into git's stderr or these build logs.
 // git clone runs against cluster DNS from an Alpine/musl pod at cold start; a single transient
 // "Could not resolve host" then fails the whole build (backoffLimit 0, restartPolicy Never). Retry
-// the network-touching clone so a momentary DNS/registry hiccup doesn't need a manual redeploy.
+// the network-touching clone so a momentary DNS/registry hiccup doesn't need a manual redeploy — but
+// only on transient signals; auth/ref/repo-not-found errors are permanent, so fail fast instead of
+// burning ~30s of backoff on feedback the user already needs.
 const CLONE_SCRIPT = `set -e
 if ! command -v git >/dev/null 2>&1; then
   echo "build tools image is missing required command: git" >&2
@@ -29,16 +31,24 @@ clone_repo() {
   attempt=1
   while true; do
     rm -rf "${SRC_DIR}"
-    if git clone "$@" "$SOURCE_REPO_URL" "${SRC_DIR}"; then
-      return 0
-    fi
+    out="$(git clone "$@" "$SOURCE_REPO_URL" "${SRC_DIR}" 2>&1)" && return 0
+    rc=$?
     if [ "$attempt" -ge 5 ]; then
+      printf '%s\\n' "$out" >&2
       echo "git clone failed after $attempt attempts" >&2
       return 1
     fi
-    echo "git clone failed (attempt $attempt/5); retrying in $((attempt * 3))s" >&2
-    sleep $((attempt * 3))
-    attempt=$((attempt + 1))
+    case "$out" in
+      *"Could not resolve host"*|*"Connection timed out"*|*"Connection refused"*|*"empty response"*)
+        echo "git clone failed (attempt $attempt/5); retrying in $((attempt * 3))s" >&2
+        sleep $((attempt * 3))
+        attempt=$((attempt + 1))
+        ;;
+      *)
+        printf '%s\\n' "$out" >&2
+        return $rc
+        ;;
+    esac
   done
 }
 if [ -f "${SSH_KEY_MOUNT}/id" ]; then

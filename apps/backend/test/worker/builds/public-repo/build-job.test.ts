@@ -87,6 +87,15 @@ describe('buildSourceJob: prepare init container (clone)', () => {
 		expect(script).toContain('clone_repo --depth 1 --single-branch --branch "$SOURCE_BRANCH"');
 	});
 
+	test('retries only transient network errors and fails fast on permanent ones', () => {
+		const script = initOf(BASE, PREPARE_CONTAINER).command?.[2] ?? '';
+		expect(script).toContain('Could not resolve host');
+		expect(script).toContain('Connection timed out');
+		expect(script).toContain('Connection refused');
+		expect(script).toContain('empty response');
+		expect(script).toContain('return $rc');
+	});
+
 	test('pinned commit clones with retry then detaches locally', () => {
 		const script = initOf({ ...BASE, commit: 'a1b2c3d' }, PREPARE_CONTAINER).command?.[2] ?? '';
 		expect(script).toContain('clone_repo --no-checkout');
