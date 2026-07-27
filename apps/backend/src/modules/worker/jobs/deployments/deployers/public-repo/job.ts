@@ -17,12 +17,30 @@ const KNOWN_HOSTS_FILE = `${SSH_DIR}/known_hosts`;
 
 // Clone + auth setup: a pinned commit needs full history (shallow can't resolve an arbitrary SHA), so it full-clones then detaches; branch-HEAD stays shallow.
 // The GitHub token auth goes through http.<origin>.extraheader (never the URL), so it can't leak into git's stderr or these build logs.
+// git clone runs against cluster DNS from an Alpine/musl pod at cold start; a single transient
+// "Could not resolve host" then fails the whole build (backoffLimit 0, restartPolicy Never). Retry
+// the network-touching clone so a momentary DNS/registry hiccup doesn't need a manual redeploy.
 const CLONE_SCRIPT = `set -e
 if ! command -v git >/dev/null 2>&1; then
   echo "build tools image is missing required command: git" >&2
   exit 1
 fi
-rm -rf "${SRC_DIR}"
+clone_repo() {
+  attempt=1
+  while true; do
+    rm -rf "${SRC_DIR}"
+    if git clone "$@" "$SOURCE_REPO_URL" "${SRC_DIR}"; then
+      return 0
+    fi
+    if [ "$attempt" -ge 5 ]; then
+      echo "git clone failed after $attempt attempts" >&2
+      return 1
+    fi
+    echo "git clone failed (attempt $attempt/5); retrying in $((attempt * 3))s" >&2
+    sleep $((attempt * 3))
+    attempt=$((attempt + 1))
+  done
+}
 if [ -f "${SSH_KEY_MOUNT}/id" ]; then
   if ! command -v ssh >/dev/null 2>&1; then
     echo "build tools image is missing required command: ssh (needed for private repositories)" >&2
@@ -39,10 +57,10 @@ if [ -f "${GIT_TOKEN_MOUNT}/extraheader" ]; then
   export GIT_CONFIG_VALUE_0="$(cat "${GIT_TOKEN_MOUNT}/extraheader")"
 fi
 if [ -n "$SOURCE_COMMIT" ]; then
-  git clone --no-checkout "$SOURCE_REPO_URL" "${SRC_DIR}"
+  clone_repo --no-checkout
   git -C "${SRC_DIR}" checkout --detach "$SOURCE_COMMIT"
 else
-  git clone --depth 1 --single-branch --branch "$SOURCE_BRANCH" "$SOURCE_REPO_URL" "${SRC_DIR}"
+  clone_repo --depth 1 --single-branch --branch "$SOURCE_BRANCH"
 fi`;
 
 // Deterministic name so the deployer converges without extra state (a race yields a tolerated 409); private-repo passes its own prefix to keep the two types distinct.

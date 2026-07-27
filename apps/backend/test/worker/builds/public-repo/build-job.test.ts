@@ -78,6 +78,21 @@ describe('buildSourceJob: prepare init container (clone)', () => {
 		expect(prep.command?.[2]).not.toContain('https://github.com/user/repo');
 	});
 
+	test('retries git clone so a transient DNS/network hiccup does not fail the build', () => {
+		const script = initOf(BASE, PREPARE_CONTAINER).command?.[2] ?? '';
+		expect(script).toContain('clone_repo()');
+		expect(script).toContain('git clone "$@"');
+		expect(script).toMatch(/attempt.*-ge 5/);
+		expect(script).toContain('sleep');
+		expect(script).toContain('clone_repo --depth 1 --single-branch --branch "$SOURCE_BRANCH"');
+	});
+
+	test('pinned commit clones with retry then detaches locally', () => {
+		const script = initOf({ ...BASE, commit: 'a1b2c3d' }, PREPARE_CONTAINER).command?.[2] ?? '';
+		expect(script).toContain('clone_repo --no-checkout');
+		expect(script).toContain('checkout --detach "$SOURCE_COMMIT"');
+	});
+
 	test('does not download Nixpacks at runtime', () => {
 		const script = initOf(BASE, PREPARE_CONTAINER).command?.[2] ?? '';
 		expect(script).toContain('git clone');
