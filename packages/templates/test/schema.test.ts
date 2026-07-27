@@ -71,6 +71,16 @@ describe('templateSchema', () => {
 		expect(templateSchema.safeParse(t).success).toBe(false);
 	});
 
+	test('accepts a hex secret', () => {
+		const t = { ...valid, secrets: [{ key: 'crypto_key', generate: 'hex' }] };
+		expect(templateSchema.safeParse(t).success).toBe(true);
+	});
+
+	test('rejects an unknown generate kind (old-install graceful-degradation guard)', () => {
+		const t = { ...valid, secrets: [{ key: 'crypto_key', generate: 'aes' }] };
+		expect(templateSchema.safeParse(t).success).toBe(false);
+	});
+
 	test('accepts configFiles on a service config', () => {
 		const svc = valid.services[0]!;
 		const t = {
