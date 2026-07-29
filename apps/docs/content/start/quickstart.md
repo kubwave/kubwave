@@ -37,11 +37,10 @@ for current, upcoming, and planned platform targets. Provider selection is clust
 ::tabs
 :::tab{label="curl"}
 
-```sh
-curl -fsSL https://get.kubwave.com | sh
-```
+::::install-command
+::::
 
-Installs the latest binary for your OS/arch into `~/.local/bin`, then launches `kubwave install` for you — so you go straight into the prompts in step 2. Make sure `~/.local/bin` is on your `PATH`.
+Installs the binary for your OS/arch into `~/.local/bin`, then launches `kubwave install` for you — so you go straight into the prompts in step 2. Make sure `~/.local/bin` is on your `PATH`.
 
 :::
 :::tab{label="Manual"}

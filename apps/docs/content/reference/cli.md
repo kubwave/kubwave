@@ -12,9 +12,8 @@ access to a cluster.
 
 The recommended way to get the CLI is the bootstrap script:
 
-```sh
-curl -fsSL https://get.kubwave.com | sh
-```
+::install-command
+::
 
 This detects your OS and architecture, downloads the matching binary for the requested
 release channel, and immediately runs `kubwave install`.

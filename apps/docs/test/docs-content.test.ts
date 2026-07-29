@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { buildInstallCommand } from '../app/utils/install-command';
 import { flatDocsNav } from '../app/utils/navigation';
 
 const expectedRoutes = [
@@ -54,5 +55,27 @@ describe('docs content conversion', () => {
 				expect(text).not.toMatch(pattern);
 			}
 		}
+	});
+
+	test('never hardcodes the install command in Markdown', async () => {
+		for (const route of expectedRoutes) {
+			const text = await Bun.file((await resolveContentFile(route))!).text();
+			expect(text).not.toMatch(/get\.kubwave\.com/);
+		}
+	});
+});
+
+describe('install command', () => {
+	test('adds the preview channel on the next docs build', () => {
+		expect(buildInstallCommand('next')).toBe('curl -fsSL https://get.kubwave.com | bash -s -- --channel preview');
+	});
+
+	test('uses the script default on the stable docs build', () => {
+		expect(buildInstallCommand('latest')).toBe('curl -fsSL https://get.kubwave.com | bash');
+	});
+
+	test('falls back to stable for unknown channels', () => {
+		expect(buildInstallCommand('')).toBe(buildInstallCommand('latest'));
+		expect(buildInstallCommand('edge')).toBe(buildInstallCommand('latest'));
 	});
 });
