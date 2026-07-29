@@ -74,7 +74,7 @@ flowchart TB
   %% ---------------------------------------------------------------------------
   subgraph rbac["RBAC summary"]
     apiRole["Role: kubwave-api<br/>namespace kubwave<br/>jobs get/list<br/>pods get/list<br/>pods/log get"]
-    apiClusterRole["ClusterRole: kubwave-api-workloads<br/>cluster-wide read only<br/>deployments get/list/watch<br/>pods get/list/watch"]
+    apiClusterRole["ClusterRole: kubwave-api-workloads<br/>cluster-wide read only<br/>deployments get/list/watch<br/>pods get/list/watch<br/>pods/log get<br/>nodes get/list<br/>nodes/proxy get<br/>events get/list"]
 
     workerRole["Role: kubwave-worker<br/>namespace kubwave<br/>jobs create/get/list/watch/delete<br/>configmaps get/list<br/>pods get/list"]
     workerClusterRole["ClusterRole: kubwave-worker-workloads<br/>cluster-wide read/write<br/>namespaces create/delete<br/>deployments/services CRUD<br/>ingresses/networkpolicies CRUD<br/>pods read"]
