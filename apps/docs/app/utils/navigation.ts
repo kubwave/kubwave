@@ -23,7 +23,8 @@ export const docsNav = [
 		items: [
 			{ title: 'Cloudfleet (Hetzner)', path: '/providers/cloudfleet-hetzner' },
 			{ title: 'Cloudfleet (Google Cloud)', path: '/providers/cloudfleet-gcp' },
-			{ title: 'UpCloud UKS', path: '/providers/upcloud-uks' }
+			{ title: 'UpCloud UKS', path: '/providers/upcloud-uks' },
+			{ title: 'Infomaniak PCK', path: '/providers/infomaniak-pck' }
 		]
 	},
 	{

@@ -48,6 +48,20 @@ export function isNotFoundError(err: unknown): boolean {
 	return getStatusCode(err) === 404;
 }
 
+function getStatusMessage(err: unknown): string | undefined {
+	const body = bodyAsObject(getStatusBody(err));
+	if (body && typeof body['message'] === 'string') return body['message'];
+	const o = asObj(err);
+	return typeof o?.message === 'string' ? o.message : undefined;
+}
+
+// The apiserver wraps every admission-webhook *connectivity* failure as `failed calling webhook "<name>"`
+// (dial timeout, no ready endpoints, EOF). A webhook that answers with a denial reads `admission webhook
+// "<name>" denied the request` instead — that one is a real rejection, not an unready cluster.
+export function isWebhookUnavailableError(err: unknown): boolean {
+	return getStatusMessage(err)?.includes('failed calling webhook') ?? false;
+}
+
 export function isAlreadyExistsError(err: unknown): boolean {
 	return getStatusCode(err) === 409;
 }

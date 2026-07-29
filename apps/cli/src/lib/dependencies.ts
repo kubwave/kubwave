@@ -1,10 +1,10 @@
 import type { KubeConfig } from '@kubernetes/client-node';
-import { ApiextensionsV1Api, AppsV1Api, CoreV1Api, NetworkingV1Api } from '@kubernetes/client-node';
+import { ApiextensionsV1Api, AppsV1Api, CoreV1Api, CustomObjectsApi, NetworkingV1Api } from '@kubernetes/client-node';
 import * as p from '@clack/prompts';
 import { FatalCliError, UserCancelledError } from '~/lib/errors.js';
 import { execHelm } from '~/lib/helm.js';
 import { stampHelmReleaseOwnership } from '~/lib/helm-ownership.js';
-import { isNotFoundError } from '~/lib/k8s-errors.js';
+import { isNotFoundError, isWebhookUnavailableError } from '~/lib/k8s-errors.js';
 import { parseDurationMs } from '~/lib/duration.js';
 import { mergeDependencyState, type DependencyStateInput, type DependencyStateMap, type TraefikDependencyState } from '~/lib/dependency-state.js';
 import { isRecord, readRecord, readString } from '~/lib/object-path.js';
@@ -590,14 +590,13 @@ export async function waitForCnpgReady(kc: KubeConfig, options: { timeoutMs?: nu
 	const deadline = Date.now() + timeoutMs;
 
 	let lastError: unknown;
+	let established = false;
 
 	while (Date.now() < deadline) {
 		try {
-			const crd = await api.readCustomResourceDefinition({ name: CNPG_CLUSTER_CRD });
-			// Established → the apiserver serves postgresql.cnpg.io/v1, so the chart's Cluster CR applies.
-			const established = crd.status?.conditions?.some(condition => condition.type === 'Established' && condition.status === 'True');
+			if (!established) established = isCrdEstablished(await api.readCustomResourceDefinition({ name: CNPG_CLUSTER_CRD }));
 
-			if (established) return;
+			if (established && (await isCnpgWebhookReachable(kc))) return;
 		} catch (err) {
 			lastError = err;
 
@@ -610,8 +609,31 @@ export async function waitForCnpgReady(kc: KubeConfig, options: { timeoutMs?: nu
 	}
 
 	const detail = lastError instanceof Error ? ` Last error: ${lastError.message}` : '';
+	const stage = established ? 'its mutating webhook did not become reachable' : 'CRDs did not become established';
 
-	throw new Error(`CloudNativePG CRDs did not become established within ${Math.round(timeoutMs / 1000)}s.${detail}`);
+	throw new Error(`CloudNativePG ${stage} within ${Math.round(timeoutMs / 1000)}s.${detail}`);
+}
+
+async function isCnpgWebhookReachable(kc: KubeConfig): Promise<boolean> {
+	try {
+		await kc.makeApiClient(CustomObjectsApi).createNamespacedCustomObject({
+			group: 'postgresql.cnpg.io',
+			version: 'v1',
+			namespace: 'default',
+			plural: 'clusters',
+			dryRun: 'All',
+			body: {
+				apiVersion: 'postgresql.cnpg.io/v1',
+				kind: 'Cluster',
+				metadata: { name: 'kubwave-webhook-probe', namespace: 'default' },
+				spec: { instances: 1, storage: { size: '1Gi' } }
+			}
+		});
+		return true;
+	} catch (err) {
+		// Any answer other than "could not reach the webhook" proves the path works.
+		return !isWebhookUnavailableError(err);
+	}
 }
 
 async function isTraefikDeploymentReady(api: AppsV1Api, controller: TraefikDependencyState): Promise<boolean> {

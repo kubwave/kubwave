@@ -33,8 +33,12 @@ export function registerInstallCommand(parent: Command): void {
 		.option('--registry <url>', 'Container registry', DEFAULT_REGISTRY)
 		.option('--cluster-confirmed', 'Skip cluster confirmation', false)
 		.option('--in-cluster', 'Use in-cluster kubeconfig', false)
-		.option('--platform <id>', 'Target platform: cloudfleet-hetzner, cloudfleet-gcp, or upcloud-uks (prompted when omitted)')
+		.option('--platform <id>', 'Target platform: cloudfleet-hetzner, cloudfleet-gcp, upcloud-uks, or infomaniak-pck (prompted when omitted)')
 		.option('--hetzner-lb-location <loc>', 'Hetzner Load Balancer location (fsn1|nbg1|hel1|ash|hil); used by cloudfleet-hetzner')
+		.option(
+			'--infomaniak-floating-network-id <uuid>',
+			'OpenStack external network for the Octavia floating IP; used by infomaniak-pck when the project has no default external network'
+		)
 		.option('--upcloud-autoscaling', 'Install UpCloud Cluster Autoscaler (required with --yes for upcloud-uks)')
 		.option('--no-upcloud-autoscaling', 'Skip UpCloud Cluster Autoscaler')
 		.option('--upcloud-cluster-uuid <uuid>', 'UpCloud UKS cluster UUID (for Cluster Autoscaler)')
@@ -82,6 +86,7 @@ export function registerInstallCommand(parent: Command): void {
 				inCluster: boolean;
 				platform?: string;
 				hetznerLbLocation?: string;
+				infomaniakFloatingNetworkId?: string;
 				upcloudAutoscaling?: boolean;
 				upcloudClusterUuid?: string;
 				upcloudToken?: string;
@@ -115,6 +120,7 @@ async function runInstall(opts: {
 	inCluster: boolean;
 	platform?: string;
 	hetznerLbLocation?: string;
+	infomaniakFloatingNetworkId?: string;
 	upcloudAutoscaling?: boolean;
 	upcloudClusterUuid?: string;
 	upcloudToken?: string;
@@ -146,7 +152,12 @@ async function runInstall(opts: {
 	const kc = await loadAndCheckCluster(opts.inCluster);
 
 	await confirmClusterContext(kc, opts.clusterConfirmed || assumeYes);
-	const platform = await selectPlatform({ platform: opts.platform, hetznerLbLocation: opts.hetznerLbLocation, assumeYes });
+	const platform = await selectPlatform({
+		platform: opts.platform,
+		hetznerLbLocation: opts.hetznerLbLocation,
+		infomaniakFloatingNetworkId: opts.infomaniakFloatingNetworkId,
+		assumeYes
+	});
 	const warmup = await warmNodes(kc, platform, { ha: opts.ha, assumeYes, enabled: opts.warmNodes });
 	if (warmup.raiseTimeout) raiseInstallTimeoutForColdStart();
 	try {

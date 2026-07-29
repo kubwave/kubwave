@@ -5,10 +5,14 @@ import { UserCancelledError } from '~/lib/errors.js';
 import { cloudfleetHetznerDescriptor } from '~/platforms/cloudfleet/hetzner/descriptor.js';
 import { cloudfleetGcpDescriptor } from '~/platforms/cloudfleet/gcp/descriptor.js';
 import { upcloudUksDescriptor } from '~/platforms/upcloud/descriptor.js';
+import { infomaniakPckDescriptor } from '~/platforms/infomaniak/descriptor.js';
 import { mergeDependencyState, withTcpPortPool, type DependencyStateInput, type DependencyStateMap } from '~/lib/dependency-state.js';
 import { buildUpcloudTraefikValues } from '~/platforms/upcloud/traefik-values.js';
+import { buildInfomaniakTraefikValues, OPENSTACK_FLOATING_NETWORK_ANNOTATION } from '~/platforms/infomaniak/traefik-values.js';
 import { buildGcpTraefikValues } from '~/platforms/cloudfleet/gcp/traefik-overrides.js';
+import { HETZNER_LB_LOCATION_ANNOTATION } from '~/platforms/cloudfleet/hetzner/traefik-overrides.js';
 import { buildCloudfleetTraefikValues } from '~/platforms/cloudfleet/traefik-values.js';
+import { readString } from '~/lib/object-path.js';
 import type { TcpPortPoolSettings } from '@kubwave/kube';
 
 export type StorageOpts = {
@@ -58,6 +62,7 @@ export interface Platform {
 
 export interface PlatformBuildOpts {
 	hetznerLbLocation?: string;
+	infomaniakFloatingNetworkId?: string;
 	assumeYes?: boolean;
 }
 
@@ -68,7 +73,12 @@ export interface PlatformDescriptor {
 	build(opts: PlatformBuildOpts): Promise<Platform>;
 }
 
-export const PLATFORMS: ReadonlyArray<PlatformDescriptor> = [cloudfleetHetznerDescriptor, cloudfleetGcpDescriptor, upcloudUksDescriptor];
+export const PLATFORMS: ReadonlyArray<PlatformDescriptor> = [
+	cloudfleetHetznerDescriptor,
+	cloudfleetGcpDescriptor,
+	upcloudUksDescriptor,
+	infomaniakPckDescriptor
+];
 
 export function getPlatformDescriptor(id: string): PlatformDescriptor {
 	const found = PLATFORMS.find(descriptor => descriptor.id === id);
@@ -97,12 +107,15 @@ export function defaultTraefikValuesForPlatform(
 			return buildUpcloudTraefikValues(tcpPortPool);
 		case 'cloudfleet-gcp':
 			return buildGcpTraefikValues();
+		case 'infomaniak-pck':
+			return buildInfomaniakTraefikValues({
+				floatingNetworkId: readString(existingValues, ['service', 'annotations', OPENSTACK_FLOATING_NETWORK_ANNOTATION])
+			});
 		case 'cloudfleet-hetzner': {
-			const annotations = (existingValues?.service as Record<string, unknown> | undefined)?.annotations as Record<string, string> | undefined;
-			const lbLocation = annotations?.['load-balancer.hetzner.cloud/location'];
+			const lbLocation = readString(existingValues, ['service', 'annotations', HETZNER_LB_LOCATION_ANNOTATION]);
 			return buildCloudfleetTraefikValues({
 				provider: 'hetzner',
-				...(lbLocation ? { serviceAnnotations: { 'load-balancer.hetzner.cloud/location': lbLocation } } : {})
+				...(lbLocation ? { serviceAnnotations: { [HETZNER_LB_LOCATION_ANNOTATION]: lbLocation } } : {})
 			});
 		}
 		default:
