@@ -1,6 +1,8 @@
-import type { MetricsRange } from './metrics.dto.js';
+import { z } from 'zod';
 
-export type { MetricsRange };
+export const metricsRangeSchema = z.enum(['1h', '24h', '7d']);
+
+export type MetricsRange = z.infer<typeof metricsRangeSchema>;
 
 export interface RangeSpec {
 	windowSeconds: number;

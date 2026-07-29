@@ -1,19 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { z } from 'zod';
+import { MetricPointDto } from '../../../shared/metrics/metric-point.dto.js';
+import { metricsRangeSchema } from '../../../shared/metrics/prometheus.types.js';
 
-export const metricsRangeSchema = z.enum(['1h', '24h', '7d']);
 export const serviceMetricsQuerySchema = z.object({ range: metricsRangeSchema.optional() });
 
-export type MetricsRange = z.infer<typeof metricsRangeSchema>;
 export type ServiceMetricsQuery = z.infer<typeof serviceMetricsQuerySchema>;
 
-export class MetricPointDto {
-	@ApiProperty({ type: Number })
-	t!: number;
-
-	@ApiProperty({ type: Number })
-	v!: number;
-}
+export { MetricPointDto, metricsRangeSchema };
+export type { MetricsRange } from '../../../shared/metrics/prometheus.types.js';
 
 export class ServiceMetricVolumeDto {
 	@ApiProperty({ type: String })
