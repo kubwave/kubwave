@@ -1,10 +1,11 @@
 import { describe, expect, mock, test, afterEach } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
-import { ApiextensionsV1Api, AppsV1Api, CoreV1Api, NetworkingV1Api } from '@kubernetes/client-node';
+import { ApiextensionsV1Api, AppsV1Api, CoreV1Api, CustomObjectsApi, NetworkingV1Api } from '@kubernetes/client-node';
 import * as realHelm from '../src/lib/helm.js';
 import { buildTraefikHelmValues } from '../src/lib/traefik.js';
 import { mergeDependencyState } from '../src/lib/dependency-state.js';
+import { APP_NAMESPACE } from '../src/lib/constants.js';
 import { clackStub } from './support/clack-stub.js';
 
 const execHelmCalls: string[][] = [];
@@ -492,7 +493,86 @@ describe('cnpg readiness', () => {
 		const kc = createKubeConfigStub({ cnpgCrdError: { code: 404 } });
 		await expect(waitForCnpgReady(kc, { timeoutMs: 1, pollMs: 1 })).rejects.toThrow('did not become established');
 	});
+
+	test('keeps waiting while the mutating webhook is unreachable', async () => {
+		const kc = createKubeConfigStub({
+			cnpgCrd: establishedCnpgCrd(),
+			cnpgWebhookProbeError: {
+				code: 500,
+				body: {
+					message:
+						'Internal error occurred: failed calling webhook "mcluster.cnpg.io": failed to call webhook: Post "https://cnpg-webhook-service.cnpg-system.svc:443/mutate-postgresql-cnpg-io-v1-cluster?timeout=10s": context deadline exceeded'
+				}
+			}
+		});
+		await expect(waitForCnpgReady(kc, { timeoutMs: 1, pollMs: 1 })).rejects.toThrow('webhook');
+	});
+
+	test('probes the webhook with a server-side dry run so nothing is persisted', async () => {
+		const calls: Array<Record<string, unknown>> = [];
+		const kc = createKubeConfigStub({ cnpgCrd: establishedCnpgCrd(), cnpgWebhookProbeCalls: calls });
+		await waitForCnpgReady(kc, { timeoutMs: 10, pollMs: 1 });
+		expect(calls).toHaveLength(1);
+		expect(calls[0]?.dryRun).toBe('All');
+		expect(calls[0]?.plural).toBe('clusters');
+	});
+
+	test('probes the namespace the chart creates its Cluster in, since RBAC on clusters is per-namespace', async () => {
+		const calls: Array<Record<string, unknown>> = [];
+		const kc = createKubeConfigStub({ cnpgCrd: establishedCnpgCrd(), cnpgWebhookProbeCalls: calls });
+		await waitForCnpgReady(kc, { timeoutMs: 10, pollMs: 1 });
+		expect(calls[0]?.namespace).toBe(APP_NAMESPACE);
+		expect((calls[0]?.body as { metadata?: { namespace?: string } })?.metadata?.namespace).toBe(APP_NAMESPACE);
+	});
+
+	test('treats a webhook rejection as reachable and returns', async () => {
+		const kc = createKubeConfigStub({
+			cnpgCrd: establishedCnpgCrd(),
+			cnpgWebhookProbeError: { code: 400, body: { message: 'admission webhook "vcluster.cnpg.io" denied the request: probe' } }
+		});
+		await expect(waitForCnpgReady(kc, { timeoutMs: 10, pollMs: 1 })).resolves.toBeUndefined();
+	});
+
+	// Authz runs before admission, so the probe never reached the webhook. Reporting ready here would let
+	// helm create the chart's Cluster CR against an unproven admission path.
+	test('does not treat an RBAC denial as a reachable webhook', async () => {
+		const kc = createKubeConfigStub({
+			cnpgCrd: establishedCnpgCrd(),
+			cnpgWebhookProbeError: Object.assign(new Error('clusters.postgresql.cnpg.io is forbidden: User "dev" cannot create resource "clusters"'), {
+				code: 403
+			})
+		});
+		await expect(waitForCnpgReady(kc, { timeoutMs: 10_000, pollMs: 1 })).rejects.toThrow('forbidden');
+	});
+
+	test('keeps waiting on an unrelated apiserver error and reports it on timeout', async () => {
+		const kc = createKubeConfigStub({
+			cnpgCrd: establishedCnpgCrd(),
+			cnpgWebhookProbeError: Object.assign(new Error('etcdserver: request timed out'), { code: 500 })
+		});
+		await expect(waitForCnpgReady(kc, { timeoutMs: 1, pollMs: 1 })).rejects.toThrow('etcdserver: request timed out');
+	});
+
+	test('recovers once the webhook becomes reachable', async () => {
+		let attempts = 0;
+		const kc = createKubeConfigStub({
+			cnpgCrd: establishedCnpgCrd(),
+			cnpgWebhookProbe: () => {
+				attempts++;
+				if (attempts < 3) {
+					throw { code: 500, body: { message: 'Internal error occurred: failed calling webhook "mcluster.cnpg.io": context deadline exceeded' } };
+				}
+				return {};
+			}
+		});
+		await expect(waitForCnpgReady(kc, { timeoutMs: 5_000, pollMs: 1 })).resolves.toBeUndefined();
+		expect(attempts).toBe(3);
+	});
 });
+
+function establishedCnpgCrd() {
+	return { status: { conditions: [{ type: 'Established', status: 'True' }] } };
+}
 
 function createKubeConfigStub(state: {
 	deployment?: unknown;
@@ -507,10 +587,23 @@ function createKubeConfigStub(state: {
 	crdError?: unknown;
 	cnpgCrd?: unknown;
 	cnpgCrdError?: unknown;
+	cnpgWebhookProbeError?: unknown;
+	cnpgWebhookProbe?: () => unknown;
+	cnpgWebhookProbeCalls?: Array<Record<string, unknown>>;
 	service?: unknown;
 }) {
 	return {
 		makeApiClient(api: unknown) {
+			if (api === CustomObjectsApi) {
+				return {
+					createNamespacedCustomObject: async (params: Record<string, unknown>) => {
+						state.cnpgWebhookProbeCalls?.push(params);
+						if (state.cnpgWebhookProbe) return state.cnpgWebhookProbe();
+						if (state.cnpgWebhookProbeError) throw state.cnpgWebhookProbeError;
+						return {};
+					}
+				};
+			}
 			if (api === AppsV1Api) {
 				return {
 					readNamespacedDeployment: async ({ name }: { name: string }) => {

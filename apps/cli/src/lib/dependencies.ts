@@ -1,10 +1,11 @@
 import type { KubeConfig } from '@kubernetes/client-node';
-import { ApiextensionsV1Api, AppsV1Api, CoreV1Api, NetworkingV1Api } from '@kubernetes/client-node';
+import { ApiextensionsV1Api, AppsV1Api, CoreV1Api, CustomObjectsApi, NetworkingV1Api } from '@kubernetes/client-node';
 import * as p from '@clack/prompts';
+import { APP_NAMESPACE } from '~/lib/constants.js';
 import { FatalCliError, UserCancelledError } from '~/lib/errors.js';
 import { execHelm } from '~/lib/helm.js';
 import { stampHelmReleaseOwnership } from '~/lib/helm-ownership.js';
-import { isNotFoundError } from '~/lib/k8s-errors.js';
+import { getStatusCode, isNotFoundError, isWebhookDenialError } from '~/lib/k8s-errors.js';
 import { parseDurationMs } from '~/lib/duration.js';
 import { mergeDependencyState, type DependencyStateInput, type DependencyStateMap, type TraefikDependencyState } from '~/lib/dependency-state.js';
 import { isRecord, readRecord, readString } from '~/lib/object-path.js';
@@ -590,14 +591,17 @@ export async function waitForCnpgReady(kc: KubeConfig, options: { timeoutMs?: nu
 	const deadline = Date.now() + timeoutMs;
 
 	let lastError: unknown;
+	let established = false;
 
 	while (Date.now() < deadline) {
 		try {
-			const crd = await api.readCustomResourceDefinition({ name: CNPG_CLUSTER_CRD });
-			// Established → the apiserver serves postgresql.cnpg.io/v1, so the chart's Cluster CR applies.
-			const established = crd.status?.conditions?.some(condition => condition.type === 'Established' && condition.status === 'True');
+			if (!established) established = isCrdEstablished(await api.readCustomResourceDefinition({ name: CNPG_CLUSTER_CRD }));
 
-			if (established) return;
+			if (established) {
+				const blocker = await cnpgAdmissionBlocker(kc);
+				if (!blocker) return;
+				lastError = blocker;
+			}
 		} catch (err) {
 			lastError = err;
 
@@ -610,8 +614,40 @@ export async function waitForCnpgReady(kc: KubeConfig, options: { timeoutMs?: nu
 	}
 
 	const detail = lastError instanceof Error ? ` Last error: ${lastError.message}` : '';
+	const stage = established ? 'its mutating webhook did not become reachable' : 'CRDs did not become established';
 
-	throw new Error(`CloudNativePG CRDs did not become established within ${Math.round(timeoutMs / 1000)}s.${detail}`);
+	throw new Error(`CloudNativePG ${stage} within ${Math.round(timeoutMs / 1000)}s.${detail}`);
+}
+
+// Returns undefined once a Cluster survives the admission chain, otherwise the error still blocking it, so
+// the caller can keep polling and report it on timeout. Throws on 401/403: authz runs before admission, so
+// those never reached the webhook and never will — helm's own Cluster create would fail identically.
+// Probes APP_NAMESPACE, the namespace the chart's Cluster CR lands in: RBAC on `clusters` is evaluated per
+// namespace, so probing anywhere else would answer a question helm never asks. Both callers run after the
+// namespace exists — NamespaceLifecycle rejects with 403 before admission otherwise.
+async function cnpgAdmissionBlocker(kc: KubeConfig): Promise<unknown> {
+	try {
+		await kc.makeApiClient(CustomObjectsApi).createNamespacedCustomObject({
+			group: 'postgresql.cnpg.io',
+			version: 'v1',
+			namespace: APP_NAMESPACE,
+			plural: 'clusters',
+			dryRun: 'All',
+			body: {
+				apiVersion: 'postgresql.cnpg.io/v1',
+				kind: 'Cluster',
+				metadata: { name: 'kubwave-webhook-probe', namespace: APP_NAMESPACE },
+				spec: { instances: 1, storage: { size: '1Gi' } }
+			}
+		});
+		return undefined;
+	} catch (err) {
+		const status = getStatusCode(err);
+		if (status === 401 || status === 403) throw err;
+		// Only an answer from the webhook proves the path works. Everything else — connectivity failures
+		// and unrelated apiserver errors alike — leaves it unproven, so keep waiting rather than guessing.
+		return isWebhookDenialError(err) ? undefined : err;
+	}
 }
 
 async function isTraefikDeploymentReady(api: AppsV1Api, controller: TraefikDependencyState): Promise<boolean> {

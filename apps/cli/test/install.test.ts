@@ -143,6 +143,9 @@ mock.module('~/lib/platforms.js', () => ({
 mock.module('~/lib/dependencies.js', () => ({
 	ensureDependencies: async () => {
 		events.push('ensure-deps');
+	},
+	waitForCnpgReady: async () => {
+		events.push('wait-cnpg');
 	}
 }));
 
@@ -223,6 +226,7 @@ const HAPPY_ORDER = [
 	'resolve-cluster-issuer',
 	'namespace',
 	'create-secrets',
+	'wait-cnpg',
 	'gen-values',
 	'helm-install',
 	'write-marker'

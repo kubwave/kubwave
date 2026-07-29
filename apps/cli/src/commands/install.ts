@@ -5,7 +5,7 @@ import { APP_NAMESPACE, DEFAULT_REGISTRY } from '~/lib/constants.js';
 import { loadKubeConfig } from '~/lib/k8s.js';
 import { runPreflightChecks } from '~/lib/preflight.js';
 import { confirmClusterContext } from '~/lib/context-confirm.js';
-import { ensureDependencies } from '~/lib/dependencies.js';
+import { ensureDependencies, waitForCnpgReady } from '~/lib/dependencies.js';
 import { assertValidInstallFlags, promptInstallInputs } from '~/lib/prompts.js';
 import { checkAdoption } from '~/lib/adoption.js';
 import { resolveCertManagerClusterIssuer } from '~/lib/cert-manager.js';
@@ -33,8 +33,12 @@ export function registerInstallCommand(parent: Command): void {
 		.option('--registry <url>', 'Container registry', DEFAULT_REGISTRY)
 		.option('--cluster-confirmed', 'Skip cluster confirmation', false)
 		.option('--in-cluster', 'Use in-cluster kubeconfig', false)
-		.option('--platform <id>', 'Target platform: cloudfleet-hetzner, cloudfleet-gcp, or upcloud-uks (prompted when omitted)')
+		.option('--platform <id>', 'Target platform: cloudfleet-hetzner, cloudfleet-gcp, upcloud-uks, or infomaniak-pck (prompted when omitted)')
 		.option('--hetzner-lb-location <loc>', 'Hetzner Load Balancer location (fsn1|nbg1|hel1|ash|hil); used by cloudfleet-hetzner')
+		.option(
+			'--infomaniak-floating-network-id <uuid>',
+			'OpenStack external network for the Octavia floating IP; used by infomaniak-pck when the project has no default external network'
+		)
 		.option('--upcloud-autoscaling', 'Install UpCloud Cluster Autoscaler (required with --yes for upcloud-uks)')
 		.option('--no-upcloud-autoscaling', 'Skip UpCloud Cluster Autoscaler')
 		.option('--upcloud-cluster-uuid <uuid>', 'UpCloud UKS cluster UUID (for Cluster Autoscaler)')
@@ -82,6 +86,7 @@ export function registerInstallCommand(parent: Command): void {
 				inCluster: boolean;
 				platform?: string;
 				hetznerLbLocation?: string;
+				infomaniakFloatingNetworkId?: string;
 				upcloudAutoscaling?: boolean;
 				upcloudClusterUuid?: string;
 				upcloudToken?: string;
@@ -115,6 +120,7 @@ async function runInstall(opts: {
 	inCluster: boolean;
 	platform?: string;
 	hetznerLbLocation?: string;
+	infomaniakFloatingNetworkId?: string;
 	upcloudAutoscaling?: boolean;
 	upcloudClusterUuid?: string;
 	upcloudToken?: string;
@@ -146,7 +152,12 @@ async function runInstall(opts: {
 	const kc = await loadAndCheckCluster(opts.inCluster);
 
 	await confirmClusterContext(kc, opts.clusterConfirmed || assumeYes);
-	const platform = await selectPlatform({ platform: opts.platform, hetznerLbLocation: opts.hetznerLbLocation, assumeYes });
+	const platform = await selectPlatform({
+		platform: opts.platform,
+		hetznerLbLocation: opts.hetznerLbLocation,
+		infomaniakFloatingNetworkId: opts.infomaniakFloatingNetworkId,
+		assumeYes
+	});
 	const warmup = await warmNodes(kc, platform, { ha: opts.ha, assumeYes, enabled: opts.warmNodes });
 	if (warmup.raiseTimeout) raiseInstallTimeoutForColdStart();
 	try {
@@ -168,6 +179,7 @@ async function runInstall(opts: {
 		const resolvedConfig = await resolveInstallClusterIssuer(kc, config);
 		if (resolvedConfig.ha) await warnIfFewNodesForHa(kc);
 		await prepareClusterResources(kc, resolvedConfig);
+		await waitForDatabaseOperator(kc);
 		await installChart(resolvedConfig);
 		await writeInstallMarker(kc, resolvedConfig, cliVersion, channel, platform);
 
@@ -298,6 +310,22 @@ async function ensurePlatformSecrets(kc: KubeConfig, config: InstallConfig): Pro
 	spinner.stop('Secrets ready');
 
 	p.log.info(`Build registry setup will continue in the Console at https://${config.domain}.`);
+}
+
+// The chart creates a CNPG Cluster CR, which helm fails the whole release on if CNPG's mutating webhook is
+// not yet reachable from the apiserver. Installing the operator with helm --wait only proves its Deployment
+// is Ready, not that the apiserver can reach it — on clusters with an externally hosted control plane that
+// lags by tens of seconds. Runs after the namespace exists, since the probe targets it.
+async function waitForDatabaseOperator(kc: KubeConfig): Promise<void> {
+	const spinner = p.spinner();
+	spinner.start('Waiting for CloudNativePG to accept resources...');
+	try {
+		await waitForCnpgReady(kc);
+		spinner.stop('CloudNativePG ready');
+	} catch (err) {
+		spinner.stop('CloudNativePG did not become ready');
+		throw err;
+	}
 }
 
 async function installChart(config: InstallConfig): Promise<void> {

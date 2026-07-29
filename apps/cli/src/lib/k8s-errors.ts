@@ -48,6 +48,21 @@ export function isNotFoundError(err: unknown): boolean {
 	return getStatusCode(err) === 404;
 }
 
+function getStatusMessage(err: unknown): string | undefined {
+	const body = bodyAsObject(getStatusBody(err));
+	if (body && typeof body['message'] === 'string') return body['message'];
+	const o = asObj(err);
+	return typeof o?.message === 'string' ? o.message : undefined;
+}
+
+// A rejection from the webhook itself reads `admission webhook "<name>" denied the request`. It is the only
+// apiserver response that proves the webhook was actually reached and answered: a connectivity failure reads
+// `failed calling webhook "<name>"` (dial timeout, no ready endpoints, EOF), and authn/authz run before
+// admission, so a 401/403 never invoked it at all.
+export function isWebhookDenialError(err: unknown): boolean {
+	return getStatusMessage(err)?.includes('denied the request') ?? false;
+}
+
 export function isAlreadyExistsError(err: unknown): boolean {
 	return getStatusCode(err) === 409;
 }

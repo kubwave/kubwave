@@ -1,8 +1,9 @@
-import { KubeConfig } from '@kubernetes/client-node';
+import { KubeConfig, StorageV1Api } from '@kubernetes/client-node';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { FatalCliError } from '~/lib/errors.js';
+import { isNotFoundError } from '~/lib/k8s-errors.js';
 
 export function isBunRuntime(): boolean {
 	return process.execPath.endsWith('/bun') || process.execPath.endsWith('\\bun.exe');
@@ -86,6 +87,17 @@ export function ensureClusterCA(): void {
 		stdin: 'inherit'
 	});
 	process.exit(result.exitCode);
+}
+
+export async function storageClassExists(kc: KubeConfig, name: string): Promise<boolean> {
+	const api = kc.makeApiClient(StorageV1Api);
+	try {
+		await api.readStorageClass({ name });
+		return true;
+	} catch (err) {
+		if (isNotFoundError(err)) return false;
+		throw err;
+	}
 }
 
 function buildReExecCommand(): string[] {
