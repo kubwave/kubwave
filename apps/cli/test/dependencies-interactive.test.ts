@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from 'bun:test';
-import { ApiextensionsV1Api, AppsV1Api, CoreV1Api, NetworkingV1Api } from '@kubernetes/client-node';
+import { ApiextensionsV1Api, AppsV1Api, CoreV1Api, CustomObjectsApi, NetworkingV1Api } from '@kubernetes/client-node';
 import * as realHelm from '../src/lib/helm.js';
 import { clackStub } from './support/clack-stub.js';
 
@@ -136,6 +136,9 @@ function kubeStub(state: {
 			}
 			if (api === CoreV1Api) {
 				return { readNamespacedService: async () => state.service ?? {} };
+			}
+			if (api === CustomObjectsApi) {
+				return { createNamespacedCustomObject: async () => ({}) };
 			}
 			throw new Error('unexpected api');
 		}

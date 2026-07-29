@@ -524,6 +524,26 @@ describe('cnpg readiness', () => {
 		await expect(waitForCnpgReady(kc, { timeoutMs: 10, pollMs: 1 })).resolves.toBeUndefined();
 	});
 
+	// Authz runs before admission, so the probe never reached the webhook. Reporting ready here would let
+	// helm create the chart's Cluster CR against an unproven admission path.
+	test('does not treat an RBAC denial as a reachable webhook', async () => {
+		const kc = createKubeConfigStub({
+			cnpgCrd: establishedCnpgCrd(),
+			cnpgWebhookProbeError: Object.assign(new Error('clusters.postgresql.cnpg.io is forbidden: User "dev" cannot create resource "clusters"'), {
+				code: 403
+			})
+		});
+		await expect(waitForCnpgReady(kc, { timeoutMs: 10_000, pollMs: 1 })).rejects.toThrow('forbidden');
+	});
+
+	test('keeps waiting on an unrelated apiserver error and reports it on timeout', async () => {
+		const kc = createKubeConfigStub({
+			cnpgCrd: establishedCnpgCrd(),
+			cnpgWebhookProbeError: Object.assign(new Error('etcdserver: request timed out'), { code: 500 })
+		});
+		await expect(waitForCnpgReady(kc, { timeoutMs: 1, pollMs: 1 })).rejects.toThrow('etcdserver: request timed out');
+	});
+
 	test('recovers once the webhook becomes reachable', async () => {
 		let attempts = 0;
 		const kc = createKubeConfigStub({

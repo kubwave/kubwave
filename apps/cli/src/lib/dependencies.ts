@@ -4,7 +4,7 @@ import * as p from '@clack/prompts';
 import { FatalCliError, UserCancelledError } from '~/lib/errors.js';
 import { execHelm } from '~/lib/helm.js';
 import { stampHelmReleaseOwnership } from '~/lib/helm-ownership.js';
-import { isNotFoundError, isWebhookUnavailableError } from '~/lib/k8s-errors.js';
+import { getStatusCode, isNotFoundError, isWebhookDenialError } from '~/lib/k8s-errors.js';
 import { parseDurationMs } from '~/lib/duration.js';
 import { mergeDependencyState, type DependencyStateInput, type DependencyStateMap, type TraefikDependencyState } from '~/lib/dependency-state.js';
 import { isRecord, readRecord, readString } from '~/lib/object-path.js';
@@ -596,7 +596,11 @@ export async function waitForCnpgReady(kc: KubeConfig, options: { timeoutMs?: nu
 		try {
 			if (!established) established = isCrdEstablished(await api.readCustomResourceDefinition({ name: CNPG_CLUSTER_CRD }));
 
-			if (established && (await isCnpgWebhookReachable(kc))) return;
+			if (established) {
+				const blocker = await cnpgAdmissionBlocker(kc);
+				if (!blocker) return;
+				lastError = blocker;
+			}
 		} catch (err) {
 			lastError = err;
 
@@ -614,7 +618,10 @@ export async function waitForCnpgReady(kc: KubeConfig, options: { timeoutMs?: nu
 	throw new Error(`CloudNativePG ${stage} within ${Math.round(timeoutMs / 1000)}s.${detail}`);
 }
 
-async function isCnpgWebhookReachable(kc: KubeConfig): Promise<boolean> {
+// Returns undefined once a Cluster survives the admission chain, otherwise the error still blocking it, so
+// the caller can keep polling and report it on timeout. Throws on 401/403: authz runs before admission, so
+// those never reached the webhook and never will — helm's own Cluster create would fail identically.
+async function cnpgAdmissionBlocker(kc: KubeConfig): Promise<unknown> {
 	try {
 		await kc.makeApiClient(CustomObjectsApi).createNamespacedCustomObject({
 			group: 'postgresql.cnpg.io',
@@ -629,10 +636,13 @@ async function isCnpgWebhookReachable(kc: KubeConfig): Promise<boolean> {
 				spec: { instances: 1, storage: { size: '1Gi' } }
 			}
 		});
-		return true;
+		return undefined;
 	} catch (err) {
-		// Any answer other than "could not reach the webhook" proves the path works.
-		return !isWebhookUnavailableError(err);
+		const status = getStatusCode(err);
+		if (status === 401 || status === 403) throw err;
+		// Only an answer from the webhook proves the path works. Everything else — connectivity failures
+		// and unrelated apiserver errors alike — leaves it unproven, so keep waiting rather than guessing.
+		return isWebhookDenialError(err) ? undefined : err;
 	}
 }
 

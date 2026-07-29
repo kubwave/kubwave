@@ -55,11 +55,12 @@ function getStatusMessage(err: unknown): string | undefined {
 	return typeof o?.message === 'string' ? o.message : undefined;
 }
 
-// The apiserver wraps every admission-webhook *connectivity* failure as `failed calling webhook "<name>"`
-// (dial timeout, no ready endpoints, EOF). A webhook that answers with a denial reads `admission webhook
-// "<name>" denied the request` instead — that one is a real rejection, not an unready cluster.
-export function isWebhookUnavailableError(err: unknown): boolean {
-	return getStatusMessage(err)?.includes('failed calling webhook') ?? false;
+// A rejection from the webhook itself reads `admission webhook "<name>" denied the request`. It is the only
+// apiserver response that proves the webhook was actually reached and answered: a connectivity failure reads
+// `failed calling webhook "<name>"` (dial timeout, no ready endpoints, EOF), and authn/authz run before
+// admission, so a 401/403 never invoked it at all.
+export function isWebhookDenialError(err: unknown): boolean {
+	return getStatusMessage(err)?.includes('denied the request') ?? false;
 }
 
 export function isAlreadyExistsError(err: unknown): boolean {
