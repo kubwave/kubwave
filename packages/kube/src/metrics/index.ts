@@ -1,5 +1,5 @@
 import type * as k8s from '@kubernetes/client-node';
-import { pvcName } from '../workloads/index';
+import { pvcName, WORKLOADS_NAMESPACE_PREFIX } from '../workloads/index';
 
 // Kubelet Summary API (/stats/summary) via apiserver node proxy; unlike metrics-server it carries per-pod CPU, memory, network, and PVC usage.
 
@@ -21,7 +21,16 @@ export interface KubeletPodStats {
 	volume?: KubeletVolumeStats[];
 }
 
+// The kubelet's own roll-up for the node, distinct from the sum of its pods: it includes system-daemon overhead outside any container.
+export interface KubeletNodeStats {
+	nodeName?: string;
+	cpu?: { usageNanoCores?: number };
+	memory?: { workingSetBytes?: number };
+	fs?: { capacityBytes?: number; usedBytes?: number };
+}
+
 export interface NodeStatsSummary {
+	node?: KubeletNodeStats;
 	pods?: KubeletPodStats[];
 }
 
@@ -174,4 +183,81 @@ export function emptyServiceUsage(limits?: ServiceUsageLimits): ServiceUsage {
 		cpuLimitMillicores: parseCpuToMillicores(limits?.cpuLimit),
 		memoryLimitBytes: parseMemoryToBytes(limits?.memoryLimit)
 	};
+}
+
+export interface ClusterNodeUsage {
+	nodeName: string;
+	// False when the kubelet reported no cpu/memory for the node, so callers render "unknown" instead of a misleading 0.
+	available: boolean;
+	cpuMillicores: number;
+	memoryBytes: number;
+	fsUsedBytes: number;
+	fsCapacityBytes: number;
+}
+
+export interface WorkloadUsage {
+	cpuMillicores: number;
+	memoryBytes: number;
+}
+
+export interface ClusterUsageAggregate {
+	nodes: ClusterNodeUsage[];
+	volumeUsedBytes: number;
+	volumeCapacityBytes: number;
+	platform: WorkloadUsage;
+	tenants: WorkloadUsage;
+	// Everything that is neither the platform namespace nor a tenant namespace (kube-system, ingress, cert-manager).
+	other: WorkloadUsage;
+}
+
+export function aggregateClusterUsage(args: { summaries: NodeStatsSummary[]; platformNamespace: string }): ClusterUsageAggregate {
+	const { summaries, platformNamespace } = args;
+
+	const nodes: ClusterNodeUsage[] = [];
+	const platform: WorkloadUsage = { cpuMillicores: 0, memoryBytes: 0 };
+	const tenants: WorkloadUsage = { cpuMillicores: 0, memoryBytes: 0 };
+	const other: WorkloadUsage = { cpuMillicores: 0, memoryBytes: 0 };
+	// Keyed by namespace/claim so a ReadWriteMany volume mounted by several pods is counted once.
+	const claims = new Map<string, { usedBytes: number; capacityBytes: number }>();
+
+	for (const summary of summaries) {
+		const node = summary.node;
+		if (node?.nodeName) {
+			nodes.push({
+				nodeName: node.nodeName,
+				available: node.cpu?.usageNanoCores != null || node.memory?.workingSetBytes != null,
+				cpuMillicores: (node.cpu?.usageNanoCores ?? 0) / 1e6,
+				memoryBytes: node.memory?.workingSetBytes ?? 0,
+				fsUsedBytes: node.fs?.usedBytes ?? 0,
+				fsCapacityBytes: node.fs?.capacityBytes ?? 0
+			});
+		}
+
+		for (const pod of summary.pods ?? []) {
+			const namespace = pod.podRef?.namespace;
+			if (!namespace) continue;
+
+			const bucket = namespace === platformNamespace ? platform : namespace.startsWith(WORKLOADS_NAMESPACE_PREFIX) ? tenants : other;
+			bucket.cpuMillicores += (pod.cpu?.usageNanoCores ?? 0) / 1e6;
+			bucket.memoryBytes += pod.memory?.workingSetBytes ?? 0;
+
+			for (const volume of pod.volume ?? []) {
+				const claimName = volume.pvcRef?.name;
+				if (!claimName) continue;
+				claims.set(`${volume.pvcRef?.namespace ?? namespace}/${claimName}`, {
+					usedBytes: volume.usedBytes ?? 0,
+					capacityBytes: volume.capacityBytes ?? 0
+				});
+			}
+		}
+	}
+
+	let volumeUsedBytes = 0;
+	let volumeCapacityBytes = 0;
+	for (const claim of claims.values()) {
+		volumeUsedBytes += claim.usedBytes;
+		volumeCapacityBytes += claim.capacityBytes;
+	}
+
+	return { nodes, volumeUsedBytes, volumeCapacityBytes, platform, tenants, other };
 }

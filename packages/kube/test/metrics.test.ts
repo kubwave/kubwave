@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { CoreV1Api } from '@kubernetes/client-node';
 import {
+	aggregateClusterUsage,
 	aggregateServiceUsage,
 	emptyServiceUsage,
 	nodeStatsSummary,
@@ -269,5 +270,99 @@ describe('nodeStatsSummary', () => {
 			connectGetNodeProxyWithPath: async () => payload
 		} as unknown as CoreV1Api;
 		expect(await nodeStatsSummary(api, 'node-1')).toBe(payload);
+	});
+});
+
+describe('aggregateClusterUsage', () => {
+	const summaries: NodeStatsSummary[] = [
+		{
+			node: {
+				nodeName: 'node-1',
+				cpu: { usageNanoCores: 500_000_000 },
+				memory: { workingSetBytes: 2048 },
+				fs: { usedBytes: 100, capacityBytes: 1000 }
+			},
+			pods: [
+				{ podRef: { namespace: 'kubwave', name: 'api-1' }, cpu: { usageNanoCores: 100_000_000 }, memory: { workingSetBytes: 512 } },
+				{
+					podRef: { namespace: 'kubwave-env-abc', name: 'svc-1' },
+					cpu: { usageNanoCores: 200_000_000 },
+					memory: { workingSetBytes: 1024 },
+					volume: [{ pvcRef: { namespace: 'kubwave-env-abc', name: 'svc-abc-data' }, usedBytes: 50, capacityBytes: 500 }]
+				},
+				{ podRef: { namespace: 'kube-system', name: 'coredns-1' }, cpu: { usageNanoCores: 50_000_000 }, memory: { workingSetBytes: 256 } }
+			]
+		},
+		{ node: { nodeName: 'node-2' }, pods: [] }
+	];
+
+	test('sums node usage and converts nanocores to millicores', () => {
+		const result = aggregateClusterUsage({ summaries, platformNamespace: 'kubwave' });
+		expect(result.nodes).toHaveLength(2);
+		expect(result.nodes[0]).toEqual({
+			nodeName: 'node-1',
+			available: true,
+			cpuMillicores: 500,
+			memoryBytes: 2048,
+			fsUsedBytes: 100,
+			fsCapacityBytes: 1000
+		});
+	});
+
+	test('marks a node without cpu or memory stats unavailable', () => {
+		const result = aggregateClusterUsage({ summaries, platformNamespace: 'kubwave' });
+		expect(result.nodes[1]!.available).toBe(false);
+	});
+
+	test('splits workload usage into platform, tenants and other', () => {
+		const result = aggregateClusterUsage({ summaries, platformNamespace: 'kubwave' });
+		expect(result.platform).toEqual({ cpuMillicores: 100, memoryBytes: 512 });
+		expect(result.tenants).toEqual({ cpuMillicores: 200, memoryBytes: 1024 });
+		expect(result.other).toEqual({ cpuMillicores: 50, memoryBytes: 256 });
+	});
+
+	test('sums pvc usage across the cluster', () => {
+		const result = aggregateClusterUsage({ summaries, platformNamespace: 'kubwave' });
+		expect(result.volumeUsedBytes).toBe(50);
+		expect(result.volumeCapacityBytes).toBe(500);
+	});
+
+	test('counts a shared pvc once even when mounted by several pods', () => {
+		const shared = { pvcRef: { namespace: 'kubwave-env-abc', name: 'shared-data' }, usedBytes: 70, capacityBytes: 700 };
+		const result = aggregateClusterUsage({
+			summaries: [
+				{
+					node: { nodeName: 'n', cpu: { usageNanoCores: 0 } },
+					pods: [
+						{ podRef: { namespace: 'kubwave-env-abc', name: 'a' }, volume: [shared] },
+						{ podRef: { namespace: 'kubwave-env-abc', name: 'b' }, volume: [shared] }
+					]
+				}
+			],
+			platformNamespace: 'kubwave'
+		});
+		expect(result.volumeUsedBytes).toBe(70);
+		expect(result.volumeCapacityBytes).toBe(700);
+	});
+
+	test('skips pods without a namespace', () => {
+		const result = aggregateClusterUsage({
+			summaries: [{ node: { nodeName: 'n' }, pods: [{ cpu: { usageNanoCores: 900_000_000 } }] }],
+			platformNamespace: 'kubwave'
+		});
+		expect(result.platform.cpuMillicores).toBe(0);
+		expect(result.tenants.cpuMillicores).toBe(0);
+		expect(result.other.cpuMillicores).toBe(0);
+	});
+
+	test('returns zeroed buckets for an empty cluster', () => {
+		expect(aggregateClusterUsage({ summaries: [], platformNamespace: 'kubwave' })).toEqual({
+			nodes: [],
+			volumeUsedBytes: 0,
+			volumeCapacityBytes: 0,
+			platform: { cpuMillicores: 0, memoryBytes: 0 },
+			tenants: { cpuMillicores: 0, memoryBytes: 0 },
+			other: { cpuMillicores: 0, memoryBytes: 0 }
+		});
 	});
 });
