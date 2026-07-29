@@ -1,6 +1,7 @@
 import type { KubeConfig } from '@kubernetes/client-node';
 import { ApiextensionsV1Api, AppsV1Api, CoreV1Api, CustomObjectsApi, NetworkingV1Api } from '@kubernetes/client-node';
 import * as p from '@clack/prompts';
+import { APP_NAMESPACE } from '~/lib/constants.js';
 import { FatalCliError, UserCancelledError } from '~/lib/errors.js';
 import { execHelm } from '~/lib/helm.js';
 import { stampHelmReleaseOwnership } from '~/lib/helm-ownership.js';
@@ -621,18 +622,21 @@ export async function waitForCnpgReady(kc: KubeConfig, options: { timeoutMs?: nu
 // Returns undefined once a Cluster survives the admission chain, otherwise the error still blocking it, so
 // the caller can keep polling and report it on timeout. Throws on 401/403: authz runs before admission, so
 // those never reached the webhook and never will — helm's own Cluster create would fail identically.
+// Probes APP_NAMESPACE, the namespace the chart's Cluster CR lands in: RBAC on `clusters` is evaluated per
+// namespace, so probing anywhere else would answer a question helm never asks. Both callers run after the
+// namespace exists — NamespaceLifecycle rejects with 403 before admission otherwise.
 async function cnpgAdmissionBlocker(kc: KubeConfig): Promise<unknown> {
 	try {
 		await kc.makeApiClient(CustomObjectsApi).createNamespacedCustomObject({
 			group: 'postgresql.cnpg.io',
 			version: 'v1',
-			namespace: 'default',
+			namespace: APP_NAMESPACE,
 			plural: 'clusters',
 			dryRun: 'All',
 			body: {
 				apiVersion: 'postgresql.cnpg.io/v1',
 				kind: 'Cluster',
-				metadata: { name: 'kubwave-webhook-probe', namespace: 'default' },
+				metadata: { name: 'kubwave-webhook-probe', namespace: APP_NAMESPACE },
 				spec: { instances: 1, storage: { size: '1Gi' } }
 			}
 		});

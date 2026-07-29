@@ -5,6 +5,7 @@ import { ApiextensionsV1Api, AppsV1Api, CoreV1Api, CustomObjectsApi, NetworkingV
 import * as realHelm from '../src/lib/helm.js';
 import { buildTraefikHelmValues } from '../src/lib/traefik.js';
 import { mergeDependencyState } from '../src/lib/dependency-state.js';
+import { APP_NAMESPACE } from '../src/lib/constants.js';
 import { clackStub } from './support/clack-stub.js';
 
 const execHelmCalls: string[][] = [];
@@ -514,6 +515,14 @@ describe('cnpg readiness', () => {
 		expect(calls).toHaveLength(1);
 		expect(calls[0]?.dryRun).toBe('All');
 		expect(calls[0]?.plural).toBe('clusters');
+	});
+
+	test('probes the namespace the chart creates its Cluster in, since RBAC on clusters is per-namespace', async () => {
+		const calls: Array<Record<string, unknown>> = [];
+		const kc = createKubeConfigStub({ cnpgCrd: establishedCnpgCrd(), cnpgWebhookProbeCalls: calls });
+		await waitForCnpgReady(kc, { timeoutMs: 10, pollMs: 1 });
+		expect(calls[0]?.namespace).toBe(APP_NAMESPACE);
+		expect((calls[0]?.body as { metadata?: { namespace?: string } })?.metadata?.namespace).toBe(APP_NAMESPACE);
 	});
 
 	test('treats a webhook rejection as reachable and returns', async () => {
