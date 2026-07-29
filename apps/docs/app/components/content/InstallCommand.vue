@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { computed, ref } from 'vue';
 import { Check, Copy } from 'lucide-vue-next';
+import { Button } from '~/components/ui/button';
+import { useInstallCommand } from '~/utils/install-command';
 
 const installCmd = useInstallCommand();
 const copied = ref(false);
