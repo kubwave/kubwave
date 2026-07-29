@@ -1,5 +1,9 @@
 import { Module } from '@nestjs/common';
 import { AdminGuard } from '../../shared/auth/auth.guard.js';
+import { ClusterController } from './cluster/cluster.controller.js';
+import { ClusterEventsService } from './cluster/cluster-events.service.js';
+import { ClusterSnapshotService } from './cluster/cluster-snapshot.service.js';
+import { ClusterUsageService } from './cluster/cluster-usage.service.js';
 import { PlatformController } from './platform.controller.js';
 import { PlatformDeploymentConcurrencySettingsController } from './settings/deployment-concurrency/platform-deployment-concurrency-settings.controller.js';
 import { PlatformDeploymentConcurrencySettingsService } from './settings/deployment-concurrency/platform-deployment-concurrency-settings.service.js';
@@ -41,7 +45,8 @@ import { PlatformVersionService } from './version/platform-version.service.js';
 		PlatformVolumeAutoscalingSettingsController,
 		PlatformVolumesController,
 		PlatformTcpPortPoolSettingsController,
-		PlatformUpdatesController
+		PlatformUpdatesController,
+		ClusterController
 	],
 	providers: [
 		AdminGuard,
@@ -57,7 +62,10 @@ import { PlatformVersionService } from './version/platform-version.service.js';
 		PlatformVolumesService,
 		PlatformTcpPortPoolSettingsService,
 		PlatformVersionService,
-		PlatformUpdatesService
+		PlatformUpdatesService,
+		ClusterSnapshotService,
+		ClusterEventsService,
+		ClusterUsageService
 	]
 })
 export class PlatformModule {}
