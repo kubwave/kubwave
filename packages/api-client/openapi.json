@@ -2906,6 +2906,91 @@
 				"tags": ["platform-updates"]
 			}
 		},
+		"/api/platform/cluster": {
+			"get": {
+				"operationId": "platformClusterGet",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ClusterSnapshotDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get a cluster capacity and health snapshot",
+				"tags": ["platform"]
+			}
+		},
+		"/api/platform/cluster/events": {
+			"get": {
+				"operationId": "platformClusterEventsGet",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ClusterEventsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "List cluster-wide Kubernetes warning events",
+				"tags": ["platform"]
+			}
+		},
+		"/api/platform/cluster/usage": {
+			"get": {
+				"operationId": "platformClusterUsageGet",
+				"parameters": [
+					{
+						"name": "range",
+						"required": false,
+						"in": "query",
+						"schema": {
+							"enum": ["1h", "24h", "7d"],
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ClusterUsageDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get cluster-wide CPU and memory history",
+				"tags": ["platform"]
+			}
+		},
 		"/api/templates": {
 			"get": {
 				"operationId": "templatesList",
@@ -5366,6 +5451,270 @@
 					}
 				},
 				"required": ["logs"]
+			},
+			"ClusterMeterDto": {
+				"type": "object",
+				"properties": {
+					"capacity": {
+						"type": "number"
+					},
+					"requested": {
+						"type": "number",
+						"nullable": true
+					},
+					"used": {
+						"type": "number",
+						"nullable": true
+					}
+				},
+				"required": ["capacity", "requested", "used"]
+			},
+			"ClusterNodeConditionsDto": {
+				"type": "object",
+				"properties": {
+					"ready": {
+						"type": "boolean"
+					},
+					"memoryPressure": {
+						"type": "boolean"
+					},
+					"diskPressure": {
+						"type": "boolean"
+					},
+					"pidPressure": {
+						"type": "boolean"
+					}
+				},
+				"required": ["ready", "memoryPressure", "diskPressure", "pidPressure"]
+			},
+			"ClusterNodeDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"roles": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"cordoned": {
+						"type": "boolean"
+					},
+					"kubeletVersion": {
+						"type": "string"
+					},
+					"conditions": {
+						"$ref": "#/components/schemas/ClusterNodeConditionsDto"
+					},
+					"cpu": {
+						"$ref": "#/components/schemas/ClusterMeterDto"
+					},
+					"memory": {
+						"$ref": "#/components/schemas/ClusterMeterDto"
+					},
+					"disk": {
+						"$ref": "#/components/schemas/ClusterMeterDto"
+					},
+					"pods": {
+						"$ref": "#/components/schemas/ClusterMeterDto"
+					}
+				},
+				"required": ["name", "roles", "cordoned", "kubeletVersion", "conditions", "cpu", "memory", "disk", "pods"]
+			},
+			"ClusterComponentDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"ready": {
+						"type": "number"
+					},
+					"desired": {
+						"type": "number"
+					}
+				},
+				"required": ["name", "ready", "desired"]
+			},
+			"ClusterWorkloadUsageDto": {
+				"type": "object",
+				"properties": {
+					"cpuMillicores": {
+						"type": "number"
+					},
+					"memoryBytes": {
+						"type": "number"
+					}
+				},
+				"required": ["cpuMillicores", "memoryBytes"]
+			},
+			"ClusterSplitDto": {
+				"type": "object",
+				"properties": {
+					"platform": {
+						"$ref": "#/components/schemas/ClusterWorkloadUsageDto"
+					},
+					"tenants": {
+						"$ref": "#/components/schemas/ClusterWorkloadUsageDto"
+					},
+					"other": {
+						"$ref": "#/components/schemas/ClusterWorkloadUsageDto"
+					}
+				},
+				"required": ["platform", "tenants", "other"]
+			},
+			"ClusterSnapshotDto": {
+				"type": "object",
+				"properties": {
+					"available": {
+						"type": "boolean"
+					},
+					"sampledAt": {
+						"type": "string"
+					},
+					"state": {
+						"type": "string",
+						"enum": ["ok", "degraded", "unknown"]
+					},
+					"nodesReady": {
+						"type": "number"
+					},
+					"nodesTotal": {
+						"type": "number"
+					},
+					"cpu": {
+						"$ref": "#/components/schemas/ClusterMeterDto"
+					},
+					"memory": {
+						"$ref": "#/components/schemas/ClusterMeterDto"
+					},
+					"storage": {
+						"$ref": "#/components/schemas/ClusterMeterDto"
+					},
+					"pods": {
+						"$ref": "#/components/schemas/ClusterMeterDto"
+					},
+					"nodes": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/ClusterNodeDto"
+						}
+					},
+					"components": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/ClusterComponentDto"
+						}
+					},
+					"split": {
+						"$ref": "#/components/schemas/ClusterSplitDto"
+					}
+				},
+				"required": [
+					"available",
+					"sampledAt",
+					"state",
+					"nodesReady",
+					"nodesTotal",
+					"cpu",
+					"memory",
+					"storage",
+					"pods",
+					"nodes",
+					"components",
+					"split"
+				]
+			},
+			"ClusterEventDto": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"reason": {
+						"type": "string"
+					},
+					"message": {
+						"type": "string"
+					},
+					"namespace": {
+						"type": "string",
+						"nullable": true
+					},
+					"objectKind": {
+						"type": "string",
+						"nullable": true
+					},
+					"objectName": {
+						"type": "string",
+						"nullable": true
+					},
+					"count": {
+						"type": "number"
+					},
+					"lastSeen": {
+						"type": "string",
+						"nullable": true
+					}
+				},
+				"required": ["id", "reason", "message", "namespace", "objectKind", "objectName", "count", "lastSeen"]
+			},
+			"ClusterEventsDto": {
+				"type": "object",
+				"properties": {
+					"available": {
+						"type": "boolean"
+					},
+					"sampledAt": {
+						"type": "string"
+					},
+					"events": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/ClusterEventDto"
+						}
+					}
+				},
+				"required": ["available", "sampledAt", "events"]
+			},
+			"ClusterUsageSeriesDto": {
+				"type": "object",
+				"properties": {
+					"cpuMillicores": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/MetricPointDto"
+						}
+					},
+					"memoryBytes": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/MetricPointDto"
+						}
+					}
+				},
+				"required": ["cpuMillicores", "memoryBytes"]
+			},
+			"ClusterUsageDto": {
+				"type": "object",
+				"properties": {
+					"available": {
+						"type": "boolean"
+					},
+					"range": {
+						"type": "string",
+						"enum": ["1h", "24h", "7d"]
+					},
+					"sampledAt": {
+						"type": "string"
+					},
+					"series": {
+						"$ref": "#/components/schemas/ClusterUsageSeriesDto"
+					}
+				},
+				"required": ["available", "range", "sampledAt", "series"]
 			},
 			"TemplateInputDto": {
 				"type": "object",

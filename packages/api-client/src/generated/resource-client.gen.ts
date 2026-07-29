@@ -45,6 +45,10 @@ import type {
 	InvitationsListResponses,
 	InvitationsResendResponses,
 	InvitationsValidityResponses,
+	PlatformClusterEventsGetResponses,
+	PlatformClusterGetResponses,
+	PlatformClusterUsageGetData,
+	PlatformClusterUsageGetResponses,
 	PlatformSettingsDeploymentConcurrencyGetResponses,
 	PlatformSettingsDeploymentConcurrencyUpdateData,
 	PlatformSettingsDeploymentConcurrencyUpdateResponses,
@@ -336,10 +340,25 @@ export type KubwaveInvitationsIdValidityResource = {
 };
 
 export type KubwavePlatformResource = {
+	cluster: KubwavePlatformClusterResource;
 	settings: KubwavePlatformSettingsResource;
 	updates: KubwavePlatformUpdatesResource;
 	users: KubwavePlatformUsersResource;
 	version: KubwavePlatformVersionResource;
+};
+
+export type KubwavePlatformClusterResource = {
+	get(): OperationResult<PlatformClusterGetResponses>;
+	events: KubwavePlatformClusterEventsResource;
+	usage: KubwavePlatformClusterUsageResource;
+};
+
+export type KubwavePlatformClusterEventsResource = {
+	get(): OperationResult<PlatformClusterEventsGetResponses>;
+};
+
+export type KubwavePlatformClusterUsageResource = {
+	get(query?: PlatformClusterUsageGetData['query']): OperationResult<PlatformClusterUsageGetResponses>;
 };
 
 export type KubwavePlatformSettingsResource = {
@@ -719,6 +738,15 @@ export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClie
 			}
 		),
 		platform: {
+			cluster: {
+				get: () => apiResult(raw.platformClusterGet({})),
+				events: {
+					get: () => apiResult(raw.platformClusterEventsGet({}))
+				},
+				usage: {
+					get: (query?: PlatformClusterUsageGetData['query']) => apiResult(raw.platformClusterUsageGet({ query }))
+				}
+			},
 			settings: {
 				deploymentConcurrency: {
 					get: () => apiResult(raw.platformSettingsDeploymentConcurrencyGet({})),

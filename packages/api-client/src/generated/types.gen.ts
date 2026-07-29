@@ -677,6 +677,92 @@ export type UpdateLogsDto = {
 	logs: string;
 };
 
+export type ClusterMeterDto = {
+	capacity: number;
+	requested: number | null;
+	used: number | null;
+};
+
+export type ClusterNodeConditionsDto = {
+	ready: boolean;
+	memoryPressure: boolean;
+	diskPressure: boolean;
+	pidPressure: boolean;
+};
+
+export type ClusterNodeDto = {
+	name: string;
+	roles: Array<string>;
+	cordoned: boolean;
+	kubeletVersion: string;
+	conditions: ClusterNodeConditionsDto;
+	cpu: ClusterMeterDto;
+	memory: ClusterMeterDto;
+	disk: ClusterMeterDto;
+	pods: ClusterMeterDto;
+};
+
+export type ClusterComponentDto = {
+	name: string;
+	ready: number;
+	desired: number;
+};
+
+export type ClusterWorkloadUsageDto = {
+	cpuMillicores: number;
+	memoryBytes: number;
+};
+
+export type ClusterSplitDto = {
+	platform: ClusterWorkloadUsageDto;
+	tenants: ClusterWorkloadUsageDto;
+	other: ClusterWorkloadUsageDto;
+};
+
+export type ClusterSnapshotDto = {
+	available: boolean;
+	sampledAt: string;
+	state: 'ok' | 'degraded' | 'unknown';
+	nodesReady: number;
+	nodesTotal: number;
+	cpu: ClusterMeterDto;
+	memory: ClusterMeterDto;
+	storage: ClusterMeterDto;
+	pods: ClusterMeterDto;
+	nodes: Array<ClusterNodeDto>;
+	components: Array<ClusterComponentDto>;
+	split: ClusterSplitDto;
+};
+
+export type ClusterEventDto = {
+	id: string;
+	reason: string;
+	message: string;
+	namespace: string | null;
+	objectKind: string | null;
+	objectName: string | null;
+	count: number;
+	lastSeen: string | null;
+};
+
+export type ClusterEventsDto = {
+	available: boolean;
+	sampledAt: string;
+	events: Array<ClusterEventDto>;
+};
+
+export type ClusterUsageSeriesDto = {
+	cpuMillicores: Array<MetricPointDto>;
+	memoryBytes: Array<MetricPointDto>;
+};
+
+export type ClusterUsageDto = {
+	available: boolean;
+	range: '1h' | '24h' | '7d';
+	sampledAt: string;
+	series: ClusterUsageSeriesDto;
+};
+
 export type TemplateInputDto = {
 	key: string;
 	label: string;
@@ -2011,6 +2097,47 @@ export type PlatformUpdateLogsGetResponses = {
 };
 
 export type PlatformUpdateLogsGetResponse = PlatformUpdateLogsGetResponses[keyof PlatformUpdateLogsGetResponses];
+
+export type PlatformClusterGetData = {
+	body?: never;
+	path?: never;
+	query?: never;
+	url: '/api/platform/cluster';
+};
+
+export type PlatformClusterGetResponses = {
+	200: ClusterSnapshotDto;
+};
+
+export type PlatformClusterGetResponse = PlatformClusterGetResponses[keyof PlatformClusterGetResponses];
+
+export type PlatformClusterEventsGetData = {
+	body?: never;
+	path?: never;
+	query?: never;
+	url: '/api/platform/cluster/events';
+};
+
+export type PlatformClusterEventsGetResponses = {
+	200: ClusterEventsDto;
+};
+
+export type PlatformClusterEventsGetResponse = PlatformClusterEventsGetResponses[keyof PlatformClusterEventsGetResponses];
+
+export type PlatformClusterUsageGetData = {
+	body?: never;
+	path?: never;
+	query?: {
+		range?: '1h' | '24h' | '7d';
+	};
+	url: '/api/platform/cluster/usage';
+};
+
+export type PlatformClusterUsageGetResponses = {
+	200: ClusterUsageDto;
+};
+
+export type PlatformClusterUsageGetResponse = PlatformClusterUsageGetResponses[keyof PlatformClusterUsageGetResponses];
 
 export type TemplatesListData = {
 	body?: never;
