@@ -16,7 +16,7 @@ An open-source, self-hosted PaaS for your apps. **One binary, any Kubernetes clu
 ## Quickstart
 
 ```sh
-curl -fsSL https://get.kubwave.com | sh
+curl -fsSL https://get.kubwave.com | bash
 kubwave install
 ```
 

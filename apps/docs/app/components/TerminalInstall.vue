@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { Check, Copy } from 'lucide-vue-next';
 
-const installCmd = 'curl -fsSL https://get.kubwave.com | sh';
+const installCmd = useInstallCommand();
 const copied = ref(false);
 
 async function copyInstallCmd(): Promise<void> {
 	try {
-		await navigator.clipboard.writeText(installCmd);
+		await navigator.clipboard.writeText(installCmd.value);
 		copied.value = true;
 		setTimeout(() => {
 			copied.value = false;
