@@ -41,6 +41,8 @@ function topPct(v: number) {
 }
 
 const single = computed(() => props.points.length < 2);
+// A narrow span can round to the same string at both ends, which reads as a broken axis rather than a flat series.
+const axisLabelsCollide = computed(() => !props.format || props.format(min.value) === props.format(max.value));
 const line = computed(() => (single.value ? '' : props.points.map(p => `${x(p.t).toFixed(2)},${y(p.v).toFixed(2)}`).join(' ')));
 const area = computed(() => (single.value ? '' : `0,${h.value} ${line.value} ${w},${h.value}`));
 
@@ -98,12 +100,14 @@ function onMove(e: MouseEvent) {
 			/>
 		</svg>
 
+		<div v-if="single" class="pointer-events-none absolute inset-0 flex items-center justify-center gap-2">
+			<span :class="['shrink-0 rounded-full bg-current', large ? 'size-2' : 'size-1.5']" />
+			<span v-if="large" class="text-xs tabular-nums text-muted-foreground">
+				{{ format ? format(points[0]!.v) : points[0]!.v }} · only one sample in range
+			</span>
+		</div>
+
 		<!-- Dots as HTML overlays (fixed px size) so they stay circular despite the stretched SVG. -->
-		<div
-			v-if="single"
-			:class="['pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full bg-current', large ? 'size-2' : 'size-1.5']"
-			:style="{ left: `${leftPct(points[0]!.t)}%`, top: `${topPct(points[0]!.v)}%` }"
-		/>
 		<div
 			v-if="hovered"
 			:class="['pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full bg-current', large ? 'size-2.5' : 'size-2']"
@@ -112,10 +116,10 @@ function onMove(e: MouseEvent) {
 
 		<div
 			v-if="format && !single"
-			class="pointer-events-none absolute inset-0 flex flex-col justify-between py-0.5 text-[0.65rem] tabular-nums text-muted-foreground"
+			class="pointer-events-none absolute inset-0 flex flex-col items-start justify-between py-0.5 text-[0.65rem] tabular-nums text-muted-foreground"
 		>
-			<span>{{ format(max) }}</span>
-			<span>{{ format(min) }}</span>
+			<span class="-ml-1 rounded bg-background/70 px-1">{{ format(max) }}</span>
+			<span v-if="!axisLabelsCollide" class="-ml-1 rounded bg-background/70 px-1">{{ format(min) }}</span>
 		</div>
 
 		<!-- Deploy-id labels along the top, maximized view only (small charts have no room). -->

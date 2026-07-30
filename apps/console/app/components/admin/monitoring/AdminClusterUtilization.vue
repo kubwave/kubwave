@@ -2,24 +2,21 @@
 import { formatBytes } from '~/utils/format';
 import { formatCpu, makeMetricsTimeFormatter } from '~/utils/metrics-format';
 import type { MetricsRange } from '~/utils/metrics-chart';
+import type { ClusterLiveSeries } from '~/composables/use-admin-cluster';
 import type { ClusterSnapshot } from '~/utils/types';
 
-const props = defineProps<{ snapshot: ClusterSnapshot | undefined; active: boolean }>();
+const props = defineProps<{ snapshot: ClusterSnapshot | undefined; liveSeries: ClusterLiveSeries }>();
 
 const RANGES: MetricsRange[] = ['1h', '24h', '7d'];
 
 const range = ref<MetricsRange>('1h');
-const { usage, liveSeries } = useClusterUsage(
-	range,
-	() => props.active,
-	() => props.snapshot
-);
+const { usage } = useClusterUsage(range);
 
 const historical = computed(() => usage.value?.available === true);
 const formatTime = computed(() => makeMetricsTimeFormatter(range.value));
 
-const cpuPoints = computed(() => (historical.value ? (usage.value?.series.cpuMillicores ?? []) : liveSeries.value.cpuMillicores));
-const memoryPoints = computed(() => (historical.value ? (usage.value?.series.memoryBytes ?? []) : liveSeries.value.memoryBytes));
+const cpuPoints = computed(() => (historical.value ? (usage.value?.series.cpuMillicores ?? []) : props.liveSeries.cpuMillicores));
+const memoryPoints = computed(() => (historical.value ? (usage.value?.series.memoryBytes ?? []) : props.liveSeries.memoryBytes));
 
 const split = computed(() => {
 	const value = props.snapshot?.split;
@@ -41,9 +38,9 @@ const split = computed(() => {
 
 <template>
 	<div class="flex flex-col gap-4">
-		<div class="flex items-center justify-between gap-3">
-			<p class="text-xs text-muted-foreground">{{ historical ? 'Historical · Prometheus' : 'Live · in-session buffer' }}</p>
-			<div v-if="historical" class="flex items-center gap-1 rounded-lg bg-muted/50 p-0.5">
+		<div v-if="historical" class="flex items-center justify-between gap-3">
+			<p class="text-xs text-muted-foreground">Historical · Prometheus</p>
+			<div class="flex items-center gap-1 rounded-lg bg-muted/50 p-0.5">
 				<button
 					v-for="option in RANGES"
 					:key="option"

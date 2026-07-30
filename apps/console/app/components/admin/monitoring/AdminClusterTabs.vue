@@ -6,6 +6,8 @@ const props = defineProps<{ snapshot: ClusterSnapshot | undefined }>();
 
 const tab = ref('utilization');
 
+const { liveSeries } = useClusterLiveSamples(() => props.snapshot);
+
 const nodeCount = computed(() => props.snapshot?.nodes.length ?? 0);
 </script>
 
@@ -33,7 +35,7 @@ const nodeCount = computed(() => props.snapshot?.nodes.length ?? 0);
 			</TabsList>
 		</Tabs>
 
-		<AdminClusterUtilization v-if="tab === 'utilization'" :snapshot="snapshot" :active="tab === 'utilization'" />
+		<AdminClusterUtilization v-if="tab === 'utilization'" :snapshot="snapshot" :live-series="liveSeries" />
 		<AdminClusterNodesTable v-else-if="tab === 'nodes'" :nodes="snapshot?.nodes ?? []" />
 		<AdminClusterComponents v-else-if="tab === 'components'" :components="snapshot?.components ?? []" />
 		<AdminClusterEvents v-else-if="tab === 'events'" :active="tab === 'events'" />

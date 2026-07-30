@@ -55,19 +55,19 @@ export interface ClusterLiveSeries {
 	memoryBytes: MetricPoint[];
 }
 
-export function useClusterUsage(
-	range: MaybeRefOrGetter<MetricsRange>,
-	active: MaybeRefOrGetter<boolean>,
-	snapshot: MaybeRefOrGetter<ClusterSnapshot | undefined>
-) {
+export function useClusterUsage(range: MaybeRefOrGetter<MetricsRange>) {
 	const api = useApi();
 	const { data: usage, isLoading } = useQuery({
 		queryKey: computed(() => queryKeys.clusterUsage(toValue(range))),
-		enabled: computed(() => toValue(active)),
 		refetchInterval: () => pollIntervalForRange(toValue(range)),
 		queryFn: () => apiData(api.platform.cluster.usage.get({ range: toValue(range) }))
 	});
 
+	return { usage: usage as Ref<ClusterUsage | undefined>, isLoading };
+}
+
+// Owned above the tab switcher: the buffer is the only copy of this history, so unmounting the chart must not discard it.
+export function useClusterLiveSamples(snapshot: MaybeRefOrGetter<ClusterSnapshot | undefined>) {
 	const samples = ref<ClusterLiveSeries>({ cpuMillicores: [], memoryBytes: [] });
 	let lastSampledAt: string | null = null;
 
@@ -88,9 +88,5 @@ export function useClusterUsage(
 		{ immediate: true }
 	);
 
-	return {
-		usage: usage as Ref<ClusterUsage | undefined>,
-		isLoading,
-		liveSeries: computed<ClusterLiveSeries>(() => samples.value)
-	};
+	return { liveSeries: computed<ClusterLiveSeries>(() => samples.value) };
 }
