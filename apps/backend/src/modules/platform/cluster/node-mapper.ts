@@ -17,7 +17,7 @@ export interface NodeUsage {
 	fsCapacityBytes: number;
 }
 
-export function conditionIsTrue(node: V1Node, type: string): boolean {
+function conditionIsTrue(node: V1Node, type: string): boolean {
 	return node.status?.conditions?.some(condition => condition.type === type && condition.status === 'True') ?? false;
 }
 
