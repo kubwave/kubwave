@@ -53,5 +53,19 @@ useHead({ title: computed(() => `${name} · Monitoring`) });
 		<AdminNodeHeader v-if="detail" :detail="detail" />
 
 		<AdminNodeCharts :name="name" />
+
+		<div v-if="detail" class="grid gap-3 lg:grid-cols-2">
+			<AdminNodeConditions :conditions="detail.conditions" :taints="detail.taints" />
+		</div>
+
+		<section v-if="detail" class="flex flex-col gap-3">
+			<h2 class="text-sm font-medium">Pods on this node</h2>
+			<AdminNodePods :pods="detail.pods" />
+		</section>
+
+		<section v-if="detail" class="flex flex-col gap-3">
+			<h2 class="text-sm font-medium">Warning events for this node</h2>
+			<AdminNodeEvents :events="detail.events" />
+		</section>
 	</div>
 </template>
