@@ -51,5 +51,7 @@ useHead({ title: computed(() => `${name} · Monitoring`) });
 		</PageHeader>
 
 		<AdminNodeHeader v-if="detail" :detail="detail" />
+
+		<AdminNodeCharts :name="name" />
 	</div>
 </template>

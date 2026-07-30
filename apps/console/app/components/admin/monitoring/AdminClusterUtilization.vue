@@ -7,8 +7,6 @@ import type { ClusterSnapshot } from '~/utils/types';
 
 const props = defineProps<{ snapshot: ClusterSnapshot | undefined; liveSeries: ClusterLiveSeries }>();
 
-const RANGES: MetricsRange[] = ['1h', '24h', '7d'];
-
 const range = ref<MetricsRange>('1h');
 const { usage } = useClusterUsage(range);
 
@@ -40,20 +38,7 @@ const split = computed(() => {
 	<div class="flex flex-col gap-4">
 		<div v-if="historical" class="flex items-center justify-between gap-3">
 			<p class="text-xs text-muted-foreground">Historical · Prometheus</p>
-			<div class="flex items-center gap-1 rounded-lg bg-muted/50 p-0.5">
-				<button
-					v-for="option in RANGES"
-					:key="option"
-					type="button"
-					:class="[
-						'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
-						range === option ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'
-					]"
-					@click="range = option"
-				>
-					{{ option }}
-				</button>
-			</div>
+			<MetricsRangeTabs v-model="range" />
 		</div>
 
 		<p v-if="!historical" class="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
