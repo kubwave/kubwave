@@ -5842,6 +5842,15 @@
 					"available": {
 						"type": "boolean"
 					},
+					"unavailableReason": {
+						"nullable": true,
+						"oneOf": [
+							{
+								"type": "string",
+								"enum": ["not-found", "unreachable"]
+							}
+						]
+					},
 					"sampledAt": {
 						"type": "string"
 					},
@@ -5873,7 +5882,7 @@
 						}
 					}
 				},
-				"required": ["available", "sampledAt", "node", "conditions", "taints", "pods", "events"]
+				"required": ["available", "unavailableReason", "sampledAt", "node", "conditions", "taints", "pods", "events"]
 			},
 			"ClusterNodeUsageSeriesDto": {
 				"type": "object",

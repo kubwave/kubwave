@@ -237,6 +237,9 @@ export class ClusterNodeDetailDto {
 	@ApiProperty({ type: Boolean })
 	available!: boolean;
 
+	@ApiProperty({ nullable: true, oneOf: [{ type: 'string', enum: ['not-found', 'unreachable'] }] })
+	unavailableReason!: 'not-found' | 'unreachable' | null;
+
 	@ApiProperty({ type: String })
 	sampledAt!: string;
 

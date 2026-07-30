@@ -14,12 +14,18 @@ onServerPrefetch(() => queryClient.prefetchQuery(clusterNodeQuery(api, name)));
 
 const { node: detail, isLoading } = useClusterNode(name);
 
+const unavailableMessage = computed(() =>
+	detail.value?.unavailableReason === 'not-found'
+		? 'This node is no longer part of the cluster.'
+		: 'The cluster could not be reached. This page keeps retrying automatically, and the node may still be here.'
+);
+
 useHead({ title: computed(() => `${name} · Monitoring`) });
 </script>
 
 <template>
 	<div v-if="!isLoading && detail?.available === false" class="rounded-xl border px-4 py-16 text-center">
-		<p class="text-sm text-muted-foreground">This node is no longer part of the cluster.</p>
+		<p class="text-sm text-muted-foreground">{{ unavailableMessage }}</p>
 		<Button as-child variant="outline" size="sm" class="mt-4">
 			<NuxtLink to="/admin/monitoring">Back to monitoring</NuxtLink>
 		</Button>

@@ -780,6 +780,7 @@ export type ClusterNodePodDto = {
 
 export type ClusterNodeDetailDto = {
 	available: boolean;
+	unavailableReason: 'not-found' | 'unreachable' | null;
 	sampledAt: string;
 	node: ClusterNodeDto;
 	conditions: Array<ClusterNodeConditionDetailDto>;

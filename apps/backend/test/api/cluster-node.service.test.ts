@@ -1,9 +1,10 @@
+import { ApiException } from '@kubernetes/client-node';
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 
 let nodeItem: unknown = null;
 let pods: unknown[] = [];
 let events: unknown[] = [];
-let readNodeThrows = false;
+let readNodeError: unknown = null;
 let summaryThrows = false;
 let capturedPodSelector = '';
 let capturedEventSelector = '';
@@ -28,7 +29,7 @@ mock.module('@kubwave/kube', () => ({
 	getKubeConfig: () => ({
 		makeApiClient: () => ({
 			readNode: async () => {
-				if (readNodeThrows) throw new Error('not found');
+				if (readNodeError) throw readNodeError;
 				return nodeItem;
 			},
 			listPodForAllNamespaces: async ({ fieldSelector }: { fieldSelector: string }) => {
@@ -75,7 +76,7 @@ beforeEach(() => {
 			lastTimestamp: '2026-07-30T06:00:00.000Z'
 		}
 	];
-	readNodeThrows = false;
+	readNodeError = null;
 	summaryThrows = false;
 	capturedPodSelector = '';
 	capturedEventSelector = '';
@@ -91,6 +92,7 @@ describe('ClusterNodeService', () => {
 	test('returns the full condition set with reason and transition time', async () => {
 		const detail = await new ClusterNodeService().getNode('node-1');
 		expect(detail.available).toBe(true);
+		expect(detail.unavailableReason).toBeNull();
 		expect(detail.conditions).toContainEqual({
 			type: 'DiskPressure',
 			status: 'False',
@@ -117,10 +119,27 @@ describe('ClusterNodeService', () => {
 		expect(detail.node.cpu.used).toBeNull();
 	});
 
-	test('reports unavailable rather than throwing for an unknown node', async () => {
-		readNodeThrows = true;
+	test('reports unavailable with reason not-found for an unknown node', async () => {
+		readNodeError = new ApiException(404, 'Not Found', undefined, {});
 		const detail = await new ClusterNodeService().getNode('ghost');
 		expect(detail.available).toBe(false);
+		expect(detail.unavailableReason).toBe('not-found');
+		expect(detail.pods).toEqual([]);
+	});
+
+	test('reports unavailable with reason unreachable when the connection fails outright', async () => {
+		readNodeError = new TypeError('fetch failed');
+		const detail = await new ClusterNodeService().getNode('node-1');
+		expect(detail.available).toBe(false);
+		expect(detail.unavailableReason).toBe('unreachable');
+		expect(detail.pods).toEqual([]);
+	});
+
+	test('reports unavailable with reason unreachable for a non-404 apiserver error', async () => {
+		readNodeError = new ApiException(503, 'Service Unavailable', undefined, {});
+		const detail = await new ClusterNodeService().getNode('node-1');
+		expect(detail.available).toBe(false);
+		expect(detail.unavailableReason).toBe('unreachable');
 		expect(detail.pods).toEqual([]);
 	});
 });

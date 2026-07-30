@@ -1,11 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import { CoreV1Api, type V1Node, type V1Pod } from '@kubernetes/client-node';
+import { ApiException, CoreV1Api, type V1Node, type V1Pod } from '@kubernetes/client-node';
 import { getKubeConfig, nodeStatsSummary, type NodeStatsSummary } from '@kubwave/kube';
 import type { ClusterNodeConditionDetailDto, ClusterNodeDetailDto, ClusterNodePodDto } from './cluster.dto.js';
 import { toEventDto } from './event-mapper.js';
 import { sumRequests, toNodeDto, type NodeUsage } from './node-mapper.js';
 
 const CACHE_TTL_MS = 10_000;
+
+// The apiserver reports a missing node as a 404 ApiException; anything else (connection refused, timeout, 5xx)
+// means the cluster couldn't be reached at all, and the node may well still exist.
+function unavailableReasonOf(error: unknown): 'not-found' | 'unreachable' {
+	return error instanceof ApiException && error.code === 404 ? 'not-found' : 'unreachable';
+}
 
 function taintText(taint: { key?: string; value?: string; effect?: string }): string {
 	const pair = taint.value ? `${taint.key}=${taint.value}` : (taint.key ?? '');
@@ -90,6 +96,7 @@ export class ClusterNodeService {
 
 			return {
 				available: true,
+				unavailableReason: null,
 				sampledAt,
 				node: toNodeDto(node, nodeUsageOf(summary), sumRequests(pods)),
 				conditions: conditionDetails(node),
@@ -97,10 +104,11 @@ export class ClusterNodeService {
 				pods: podDtos(pods, summary),
 				events: eventList.items.map(toEventDto).sort((a, b) => (b.lastSeen ?? '').localeCompare(a.lastSeen ?? ''))
 			};
-		} catch {
+		} catch (error) {
 			// An unknown node or an unreachable cluster leaves the page renderable instead of 500-ing.
 			return {
 				available: false,
+				unavailableReason: unavailableReasonOf(error),
 				sampledAt,
 				node: {
 					name,
