@@ -64,6 +64,11 @@ beforeEach(() => {
 			metadata: { namespace: 'kubwave', name: 'api-1' },
 			spec: { containers: [{ resources: { requests: { cpu: '500m', memory: '1Gi' } } }] },
 			status: { phase: 'Running' }
+		},
+		{
+			metadata: { namespace: 'kubwave', name: 'migrate-job-1' },
+			spec: { containers: [{ resources: { requests: { cpu: '100m', memory: '128Mi' } } }] },
+			status: { phase: 'Succeeded' }
 		}
 	];
 	events = [
@@ -109,6 +114,12 @@ describe('ClusterNodeService', () => {
 	test('joins pod usage from the kubelet summary', async () => {
 		const detail = await new ClusterNodeService().getNode('node-1');
 		expect(detail.pods).toEqual([{ namespace: 'kubwave', name: 'api-1', phase: 'Running', cpuMillicores: 500, memoryBytes: 512 }]);
+	});
+
+	test('excludes terminated pods from the pod table, matching the header meter', async () => {
+		const detail = await new ClusterNodeService().getNode('node-1');
+		expect(detail.pods.some(pod => pod.name === 'migrate-job-1')).toBe(false);
+		expect(detail.pods).toHaveLength(1);
 	});
 
 	test('leaves pod usage null when the summary api fails', async () => {

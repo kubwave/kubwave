@@ -24,6 +24,19 @@ function fixtureValueFor(query: string): string {
 	return '750';
 }
 
+// cAdvisor reports the node rootfs under two device labels (block device + overlay mount) for the same filesystem.
+// A real max() query collapses both into one series; a regression back to sum() would double this value.
+function resultFor(query: string): Array<{ metric: Record<string, string>; values: [number, string][] }> {
+	if (query.includes('container_fs_usage_bytes')) {
+		const value = fixtureValueFor(query);
+		return [
+			{ metric: { device: '/dev/vda1' }, values: [[100, value]] },
+			{ metric: { device: 'overlay_0-65' }, values: [[100, value]] }
+		];
+	}
+	return [{ metric: {}, values: [[100, fixtureValueFor(query)]] }];
+}
+
 beforeEach(() => {
 	capturedQueries = [];
 	prometheusUrl = 'http://prometheus:9090';
@@ -31,8 +44,7 @@ beforeEach(() => {
 		const url = input instanceof URL ? input : new URL(String(input));
 		const query = url.searchParams.get('query') ?? '';
 		capturedQueries.push(query);
-		const value = fixtureValueFor(query);
-		return new Response(JSON.stringify({ status: 'success', data: { result: [{ metric: {}, values: [[100, value]] }] } }), {
+		return new Response(JSON.stringify({ status: 'success', data: { result: resultFor(query) } }), {
 			headers: { 'content-type': 'application/json' }
 		});
 	}) as typeof fetch;
@@ -52,6 +64,15 @@ describe('ClusterNodeUsageService', () => {
 		for (const query of capturedQueries) {
 			expect(query).toContain('instance="node-1"');
 		}
+	});
+
+	// cAdvisor reports the node rootfs under two device labels for the same filesystem; max() collapses
+	// them to one value, sum() would double-count.
+	test('aggregates the disk series with max, not sum, to avoid double-counting the rootfs device', async () => {
+		expect(capturedQueries).toEqual([]);
+		await makeService().getUsage('node-1', '1h');
+		expect(capturedQueries[2]).toMatch(/^max\(container_fs_usage_bytes\{/);
+		expect(capturedQueries[2]).not.toContain('sum(container_fs_usage_bytes');
 	});
 
 	test('parses the returned matrix into points', async () => {

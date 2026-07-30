@@ -42,7 +42,9 @@ export class ClusterNodeUsageService {
 					spec.stepSeconds
 				),
 				queryRange(baseUrl, `sum(container_memory_working_set_bytes{${node},${CONTAINER_LABELS}})`, start, end, spec.stepSeconds),
-				queryRange(baseUrl, `sum(container_fs_usage_bytes{${node},id="/"})`, start, end, spec.stepSeconds)
+				// cAdvisor reports the node rootfs under multiple device labels (e.g. the block device and its overlay mount);
+				// max() reads the filesystem once, matching the kubelet total shown on the Nodes tab. sum() would double-count it.
+				queryRange(baseUrl, `max(container_fs_usage_bytes{${node},id="/"})`, start, end, spec.stepSeconds)
 			]);
 
 			const cpuMillicores = pointsOf(cpu);

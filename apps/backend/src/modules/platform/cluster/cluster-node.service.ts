@@ -3,7 +3,7 @@ import { ApiException, CoreV1Api, type V1Node, type V1Pod } from '@kubernetes/cl
 import { getKubeConfig, nodeStatsSummary, type NodeStatsSummary } from '@kubwave/kube';
 import type { ClusterNodeConditionDetailDto, ClusterNodeDetailDto, ClusterNodePodDto } from './cluster.dto.js';
 import { toEventDto } from './event-mapper.js';
-import { sumRequests, toNodeDto, type NodeUsage } from './node-mapper.js';
+import { isActive, sumRequests, toNodeDto, type NodeUsage } from './node-mapper.js';
 
 const CACHE_TTL_MS = 10_000;
 
@@ -48,6 +48,7 @@ function podDtos(pods: V1Pod[], summary: NodeStatsSummary | null): ClusterNodePo
 	);
 
 	return pods
+		.filter(isActive)
 		.map(pod => {
 			const namespace = pod.metadata?.namespace ?? '';
 			const name = pod.metadata?.name ?? '';
