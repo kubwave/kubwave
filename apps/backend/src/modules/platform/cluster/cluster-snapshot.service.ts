@@ -5,72 +5,18 @@ import {
 	CNPG_POD_SELECTOR,
 	getKubeConfig,
 	nodeStatsSummary,
-	parseCpuToMillicores,
-	parseMemoryToBytes,
 	PROMETHEUS_NAME,
 	type ClusterUsageAggregate,
 	type NodeStatsSummary
 } from '@kubwave/kube';
 import { BackendConfigService } from '../../../shared/config/backend-config.service.js';
 import { MetricsConfigService } from '../../../shared/metrics/metrics-config.service.js';
-import type { ClusterComponentDto, ClusterMeterDto, ClusterNodeConditionsDto, ClusterNodeDto, ClusterSnapshotDto } from './cluster.dto.js';
+import type { ClusterComponentDto, ClusterNodeDto, ClusterSnapshotDto } from './cluster.dto.js';
+import { meter, sumRequests, toNodeDto, type PodRequests } from './node-mapper.js';
 
 // Chart resources all carry part-of=kubwave, so one selector covers api/worker/console/registry without hardcoding names.
 const PLATFORM_COMPONENT_SELECTOR = 'app.kubernetes.io/part-of=kubwave';
-const NODE_ROLE_LABEL_PREFIX = 'node-role.kubernetes.io/';
 const CACHE_TTL_MS = 10_000;
-
-interface PodRequests {
-	cpuMillicores: number;
-	memoryBytes: number;
-	count: number;
-}
-
-function conditionIsTrue(node: V1Node, type: string): boolean {
-	return node.status?.conditions?.some(condition => condition.type === type && condition.status === 'True') ?? false;
-}
-
-function nodeConditions(node: V1Node): ClusterNodeConditionsDto {
-	return {
-		ready: conditionIsTrue(node, 'Ready'),
-		memoryPressure: conditionIsTrue(node, 'MemoryPressure'),
-		diskPressure: conditionIsTrue(node, 'DiskPressure'),
-		pidPressure: conditionIsTrue(node, 'PIDPressure')
-	};
-}
-
-function nodeRoles(node: V1Node): string[] {
-	return Object.keys(node.metadata?.labels ?? {})
-		.filter(label => label.startsWith(NODE_ROLE_LABEL_PREFIX))
-		.map(label => label.slice(NODE_ROLE_LABEL_PREFIX.length))
-		.filter(role => role.length > 0)
-		.sort();
-}
-
-// Terminated pods no longer hold a scheduler reservation, so they must not count toward requests or the pod tally.
-function isActive(pod: V1Pod): boolean {
-	const phase = pod.status?.phase;
-	return phase !== 'Succeeded' && phase !== 'Failed';
-}
-
-function sumRequests(pods: V1Pod[]): PodRequests {
-	const totals: PodRequests = { cpuMillicores: 0, memoryBytes: 0, count: 0 };
-
-	for (const pod of pods) {
-		if (!isActive(pod)) continue;
-		totals.count++;
-		for (const container of pod.spec?.containers ?? []) {
-			totals.cpuMillicores += parseCpuToMillicores(container.resources?.requests?.cpu) ?? 0;
-			totals.memoryBytes += parseMemoryToBytes(container.resources?.requests?.memory) ?? 0;
-		}
-	}
-
-	return totals;
-}
-
-function meter(capacity: number, requested: number | null, used: number | null): ClusterMeterDto {
-	return { capacity, requested, used };
-}
 
 function podsReady(pods: V1Pod[]): number {
 	return pods.filter(pod => pod.status?.conditions?.some(condition => condition.type === 'Ready' && condition.status === 'True')).length;
@@ -116,7 +62,10 @@ export class ClusterSnapshotService {
 				if (name) requestsByNode.set(name, sumRequests(pods.filter(pod => pod.spec?.nodeName === name)));
 			}
 
-			const nodeDtos = nodes.map(node => this.toNodeDto(node, usageByNode, requestsByNode));
+			const nodeDtos = nodes.map(node => {
+				const name = node.metadata?.name ?? '';
+				return toNodeDto(node, usageByNode.get(name), requestsByNode.get(name));
+			});
 			const clusterRequests = sumRequests(pods);
 			const anyUsage = usageByNode.size > 0;
 
@@ -180,29 +129,6 @@ export class ClusterSnapshotService {
 		}
 
 		return aggregateClusterUsage({ summaries, platformNamespace });
-	}
-
-	private toNodeDto(
-		node: V1Node,
-		usageByNode: Map<string, { cpuMillicores: number; memoryBytes: number; fsUsedBytes: number; fsCapacityBytes: number }>,
-		requestsByNode: Map<string, PodRequests>
-	): ClusterNodeDto {
-		const name = node.metadata?.name ?? '';
-		const usage = usageByNode.get(name);
-		const requests = requestsByNode.get(name);
-		const allocatable = node.status?.allocatable ?? {};
-
-		return {
-			name,
-			roles: nodeRoles(node),
-			cordoned: node.spec?.unschedulable === true,
-			kubeletVersion: node.status?.nodeInfo?.kubeletVersion ?? '',
-			conditions: nodeConditions(node),
-			cpu: meter(parseCpuToMillicores(allocatable.cpu) ?? 0, requests?.cpuMillicores ?? 0, usage?.cpuMillicores ?? null),
-			memory: meter(parseMemoryToBytes(allocatable.memory) ?? 0, requests?.memoryBytes ?? 0, usage?.memoryBytes ?? null),
-			disk: meter(usage?.fsCapacityBytes ?? 0, null, usage?.fsUsedBytes ?? null),
-			pods: meter(Number(allocatable.pods ?? 0), null, requests?.count ?? 0)
-		};
 	}
 
 	private async readComponents(coreApi: CoreV1Api, appsApi: AppsV1Api, namespace: string): Promise<ClusterComponentDto[]> {
