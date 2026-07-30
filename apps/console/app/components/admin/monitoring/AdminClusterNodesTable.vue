@@ -52,7 +52,7 @@ function podsText(node: ClusterNode): string {
 				<TableBody>
 					<TableRow v-for="row in rows" :key="row.node.name">
 						<TableCell class="py-3">
-							<p class="font-medium">{{ row.node.name }}</p>
+							<NuxtLink :to="`/admin/monitoring/nodes/${row.node.name}`" class="font-medium hover:underline">{{ row.node.name }}</NuxtLink>
 							<p v-if="row.node.roles.length > 0" class="mt-0.5 text-xs text-muted-foreground">{{ row.node.roles.join(', ') }}</p>
 						</TableCell>
 						<TableCell class="py-3">
