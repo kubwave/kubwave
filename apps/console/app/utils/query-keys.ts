@@ -41,6 +41,8 @@ export const queryKeys = {
 	clusterSnapshot: ['admin', 'cluster'] as const,
 	clusterEvents: ['admin', 'cluster', 'events'] as const,
 	clusterUsage: (range: string) => ['admin', 'cluster', 'usage', range] as const,
+	clusterNode: (name: string) => ['admin', 'cluster', 'node', name] as const,
+	clusterNodeUsage: (name: string, range: string) => ['admin', 'cluster', 'node', name, 'usage', range] as const,
 	version: ['admin', 'version'] as const,
 	updates: ['admin', 'updates'] as const,
 	updateRun: (runId: string) => ['admin', 'updates', runId] as const,

@@ -5,6 +5,8 @@ import type {
 	EnvVar,
 	PlatformClusterEventsGetResponse,
 	PlatformClusterGetResponse,
+	PlatformClusterNodeGetResponse,
+	PlatformClusterNodeUsageGetResponse,
 	PlatformClusterUsageGetResponse,
 	ProjectDetailDto,
 	ServiceDeploymentsListResponse,
@@ -43,3 +45,7 @@ export type ClusterSplit = ClusterSnapshot['split'];
 export type ClusterEvents = PlatformClusterEventsGetResponse;
 export type ClusterEvent = ClusterEvents['events'][number];
 export type ClusterUsage = PlatformClusterUsageGetResponse;
+export type ClusterNodeDetail = PlatformClusterNodeGetResponse;
+export type ClusterNodeCondition = ClusterNodeDetail['conditions'][number];
+export type ClusterNodePod = ClusterNodeDetail['pods'][number];
+export type ClusterNodeUsage = PlatformClusterNodeUsageGetResponse;

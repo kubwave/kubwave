@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/vue-query';
 import type { ApiClient } from '~/utils/api-client';
 import { queryKeys } from '~/utils/query-keys';
 import { pollIntervalForRange, type MetricPoint, type MetricsRange } from '~/utils/metrics-chart';
-import type { ClusterEvents, ClusterSnapshot, ClusterUsage } from '~/utils/types';
+import type { ClusterEvents, ClusterNodeDetail, ClusterNodeUsage, ClusterSnapshot, ClusterUsage } from '~/utils/types';
 
 // ~22 min of history at the 15s snapshot poll; a live install has no stored series, so the Utilization tab buffers one in-session.
 const MAX_SAMPLES = 90;
@@ -64,6 +64,35 @@ export function useClusterUsage(range: MaybeRefOrGetter<MetricsRange>) {
 	});
 
 	return { usage: usage as Ref<ClusterUsage | undefined>, isLoading };
+}
+
+export function clusterNodeQuery(api: ApiClient, name: string) {
+	return {
+		queryKey: queryKeys.clusterNode(name),
+		queryFn: () => apiData(api.platform.cluster.nodes(name).get())
+	};
+}
+
+export function useClusterNode(name: MaybeRefOrGetter<string>) {
+	const api = useApi();
+	const { data: node, isLoading } = useQuery({
+		queryKey: computed(() => queryKeys.clusterNode(toValue(name))),
+		queryFn: () => apiData(api.platform.cluster.nodes(toValue(name)).get()),
+		refetchInterval: 15_000
+	});
+
+	return { node: node as Ref<ClusterNodeDetail | undefined>, isLoading };
+}
+
+export function useClusterNodeUsage(name: MaybeRefOrGetter<string>, range: MaybeRefOrGetter<MetricsRange>) {
+	const api = useApi();
+	const { data: usage } = useQuery({
+		queryKey: computed(() => queryKeys.clusterNodeUsage(toValue(name), toValue(range))),
+		refetchInterval: () => pollIntervalForRange(toValue(range)),
+		queryFn: () => apiData(api.platform.cluster.nodes(toValue(name)).usage.get({ range: toValue(range) }))
+	});
+
+	return { usage: usage as Ref<ClusterNodeUsage | undefined> };
 }
 
 // Owned above the tab switcher: the buffer is the only copy of this history, so unmounting the chart must not discard it.
