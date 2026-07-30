@@ -5,6 +5,7 @@ import { ZodValidationPipe } from '../../../shared/validation/zod-validation.pip
 import {
 	ClusterEventsDto,
 	ClusterNodeDetailDto,
+	ClusterNodeUsageDto,
 	ClusterSnapshotDto,
 	ClusterUsageDto,
 	clusterNodeParamsSchema,
@@ -13,6 +14,7 @@ import {
 	type ClusterUsageQuery
 } from './cluster.dto.js';
 import { ClusterEventsService } from './cluster-events.service.js';
+import { ClusterNodeUsageService } from './cluster-node-usage.service.js';
 import { ClusterNodeService } from './cluster-node.service.js';
 import { ClusterSnapshotService } from './cluster-snapshot.service.js';
 import { ClusterUsageService } from './cluster-usage.service.js';
@@ -26,7 +28,8 @@ export class ClusterController {
 		private readonly snapshot: ClusterSnapshotService,
 		private readonly events: ClusterEventsService,
 		private readonly usage: ClusterUsageService,
-		private readonly node: ClusterNodeService
+		private readonly node: ClusterNodeService,
+		private readonly nodeUsage: ClusterNodeUsageService
 	) {}
 
 	@Get()
@@ -56,5 +59,16 @@ export class ClusterController {
 	@ApiOkResponse({ type: ClusterNodeDetailDto })
 	getNode(@Param(new ZodValidationPipe(clusterNodeParamsSchema)) params: ClusterNodeParams): Promise<ClusterNodeDetailDto> {
 		return this.node.getNode(params.name);
+	}
+
+	@Get('nodes/:name/usage')
+	@ApiOperation({ operationId: 'platformClusterNodeUsageGet', summary: 'Get one node CPU, memory and disk history' })
+	@ApiQuery({ name: 'range', enum: ['1h', '24h', '7d'], required: false })
+	@ApiOkResponse({ type: ClusterNodeUsageDto })
+	getNodeUsage(
+		@Param(new ZodValidationPipe(clusterNodeParamsSchema)) params: ClusterNodeParams,
+		@Query(new ZodValidationPipe(clusterUsageQuerySchema)) query: ClusterUsageQuery
+	): Promise<ClusterNodeUsageDto> {
+		return this.nodeUsage.getUsage(params.name, query.range);
 	}
 }

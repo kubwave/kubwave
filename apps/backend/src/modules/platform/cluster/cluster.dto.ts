@@ -255,3 +255,29 @@ export class ClusterNodeDetailDto {
 	@ApiProperty({ type: [ClusterEventDto] })
 	events!: ClusterEventDto[];
 }
+
+export class ClusterNodeUsageSeriesDto {
+	@ApiProperty({ type: [MetricPointDto] })
+	cpuMillicores!: MetricPointDto[];
+
+	@ApiProperty({ type: [MetricPointDto] })
+	memoryBytes!: MetricPointDto[];
+
+	// Empty when cAdvisor exposes no machine-level filesystem series; the console then omits the disk chart.
+	@ApiProperty({ type: [MetricPointDto] })
+	diskBytes!: MetricPointDto[];
+}
+
+export class ClusterNodeUsageDto {
+	@ApiProperty({ type: Boolean })
+	available!: boolean;
+
+	@ApiProperty({ enum: ['1h', '24h', '7d'] })
+	range!: MetricsRange;
+
+	@ApiProperty({ type: String })
+	sampledAt!: string;
+
+	@ApiProperty({ type: ClusterNodeUsageSeriesDto })
+	series!: ClusterNodeUsageSeriesDto;
+}
