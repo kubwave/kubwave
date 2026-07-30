@@ -1,30 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { CoreV1Api, type CoreV1Event } from '@kubernetes/client-node';
+import { CoreV1Api } from '@kubernetes/client-node';
 import { getKubeConfig } from '@kubwave/kube';
-import type { ClusterEventDto, ClusterEventsDto } from './cluster.dto.js';
+import type { ClusterEventsDto } from './cluster.dto.js';
+import { toEventDto } from './event-mapper.js';
 
 const MAX_EVENTS = 50;
-
-function occurredAt(event: CoreV1Event): string | null {
-	const value = event.lastTimestamp ?? event.eventTime ?? event.metadata?.creationTimestamp;
-	if (!value) return null;
-	return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
-}
-
-function toEventDto(event: CoreV1Event): ClusterEventDto {
-	const namespace = event.metadata?.namespace ?? null;
-
-	return {
-		id: event.metadata?.uid ?? `${namespace ?? ''}/${event.metadata?.name ?? ''}`,
-		reason: event.reason ?? '',
-		message: event.message ?? '',
-		namespace,
-		objectKind: event.involvedObject?.kind ?? null,
-		objectName: event.involvedObject?.name ?? null,
-		count: event.count ?? 1,
-		lastSeen: occurredAt(event)
-	};
-}
 
 @Injectable()
 export class ClusterEventsService {

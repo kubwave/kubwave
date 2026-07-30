@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { CoreV1Api, type CoreV1Event, type V1Node, type V1Pod } from '@kubernetes/client-node';
+import { CoreV1Api, type V1Node, type V1Pod } from '@kubernetes/client-node';
 import { getKubeConfig, nodeStatsSummary, type NodeStatsSummary } from '@kubwave/kube';
-import type { ClusterEventDto, ClusterNodeConditionDetailDto, ClusterNodeDetailDto, ClusterNodePodDto } from './cluster.dto.js';
+import type { ClusterNodeConditionDetailDto, ClusterNodeDetailDto, ClusterNodePodDto } from './cluster.dto.js';
+import { toEventDto } from './event-mapper.js';
 import { sumRequests, toNodeDto, type NodeUsage } from './node-mapper.js';
 
 const CACHE_TTL_MS = 10_000;
@@ -57,22 +58,6 @@ function podDtos(pods: V1Pod[], summary: NodeStatsSummary | null): ClusterNodePo
 		.sort((a, b) => (b.cpuMillicores ?? -1) - (a.cpuMillicores ?? -1));
 }
 
-function eventDto(event: CoreV1Event): ClusterEventDto {
-	const value = event.lastTimestamp ?? event.eventTime ?? event.metadata?.creationTimestamp;
-	const namespace = event.metadata?.namespace ?? null;
-
-	return {
-		id: event.metadata?.uid ?? `${namespace ?? ''}/${event.metadata?.name ?? ''}`,
-		reason: event.reason ?? '',
-		message: event.message ?? '',
-		namespace,
-		objectKind: event.involvedObject?.kind ?? null,
-		objectName: event.involvedObject?.name ?? null,
-		count: event.count ?? 1,
-		lastSeen: value ? new Date(value as string | Date).toISOString() : null
-	};
-}
-
 @Injectable()
 export class ClusterNodeService {
 	private cache = new Map<string, { at: number; value: ClusterNodeDetailDto }>();
@@ -110,7 +95,7 @@ export class ClusterNodeService {
 				conditions: conditionDetails(node),
 				taints: (node.spec?.taints ?? []).map(taintText),
 				pods: podDtos(pods, summary),
-				events: eventList.items.map(eventDto).sort((a, b) => (b.lastSeen ?? '').localeCompare(a.lastSeen ?? ''))
+				events: eventList.items.map(toEventDto).sort((a, b) => (b.lastSeen ?? '').localeCompare(a.lastSeen ?? ''))
 			};
 		} catch {
 			// An unknown node or an unreachable cluster leaves the page renderable instead of 500-ing.
