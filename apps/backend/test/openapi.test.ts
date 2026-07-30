@@ -118,6 +118,11 @@ describe('Nest OpenAPI contract', () => {
 		expect(operation('/api/platform/settings/volume-autoscaling', 'get').operationId).toBe('platformSettingsVolumeAutoscalingGet');
 		expect(operation('/api/platform/settings/volume-autoscaling', 'put').operationId).toBe('platformSettingsVolumeAutoscalingUpdate');
 		expect(operation('/api/platform/settings/platform-volumes', 'get').operationId).toBe('platformSettingsPlatformVolumesGet');
+		expect(operation('/api/platform/cluster', 'get').operationId).toBe('platformClusterGet');
+		expect(operation('/api/platform/cluster/events', 'get').operationId).toBe('platformClusterEventsGet');
+		expect(operation('/api/platform/cluster/usage', 'get').operationId).toBe('platformClusterUsageGet');
+		expect(operation('/api/platform/cluster/nodes/{name}', 'get').operationId).toBe('platformClusterNodeGet');
+		expect(operation('/api/platform/cluster/nodes/{name}/usage', 'get').operationId).toBe('platformClusterNodeUsageGet');
 		expect(operation('/api/git/github/manifest', 'post').operationId).toBe('gitGithubCreateManifest');
 		expect(operation('/api/git/github', 'get').operationId).toBe('gitGithubConnectionGet');
 		expect(operation('/api/git/github', 'delete').operationId).toBe('gitGithubDisconnect');

@@ -48,6 +48,11 @@ describe('OpenAPI permission metadata', () => {
 		expect(operation('/api/auth/session', 'get').security).toEqual([{ bearerAuth: [] }]);
 		expect(operation('/api/platform/users', 'get').security).toEqual([{ bearerAuth: [] }]);
 		expect(operation('/api/teams/{teamId}/members', 'post').security).toEqual([{ bearerAuth: [] }]);
+		expect(operation('/api/platform/cluster', 'get').security).toEqual([{ bearerAuth: [] }]);
+		expect(operation('/api/platform/cluster/events', 'get').security).toEqual([{ bearerAuth: [] }]);
+		expect(operation('/api/platform/cluster/usage', 'get').security).toEqual([{ bearerAuth: [] }]);
+		expect(operation('/api/platform/cluster/nodes/{name}', 'get').security).toEqual([{ bearerAuth: [] }]);
+		expect(operation('/api/platform/cluster/nodes/{name}/usage', 'get').security).toEqual([{ bearerAuth: [] }]);
 	});
 
 	test('leaves public routes without bearer security', () => {
