@@ -1,9 +1,19 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { AdminGuard } from '../../../shared/auth/auth.guard.js';
 import { ZodValidationPipe } from '../../../shared/validation/zod-validation.pipe.js';
-import { ClusterEventsDto, ClusterSnapshotDto, ClusterUsageDto, clusterUsageQuerySchema, type ClusterUsageQuery } from './cluster.dto.js';
+import {
+	ClusterEventsDto,
+	ClusterNodeDetailDto,
+	ClusterSnapshotDto,
+	ClusterUsageDto,
+	clusterNodeParamsSchema,
+	clusterUsageQuerySchema,
+	type ClusterNodeParams,
+	type ClusterUsageQuery
+} from './cluster.dto.js';
 import { ClusterEventsService } from './cluster-events.service.js';
+import { ClusterNodeService } from './cluster-node.service.js';
 import { ClusterSnapshotService } from './cluster-snapshot.service.js';
 import { ClusterUsageService } from './cluster-usage.service.js';
 
@@ -15,7 +25,8 @@ export class ClusterController {
 	constructor(
 		private readonly snapshot: ClusterSnapshotService,
 		private readonly events: ClusterEventsService,
-		private readonly usage: ClusterUsageService
+		private readonly usage: ClusterUsageService,
+		private readonly node: ClusterNodeService
 	) {}
 
 	@Get()
@@ -38,5 +49,12 @@ export class ClusterController {
 	@ApiOkResponse({ type: ClusterUsageDto })
 	getUsage(@Query(new ZodValidationPipe(clusterUsageQuerySchema)) query: ClusterUsageQuery): Promise<ClusterUsageDto> {
 		return this.usage.getUsage(query.range);
+	}
+
+	@Get('nodes/:name')
+	@ApiOperation({ operationId: 'platformClusterNodeGet', summary: 'Get one node with its pods, conditions and events' })
+	@ApiOkResponse({ type: ClusterNodeDetailDto })
+	getNode(@Param(new ZodValidationPipe(clusterNodeParamsSchema)) params: ClusterNodeParams): Promise<ClusterNodeDetailDto> {
+		return this.node.getNode(params.name);
 	}
 }

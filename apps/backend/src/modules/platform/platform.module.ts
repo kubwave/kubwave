@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AdminGuard } from '../../shared/auth/auth.guard.js';
 import { ClusterController } from './cluster/cluster.controller.js';
 import { ClusterEventsService } from './cluster/cluster-events.service.js';
+import { ClusterNodeService } from './cluster/cluster-node.service.js';
 import { ClusterSnapshotService } from './cluster/cluster-snapshot.service.js';
 import { ClusterUsageService } from './cluster/cluster-usage.service.js';
 import { PlatformController } from './platform.controller.js';
@@ -65,7 +66,8 @@ import { PlatformVersionService } from './version/platform-version.service.js';
 		PlatformUpdatesService,
 		ClusterSnapshotService,
 		ClusterEventsService,
-		ClusterUsageService
+		ClusterUsageService,
+		ClusterNodeService
 	]
 })
 export class PlatformModule {}

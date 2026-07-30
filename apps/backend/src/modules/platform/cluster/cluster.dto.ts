@@ -189,3 +189,69 @@ export class ClusterUsageDto {
 	@ApiProperty({ type: ClusterUsageSeriesDto })
 	series!: ClusterUsageSeriesDto;
 }
+
+// Rejects a malformed name before it reaches the apiserver as a raw path segment.
+export const clusterNodeParamsSchema = z.object({
+	name: z
+		.string()
+		.min(1)
+		.max(253)
+		.regex(/^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$/)
+});
+
+export type ClusterNodeParams = z.infer<typeof clusterNodeParamsSchema>;
+
+export class ClusterNodeConditionDetailDto {
+	@ApiProperty({ type: String })
+	type!: string;
+
+	@ApiProperty({ type: String })
+	status!: string;
+
+	@ApiProperty({ type: String, nullable: true })
+	reason!: string | null;
+
+	@ApiProperty({ type: String, nullable: true })
+	lastTransitionTime!: string | null;
+}
+
+export class ClusterNodePodDto {
+	@ApiProperty({ type: String })
+	namespace!: string;
+
+	@ApiProperty({ type: String })
+	name!: string;
+
+	@ApiProperty({ type: String })
+	phase!: string;
+
+	// null when the kubelet Summary API had nothing for this pod, so the console shows "unknown" rather than zero.
+	@ApiProperty({ type: Number, nullable: true })
+	cpuMillicores!: number | null;
+
+	@ApiProperty({ type: Number, nullable: true })
+	memoryBytes!: number | null;
+}
+
+export class ClusterNodeDetailDto {
+	@ApiProperty({ type: Boolean })
+	available!: boolean;
+
+	@ApiProperty({ type: String })
+	sampledAt!: string;
+
+	@ApiProperty({ type: ClusterNodeDto })
+	node!: ClusterNodeDto;
+
+	@ApiProperty({ type: [ClusterNodeConditionDetailDto] })
+	conditions!: ClusterNodeConditionDetailDto[];
+
+	@ApiProperty({ type: [String] })
+	taints!: string[];
+
+	@ApiProperty({ type: [ClusterNodePodDto] })
+	pods!: ClusterNodePodDto[];
+
+	@ApiProperty({ type: [ClusterEventDto] })
+	events!: ClusterEventDto[];
+}
