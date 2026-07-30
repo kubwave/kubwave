@@ -93,13 +93,13 @@ export function clusterNodeUsageQuery(api: ApiClient, name: string, range: Metri
 
 export function useClusterNodeUsage(name: MaybeRefOrGetter<string>, range: MaybeRefOrGetter<MetricsRange>) {
 	const api = useApi();
-	const { data: usage } = useQuery({
+	const { data: usage, isLoading } = useQuery({
 		queryKey: computed(() => queryKeys.clusterNodeUsage(toValue(name), toValue(range))),
 		refetchInterval: () => pollIntervalForRange(toValue(range)),
 		queryFn: () => apiData(api.platform.cluster.nodes(toValue(name)).usage.get({ range: toValue(range) }))
 	});
 
-	return { usage: usage as Ref<ClusterNodeUsage | undefined> };
+	return { usage: usage as Ref<ClusterNodeUsage | undefined>, isLoading };
 }
 
 // Owned above the tab switcher: the buffer is the only copy of this history, so unmounting the chart must not discard it.
