@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useQueryClient } from '@tanstack/vue-query';
-import { clusterNodeQuery } from '~/composables/use-admin-cluster';
+import { clusterNodeQuery, clusterNodeUsageQuery } from '~/composables/use-admin-cluster';
 
 definePageMeta({ middleware: 'admin' });
 
@@ -10,7 +10,10 @@ const name = route.params.name as string;
 const api = useApi();
 const queryClient = useQueryClient();
 
-onServerPrefetch(() => queryClient.prefetchQuery(clusterNodeQuery(api, name)));
+// Prefetch key must match useClusterNodeUsage's, or hydration re-fetches instead of reading this cache entry.
+onServerPrefetch(() =>
+	Promise.all([queryClient.prefetchQuery(clusterNodeQuery(api, name)), queryClient.prefetchQuery(clusterNodeUsageQuery(api, name, '1h'))])
+);
 
 const { node: detail, isLoading } = useClusterNode(name);
 

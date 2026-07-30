@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useQueryClient } from '@tanstack/vue-query';
-import { clusterSnapshotQuery } from '~/composables/use-admin-cluster';
+import { clusterSnapshotQuery, clusterUsageQuery } from '~/composables/use-admin-cluster';
 
 definePageMeta({ middleware: 'admin' });
 useHead({ title: 'Monitoring' });
@@ -8,7 +8,8 @@ useHead({ title: 'Monitoring' });
 const api = useApi();
 const queryClient = useQueryClient();
 
-onServerPrefetch(() => queryClient.prefetchQuery(clusterSnapshotQuery(api)));
+// Prefetch key must match useClusterUsage's, or hydration re-fetches instead of reading this cache entry.
+onServerPrefetch(() => Promise.all([queryClient.prefetchQuery(clusterSnapshotQuery(api)), queryClient.prefetchQuery(clusterUsageQuery(api, '1h'))]));
 
 const { snapshot, isLoading } = useClusterSnapshot();
 </script>

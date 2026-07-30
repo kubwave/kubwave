@@ -84,6 +84,13 @@ export function useClusterNode(name: MaybeRefOrGetter<string>) {
 	return { node: node as Ref<ClusterNodeDetail | undefined>, isLoading };
 }
 
+export function clusterNodeUsageQuery(api: ApiClient, name: string, range: MetricsRange) {
+	return {
+		queryKey: queryKeys.clusterNodeUsage(name, range),
+		queryFn: () => apiData(api.platform.cluster.nodes(name).usage.get({ range }))
+	};
+}
+
 export function useClusterNodeUsage(name: MaybeRefOrGetter<string>, range: MaybeRefOrGetter<MetricsRange>) {
 	const api = useApi();
 	const { data: usage } = useQuery({
