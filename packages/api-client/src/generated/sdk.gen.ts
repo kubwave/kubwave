@@ -67,6 +67,10 @@ import type {
 	PlatformClusterEventsGetResponses,
 	PlatformClusterGetData,
 	PlatformClusterGetResponses,
+	PlatformClusterNodeGetData,
+	PlatformClusterNodeGetResponses,
+	PlatformClusterNodeUsageGetData,
+	PlatformClusterNodeUsageGetResponses,
 	PlatformClusterUsageGetData,
 	PlatformClusterUsageGetResponses,
 	PlatformSettingsDeploymentConcurrencyGetData,
@@ -1398,6 +1402,30 @@ export const platformClusterUsageGet = <ThrowOnError extends boolean = false>(
 	(options?.client ?? client).get<PlatformClusterUsageGetResponses, unknown, ThrowOnError>({
 		security: [{ scheme: 'bearer', type: 'http' }],
 		url: '/api/platform/cluster/usage',
+		...options
+	});
+
+/**
+ * Get one node with its pods, conditions and events
+ */
+export const platformClusterNodeGet = <ThrowOnError extends boolean = false>(
+	options: Options<PlatformClusterNodeGetData, ThrowOnError>
+): RequestResult<PlatformClusterNodeGetResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).get<PlatformClusterNodeGetResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/platform/cluster/nodes/{name}',
+		...options
+	});
+
+/**
+ * Get one node CPU, memory and disk history
+ */
+export const platformClusterNodeUsageGet = <ThrowOnError extends boolean = false>(
+	options: Options<PlatformClusterNodeUsageGetData, ThrowOnError>
+): RequestResult<PlatformClusterNodeUsageGetResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).get<PlatformClusterNodeUsageGetResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/platform/cluster/nodes/{name}/usage',
 		...options
 	});
 

@@ -763,6 +763,44 @@ export type ClusterUsageDto = {
 	series: ClusterUsageSeriesDto;
 };
 
+export type ClusterNodeConditionDetailDto = {
+	type: string;
+	status: string;
+	reason: string | null;
+	lastTransitionTime: string | null;
+};
+
+export type ClusterNodePodDto = {
+	namespace: string;
+	name: string;
+	phase: string;
+	cpuMillicores: number | null;
+	memoryBytes: number | null;
+};
+
+export type ClusterNodeDetailDto = {
+	available: boolean;
+	sampledAt: string;
+	node: ClusterNodeDto;
+	conditions: Array<ClusterNodeConditionDetailDto>;
+	taints: Array<string>;
+	pods: Array<ClusterNodePodDto>;
+	events: Array<ClusterEventDto>;
+};
+
+export type ClusterNodeUsageSeriesDto = {
+	cpuMillicores: Array<MetricPointDto>;
+	memoryBytes: Array<MetricPointDto>;
+	diskBytes: Array<MetricPointDto>;
+};
+
+export type ClusterNodeUsageDto = {
+	available: boolean;
+	range: '1h' | '24h' | '7d';
+	sampledAt: string;
+	series: ClusterNodeUsageSeriesDto;
+};
+
 export type TemplateInputDto = {
 	key: string;
 	label: string;
@@ -2138,6 +2176,38 @@ export type PlatformClusterUsageGetResponses = {
 };
 
 export type PlatformClusterUsageGetResponse = PlatformClusterUsageGetResponses[keyof PlatformClusterUsageGetResponses];
+
+export type PlatformClusterNodeGetData = {
+	body?: never;
+	path: {
+		name: string;
+	};
+	query?: never;
+	url: '/api/platform/cluster/nodes/{name}';
+};
+
+export type PlatformClusterNodeGetResponses = {
+	200: ClusterNodeDetailDto;
+};
+
+export type PlatformClusterNodeGetResponse = PlatformClusterNodeGetResponses[keyof PlatformClusterNodeGetResponses];
+
+export type PlatformClusterNodeUsageGetData = {
+	body?: never;
+	path: {
+		name: string;
+	};
+	query?: {
+		range?: '1h' | '24h' | '7d';
+	};
+	url: '/api/platform/cluster/nodes/{name}/usage';
+};
+
+export type PlatformClusterNodeUsageGetResponses = {
+	200: ClusterNodeUsageDto;
+};
+
+export type PlatformClusterNodeUsageGetResponse = PlatformClusterNodeUsageGetResponses[keyof PlatformClusterNodeUsageGetResponses];
 
 export type TemplatesListData = {
 	body?: never;
