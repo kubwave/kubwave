@@ -35,6 +35,52 @@ require() {
   }
 }
 
+brew_formula() {
+  case "$1" in
+    tilt) echo "tilt-dev/tap/tilt" ;;
+    kubectl) echo "kubernetes-cli" ;;
+    *) echo "$1" ;;
+  esac
+}
+
+ensure_tools() {
+  local missing=() tool answer
+  for tool in k3d kubectl helm tilt; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+      missing+=("$tool")
+    fi
+  done
+
+  if [ "${#missing[@]}" -eq 0 ]; then
+    return 0
+  fi
+
+  echo "✗ missing required tools:" >&2
+  for tool in "${missing[@]}"; do
+    echo "  - $tool" >&2
+  done
+
+  if ! command -v brew >/dev/null 2>&1; then
+    echo "✗ Homebrew is required to install missing tools (https://brew.sh)." >&2
+    exit 1
+  fi
+
+  read -r -p "Install all missing tools via Homebrew? [y/N] " answer || true
+  case "$answer" in
+    y | Y | yes | YES)
+      ;;
+    *)
+      echo "Aborted. Install the tools above manually and re-run." >&2
+      exit 1
+      ;;
+  esac
+
+  for tool in "${missing[@]}"; do
+    echo "↑ Installing $tool..."
+    brew install "$(brew_formula "$tool")"
+  done
+}
+
 secret_value() {
   local key="$1"
   kubectl -n "$NAMESPACE" get secret "$POSTGRES_SECRET" -o "go-template={{ index .data \"$key\" | base64decode }}"
@@ -135,10 +181,7 @@ case "$command" in
     ;;
 esac
 
-require k3d
-require kubectl
-require helm
-require tilt
+ensure_tools
 
 if k3d cluster list -o json 2>/dev/null | grep -q "\"name\":\"${CLUSTER}\""; then
   echo "↻ Tearing down existing cluster '${CLUSTER}'..."
