@@ -38,6 +38,7 @@ require() {
 brew_formula() {
   case "$1" in
     tilt) echo "tilt-dev/tap/tilt" ;;
+    kubectl) echo "kubernetes-cli" ;;
     *) echo "$1" ;;
   esac
 }
