@@ -82,6 +82,14 @@ function credentialsFor(host: string, registryAuth: RegistryAuthConfig | undefin
 	return { username: registryAuth.username, password: decryptSecret(registryAuth.password) };
 }
 
+// Token endpoints allowed to serve a Bearer challenge for a registry even though they live on another hostname.
+const TRUSTED_TOKEN_HOSTS: Record<string, string[]> = {
+	[DOCKER_HUB_API_HOST]: ['auth.docker.io'],
+	'index.docker.io': ['auth.docker.io'],
+	'docker.io': ['auth.docker.io'],
+	'registry.gitlab.com': ['gitlab.com']
+};
+
 // Perform the request, then if the registry challenges with a Bearer realm (Docker Hub, GHCR, ...), exchange credentials for a token and retry once.
 async function fetchWithRegistryAuth(url: string, repo: string, credentials: RegistryCredentials | undefined, init: RequestInit): Promise<Response> {
 	const baseHeaders: Record<string, string> = { ...(init.headers as Record<string, string>) };
@@ -94,6 +102,18 @@ async function fetchWithRegistryAuth(url: string, repo: string, credentials: Reg
 	const challenge = res.headers.get('www-authenticate');
 	const realm = /realm="([^"]+)"/.exec(challenge ?? '')?.[1];
 	if (!realm) return res;
+
+	// The realm receives our Basic credentials when we exchange them, so it must be the registry itself (or a trusted auth host) —
+	// otherwise a compromised registry could redirect the credentials anywhere. Never downgrade to plain http on an https registry.
+	const registryUrl = new URL(url);
+	const realmUrl = new URL(realm);
+	const trustedHosts = TRUSTED_TOKEN_HOSTS[registryUrl.hostname] ?? [];
+	if (realmUrl.hostname !== registryUrl.hostname && !trustedHosts.includes(realmUrl.hostname)) {
+		throw new Error(`registry token realm host mismatch: ${realmUrl.hostname} not trusted for ${registryUrl.hostname}`);
+	}
+	if (registryUrl.protocol === 'https:' && realmUrl.protocol !== 'https:') {
+		throw new Error('registry token realm must use https when the registry does');
+	}
 
 	const service = /service="([^"]+)"/.exec(challenge ?? '')?.[1];
 	const scope = /scope="([^"]+)"/.exec(challenge ?? '')?.[1] ?? `repository:${repo}:pull`;

@@ -77,11 +77,11 @@ describe('resolveTagDigest', () => {
 				return new Response(null, {
 					status: 401,
 					headers: {
-						'www-authenticate': 'Bearer realm="https://auth.example.com/token",service="registry.example.com",scope="repository:acme/web:pull"'
+						'www-authenticate': 'Bearer realm="https://ghcr.io/token",service="ghcr.io",scope="repository:acme/web:pull"'
 					}
 				});
 			}
-			if (url.startsWith('https://auth.example.com/token')) {
+			if (url.startsWith('https://ghcr.io/token')) {
 				expect(headers.Authorization?.startsWith('Basic ')).toBe(true);
 				return new Response(JSON.stringify({ token: 'TOKEN-1' }), { status: 200 });
 			}
@@ -94,7 +94,63 @@ describe('resolveTagDigest', () => {
 		const creds = { server: 'ghcr.io', username: 'octocat', password: encryptSecret('s3cret') };
 		const digest = await resolveTagDigest(parseImageRef('ghcr.io/acme/web', 'next'), creds);
 		expect(digest).toBe('sha256:xyz');
-		expect(calls.some(url => url.startsWith('https://auth.example.com/token'))).toBe(true);
+		expect(calls.some(url => url.startsWith('https://ghcr.io/token'))).toBe(true);
+	});
+
+	test('rejects a token realm on a foreign host (no credentials leak)', async () => {
+		globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+			const headers = (init?.headers ?? {}) as Record<string, string>;
+			if (headers.Authorization?.startsWith('Basic ')) {
+				return new Response(null, {
+					status: 401,
+					headers: { 'www-authenticate': 'Bearer realm="https://evil.example.com/token",service="ghcr.io"' }
+				});
+			}
+			throw new Error(`unexpected call: ${String(_input)}`);
+		}) as typeof fetch;
+
+		const creds = { server: 'ghcr.io', username: 'octocat', password: encryptSecret('s3cret') };
+		await expect(resolveTagDigest(parseImageRef('ghcr.io/acme/web', 'next'), creds)).rejects.toThrow(/token realm host mismatch/);
+	});
+
+	test('rejects a plain-http token realm for an https registry', async () => {
+		globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+			const headers = (init?.headers ?? {}) as Record<string, string>;
+			if (headers.Authorization?.startsWith('Basic ')) {
+				return new Response(null, {
+					status: 401,
+					headers: { 'www-authenticate': 'Bearer realm="http://ghcr.io/token",service="ghcr.io"' }
+				});
+			}
+			throw new Error(`unexpected call: ${String(_input)}`);
+		}) as typeof fetch;
+
+		const creds = { server: 'ghcr.io', username: 'octocat', password: encryptSecret('s3cret') };
+		await expect(resolveTagDigest(parseImageRef('ghcr.io/acme/web', 'next'), creds)).rejects.toThrow(/realm must use https/);
+	});
+
+	test('trusts the auth.docker.io token realm for Docker Hub', async () => {
+		globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+			const url = String(input);
+			const headers = (init?.headers ?? {}) as Record<string, string>;
+			if (url.endsWith('/v2/library/nginx/manifests/latest') && !headers.Authorization) {
+				return new Response(null, {
+					status: 401,
+					headers: {
+						'www-authenticate': 'Bearer realm="https://auth.docker.io/token",service="registry.docker.io",scope="repository:library/nginx:pull"'
+					}
+				});
+			}
+			if (url.startsWith('https://auth.docker.io/token')) {
+				return new Response(JSON.stringify({ token: 'HUB-TOKEN' }), { status: 200 });
+			}
+			if (url.endsWith('/v2/library/nginx/manifests/latest') && headers.Authorization === 'Bearer HUB-TOKEN') {
+				return new Response(null, { status: 200, headers: { 'docker-content-digest': 'sha256:hub' } });
+			}
+			throw new Error(`unexpected call: ${url}`);
+		}) as typeof fetch;
+
+		expect(await resolveTagDigest(parseImageRef('nginx', 'latest'), undefined)).toBe('sha256:hub');
 	});
 
 	test('does not send credentials when the stored server does not match the image host', async () => {
