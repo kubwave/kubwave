@@ -19,10 +19,21 @@ export interface BasicAuthView {
 	hasPassword: boolean;
 }
 
+export interface RegistryAuthView {
+	enabled: boolean;
+	server: string;
+	username: string;
+	hasPassword: boolean;
+}
+
 type SensitiveRuntime = 'secrets' | 'basicAuth';
 
 // Config-file content is decrypted in toConfigView, so the view keeps `configFiles` (unlike `secrets`).
-export type DockerImageConfigView = Omit<DockerImageServiceConfig, SensitiveRuntime> & { secrets: SecretsView; basicAuth?: BasicAuthView };
+export type DockerImageConfigView = Omit<DockerImageServiceConfig, SensitiveRuntime | 'registryAuth'> & {
+	secrets: SecretsView;
+	basicAuth?: BasicAuthView;
+	registryAuth?: RegistryAuthView;
+};
 export type DockerfileConfigView = Omit<DockerfileServiceConfig, SensitiveRuntime> & { secrets: SecretsView; basicAuth?: BasicAuthView };
 export type PublicRepoConfigView = Omit<PublicRepoServiceConfig, SensitiveRuntime> & { secrets: SecretsView; basicAuth?: BasicAuthView };
 export type PrivateRepoConfigView = Omit<PrivateRepoServiceConfig, SensitiveRuntime> & { secrets: SecretsView; basicAuth?: BasicAuthView };
@@ -58,6 +69,14 @@ export interface AutoDeployView {
 	lastPollError: string | null;
 }
 
+export interface ImageWatchView {
+	enabled: boolean;
+	lastDigest: string | null;
+	lastCheckedAt: string | null;
+	nextCheckAt: string | null;
+	lastError: string | null;
+}
+
 export interface ExposedEndpointView {
 	containerPort: number;
 	publicPort: number;
@@ -73,6 +92,7 @@ export interface ServiceView {
 	type: ServiceType;
 	config: ServiceConfigView;
 	autoDeploy: AutoDeployView;
+	imageWatch: ImageWatchView;
 	internalDomain: string | null;
 	defaultUrl: string | null;
 	exposedEndpoints: ExposedEndpointView[];
@@ -92,6 +112,11 @@ export interface ServiceRow {
 	lastPolledAt: Date | null;
 	nextPollAt: Date | null;
 	lastPollError: string | null;
+	imageWatchEnabled: boolean;
+	lastWatchedDigest: string | null;
+	lastWatchedAt: Date | null;
+	nextWatchAt: Date | null;
+	lastWatchError: string | null;
 	createdAt: Date;
 	updatedAt: Date;
 }

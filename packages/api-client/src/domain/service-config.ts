@@ -83,9 +83,25 @@ export interface RuntimeConfig<TSecret> {
 	autoscaling?: AutoscalingConfig;
 }
 
+export interface RegistryAuthView {
+	enabled: boolean;
+	server: string;
+	username: string;
+	hasPassword: boolean;
+}
+
+export interface RegistryAuthInput {
+	enabled: boolean;
+	server: string;
+	username: string;
+	// null = keep the stored password.
+	password: string | null;
+}
+
 export interface DockerImageServiceConfig<TSecret = SecretView> extends RuntimeConfig<TSecret> {
 	image: string;
 	tag: string;
+	registryAuth?: RegistryAuthView;
 }
 
 export interface DockerfileServiceConfig<TSecret = SecretView> extends RuntimeConfig<TSecret> {
@@ -133,7 +149,7 @@ export type ServiceConfigView =
 	| DatabaseServiceConfig<SecretView>;
 
 export type ServiceConfigInput =
-	| DockerImageServiceConfig<SecretInput>
+	| (Omit<DockerImageServiceConfig<SecretInput>, 'registryAuth'> & { registryAuth?: RegistryAuthInput })
 	| DockerfileServiceConfig<SecretInput>
 	| PublicRepoServiceConfig<SecretInput>
 	| PrivateRepoServiceConfig<SecretInput>

@@ -241,6 +241,14 @@ export type AutoDeployViewDto = {
 	lastPollError: string | null;
 };
 
+export type ImageWatchViewDto = {
+	enabled: boolean;
+	lastDigest: string | null;
+	lastCheckedAt: string | null;
+	nextCheckAt: string | null;
+	lastError: string | null;
+};
+
 export type ExposedEndpointViewDto = {
 	containerPort: number;
 	publicPort: number;
@@ -257,6 +265,7 @@ export type ServiceViewDto = {
 		[key: string]: unknown;
 	};
 	autoDeploy: AutoDeployViewDto;
+	imageWatch: ImageWatchViewDto;
 	internalDomain: string | null;
 	defaultUrl: string | null;
 	exposedEndpoints: Array<ExposedEndpointViewDto>;
@@ -268,6 +277,10 @@ export type AutoDeployInputDto = {
 	enabled: boolean;
 };
 
+export type ImageWatchInputDto = {
+	enabled: boolean;
+};
+
 export type CreateServiceDto = {
 	name: string;
 	description?: string;
@@ -276,6 +289,7 @@ export type CreateServiceDto = {
 		[key: string]: unknown;
 	};
 	autoDeploy?: AutoDeployInputDto;
+	imageWatch?: ImageWatchInputDto;
 };
 
 export type UpdateServiceDto = {
@@ -285,6 +299,7 @@ export type UpdateServiceDto = {
 		[key: string]: unknown;
 	};
 	autoDeploy?: AutoDeployInputDto;
+	imageWatch?: ImageWatchInputDto;
 };
 
 export type ServiceOkDto = {

@@ -43,8 +43,13 @@ describe('reconcileRuntime shared deploy core', () => {
 		const without = buildDeployment(deployment, NAMESPACE, dockerfileConfig, IMAGE_REF);
 		expect(without.spec!.template!.spec!.imagePullSecrets).toBeUndefined();
 
-		const withSecret = buildDeployment(deployment, NAMESPACE, dockerfileConfig, IMAGE_REF, { imagePullSecretName: 'reg-pull' });
+		const withSecret = buildDeployment(deployment, NAMESPACE, dockerfileConfig, IMAGE_REF, { imagePullSecretNames: ['reg-pull'] });
 		expect(withSecret.spec!.template!.spec!.imagePullSecrets).toEqual([{ name: 'reg-pull' }]);
+
+		const withBoth = buildDeployment(deployment, NAMESPACE, dockerfileConfig, IMAGE_REF, {
+			imagePullSecretNames: ['reg-pull', 'svc-registry']
+		});
+		expect(withBoth.spec!.template!.spec!.imagePullSecrets).toEqual([{ name: 'reg-pull' }, { name: 'svc-registry' }]);
 	});
 
 	// subPath mounts a subdir of the volume so images like supabase/postgres can initdb past the lost+found ext4 PVs leave at the root.

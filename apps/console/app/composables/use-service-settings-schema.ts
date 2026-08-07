@@ -118,8 +118,20 @@ export const serviceSettingsSchema = z
 			password: z.string(),
 			hasPassword: z.boolean()
 		}),
+		// docker-image only: optional private-registry login; blank password with hasPassword keeps the stored one.
+		registryAuth: z.object({
+			enabled: z.boolean(),
+			server: z.string(),
+			username: z.string(),
+			password: z.string(),
+			hasPassword: z.boolean()
+		}),
 		// Repo types only (ignored otherwise); just the toggle — the poll cadence is a global worker setting.
 		autoDeploy: z.object({
+			enabled: z.boolean()
+		}),
+		// docker-image only: watch the registry tag and auto-redeploy when its digest changes; status is read from the service, not edited here.
+		imageWatch: z.object({
 			enabled: z.boolean()
 		})
 	})
@@ -129,6 +141,27 @@ export const serviceSettingsSchema = z
 		}
 		if (val.basicAuth.enabled && !val.basicAuth.hasPassword && !val.basicAuth.password) {
 			ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'A password is required when basic auth is enabled.', path: ['basicAuth', 'password'] });
+		}
+		if (val.registryAuth.enabled && !val.registryAuth.server.trim()) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: 'A registry server is required when registry auth is enabled.',
+				path: ['registryAuth', 'server']
+			});
+		}
+		if (val.registryAuth.enabled && !val.registryAuth.username.trim()) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: 'A username is required when registry auth is enabled.',
+				path: ['registryAuth', 'username']
+			});
+		}
+		if (val.registryAuth.enabled && !val.registryAuth.hasPassword && !val.registryAuth.password) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: 'A password is required when registry auth is enabled.',
+				path: ['registryAuth', 'password']
+			});
 		}
 		val.domains.forEach((d, i) => {
 			if (d.host.trim() && !isValidPort(d.port.trim())) {
@@ -387,8 +420,21 @@ export function snapshot(service: Service): ServiceSettingsValues {
 			password: '',
 			hasPassword: ba?.hasPassword ?? false
 		},
+		registryAuth: (() => {
+			const ra = (service.config as { registryAuth?: { enabled?: boolean; server?: string; username?: string; hasPassword?: boolean } }).registryAuth;
+			return {
+				enabled: ra?.enabled ?? false,
+				server: ra?.server ?? '',
+				username: ra?.username ?? '',
+				password: '',
+				hasPassword: ra?.hasPassword ?? false
+			};
+		})(),
 		autoDeploy: {
 			enabled: service.autoDeploy?.enabled ?? false
+		},
+		imageWatch: {
+			enabled: service.imageWatch?.enabled ?? false
 		}
 	};
 }

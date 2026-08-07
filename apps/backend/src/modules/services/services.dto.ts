@@ -102,6 +102,26 @@ export const basicAuthInputSchema = z.object({
 	password: z.string().min(1).max(256).nullable().optional()
 });
 
+// Credentials for a private image registry (docker-image services only). `password: null` keeps the stored one, like secrets/basicAuth.
+export const registryAuthInputSchema = z.object({
+	enabled: z.boolean(),
+	server: z
+		.string()
+		.trim()
+		.min(1)
+		.max(255)
+		.regex(/^[a-zA-Z0-9.-]+(:\d+)?$/, 'Enter a registry host, e.g. ghcr.io (optionally host:port).')
+		.optional(),
+	username: z
+		.string()
+		.trim()
+		.min(1)
+		.max(128)
+		.regex(/^[^\s:]+$/, 'Username cannot contain spaces or colons.')
+		.optional(),
+	password: z.string().min(1).max(4000).nullable().optional()
+});
+
 export const autoscalingConfigSchema = z.object({
 	enabled: z.boolean(),
 	minReplicas: z.number().int().min(1).max(100).optional(),
@@ -153,7 +173,8 @@ const dockerImageConfigBase = runtimeConfigBase.extend({
 	// Config files are a docker-image concern (e.g. Supabase Kong/init SQL); other builders don't take them.
 	configFiles: z.array(serviceConfigFileSchema).max(20).default([]),
 	command: z.array(z.string().max(4096)).max(64).optional(),
-	args: z.array(z.string().max(4096)).max(64).optional()
+	args: z.array(z.string().max(4096)).max(64).optional(),
+	registryAuth: registryAuthInputSchema.optional()
 });
 
 function refineRuntimeConfig(val: z.infer<typeof runtimeConfigBase>, ctx: z.RefinementCtx): void {
@@ -242,7 +263,29 @@ function refineConfigFiles(val: z.infer<typeof dockerImageConfigBase>, ctx: z.Re
 	}
 }
 
-export const dockerImageConfigSchema = dockerImageConfigBase.superRefine(refineRuntimeConfig).superRefine(refineConfigFiles);
+function refineRegistryAuth(val: z.infer<typeof dockerImageConfigBase>, ctx: z.RefinementCtx): void {
+	const registryAuth = val.registryAuth;
+	if (!registryAuth?.enabled) return;
+	if (!registryAuth.server?.trim()) {
+		ctx.addIssue({
+			code: z.ZodIssueCode.custom,
+			message: 'A registry server is required when registry auth is enabled.',
+			path: ['registryAuth', 'server']
+		});
+	}
+	if (!registryAuth.username?.trim()) {
+		ctx.addIssue({
+			code: z.ZodIssueCode.custom,
+			message: 'A username is required when registry auth is enabled.',
+			path: ['registryAuth', 'username']
+		});
+	}
+}
+
+export const dockerImageConfigSchema = dockerImageConfigBase
+	.superRefine(refineRuntimeConfig)
+	.superRefine(refineConfigFiles)
+	.superRefine(refineRegistryAuth);
 export type DockerImageConfigInput = z.infer<typeof dockerImageConfigSchema>;
 
 const dockerfileConfigBase = runtimeConfigBase.extend({
@@ -403,6 +446,12 @@ export const autoDeployInputSchema = z.object({
 });
 export type AutoDeployInput = z.infer<typeof autoDeployInputSchema>;
 
+// docker-image only: poll the registry tag and auto-redeploy when its digest changes.
+export const imageWatchInputSchema = z.object({
+	enabled: z.boolean().default(false)
+});
+export type ImageWatchInput = z.infer<typeof imageWatchInputSchema>;
+
 export const serviceTypeSchema = z.enum([
 	'docker-image',
 	'dockerfile',
@@ -422,7 +471,12 @@ const createServiceCommonFields = {
 };
 
 export const createServiceSchema = z.discriminatedUnion('type', [
-	z.object({ ...createServiceCommonFields, type: z.literal('docker-image'), config: dockerImageConfigSchema }),
+	z.object({
+		...createServiceCommonFields,
+		type: z.literal('docker-image'),
+		config: dockerImageConfigSchema,
+		imageWatch: imageWatchInputSchema.optional()
+	}),
 	z.object({ ...createServiceCommonFields, type: z.literal('dockerfile'), config: dockerfileConfigSchema }),
 	z.object({
 		...createServiceCommonFields,
@@ -464,7 +518,8 @@ export const updateServiceSchema = z.object({
 			databaseUpdateConfigSchema
 		])
 		.optional(),
-	autoDeploy: autoDeployInputSchema.optional()
+	autoDeploy: autoDeployInputSchema.optional(),
+	imageWatch: imageWatchInputSchema.optional()
 });
 
 export const createComposeServicesSchema = z.object({
@@ -483,6 +538,28 @@ export type EnvironmentServiceParam = z.infer<typeof environmentServiceParamSche
 export class AutoDeployInputDto implements AutoDeployInput {
 	@ApiProperty({ type: Boolean, default: false })
 	enabled!: boolean;
+}
+
+export class ImageWatchInputDto implements ImageWatchInput {
+	@ApiProperty({ type: Boolean, default: false })
+	enabled!: boolean;
+}
+
+export class ImageWatchViewDto {
+	@ApiProperty({ type: Boolean })
+	enabled!: boolean;
+
+	@ApiProperty({ type: String, nullable: true })
+	lastDigest!: string | null;
+
+	@ApiProperty({ type: String, nullable: true })
+	lastCheckedAt!: string | null;
+
+	@ApiProperty({ type: String, nullable: true })
+	nextCheckAt!: string | null;
+
+	@ApiProperty({ type: String, nullable: true })
+	lastError!: string | null;
 }
 
 export class AutoDeployViewDto {
@@ -517,6 +594,9 @@ export class CreateServiceDto {
 
 	@ApiPropertyOptional({ type: AutoDeployInputDto })
 	autoDeploy?: AutoDeployInputDto;
+
+	@ApiPropertyOptional({ type: ImageWatchInputDto })
+	imageWatch?: ImageWatchInputDto;
 }
 
 export class UpdateServiceDto {
@@ -531,6 +611,9 @@ export class UpdateServiceDto {
 
 	@ApiPropertyOptional({ type: AutoDeployInputDto })
 	autoDeploy?: AutoDeployInputDto;
+
+	@ApiPropertyOptional({ type: ImageWatchInputDto })
+	imageWatch?: ImageWatchInputDto;
 }
 
 export class CreateComposeServicesDto implements CreateComposeServicesInput {
@@ -570,6 +653,9 @@ export class ServiceViewDto implements ServiceView {
 
 	@ApiProperty({ type: AutoDeployViewDto })
 	autoDeploy!: AutoDeployViewDto;
+
+	@ApiProperty({ type: ImageWatchViewDto })
+	imageWatch!: ImageWatchViewDto;
 
 	@ApiProperty({ type: String, nullable: true })
 	internalDomain!: string | null;

@@ -215,6 +215,8 @@ export type {
 	HealthGetResponse,
 	HealthGetResponses,
 	HealthResponseDto,
+	ImageWatchInputDto,
+	ImageWatchViewDto,
 	InvitationDto,
 	InvitationsAcceptData,
 	InvitationsAcceptResponse,

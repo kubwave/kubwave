@@ -79,6 +79,9 @@ mock.module('~/modules/worker/jobs/deployments/deployers/runtime/storage', () =>
 mock.module('~/modules/worker/jobs/deployments/deployers/runtime/pull-secret', () => ({
 	convergePullSecret: async () => {
 		order.push('convergePullSecret');
+	},
+	convergeServicePullSecret: async () => {
+		order.push('convergeServicePullSecret');
 	}
 }));
 
@@ -103,12 +106,15 @@ mock.module('~/modules/worker/jobs/deployments/deployers/runtime/autoscaling', (
 }));
 
 mock.module('~/modules/worker/jobs/deployments/deployers/runtime/deployment', () => ({
-	buildDeployment: (_dep: unknown, _ns: string, _cfg: unknown, imageRef: string, opts?: { imagePullSecretName?: string }) => ({
+	buildDeployment: (_dep: unknown, _ns: string, _cfg: unknown, imageRef: string, opts?: { imagePullSecretNames?: string[] }) => ({
 		metadata: { name: 'svc-svc-1', resourceVersion: undefined },
 		spec: {
 			replicas: 1,
 			template: {
-				spec: { containers: [{ image: imageRef }], imagePullSecrets: opts?.imagePullSecretName ? [{ name: opts.imagePullSecretName }] : undefined }
+				spec: {
+					containers: [{ image: imageRef }],
+					imagePullSecrets: opts?.imagePullSecretNames?.map(name => ({ name }))
+				}
 			}
 		}
 	}),
@@ -197,6 +203,7 @@ describe('reconcileRuntime — first deploy (no existing Deployment)', () => {
 		// Secrets converge before the Deployment read/create; networking + HPA after create.
 		expect(order).toEqual([
 			'convergePullSecret',
+			'convergeServicePullSecret',
 			'convergeSecret',
 			'convergeConfigFiles',
 			'readDeployment',
@@ -403,7 +410,15 @@ describe('teardownRuntime', () => {
 		};
 		const ctx: TeardownContext = { kc: kc as never, namespace: NAMESPACE, serviceId: SERVICE_ID };
 		await teardownRuntime(ctx);
-		expect(deleted).toEqual(['hpa', 'deployment', 'secret:svc-svc-1-env', 'secret:svc-svc-1-files', 'pvc:svc-svc-1-data', 'pvc:svc-svc-1-cache']);
+		expect(deleted).toEqual([
+			'hpa',
+			'deployment',
+			'secret:svc-svc-1-env',
+			'secret:svc-svc-1-files',
+			'secret:svc-svc-1-registry',
+			'pvc:svc-svc-1-data',
+			'pvc:svc-svc-1-cache'
+		]);
 		expect(order).toContain('teardownNetworking');
 	});
 

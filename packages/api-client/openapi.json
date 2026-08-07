@@ -4042,6 +4042,31 @@
 				},
 				"required": ["enabled", "lastPolledCommit", "lastPolledAt", "nextPollAt", "lastPollError"]
 			},
+			"ImageWatchViewDto": {
+				"type": "object",
+				"properties": {
+					"enabled": {
+						"type": "boolean"
+					},
+					"lastDigest": {
+						"type": "string",
+						"nullable": true
+					},
+					"lastCheckedAt": {
+						"type": "string",
+						"nullable": true
+					},
+					"nextCheckAt": {
+						"type": "string",
+						"nullable": true
+					},
+					"lastError": {
+						"type": "string",
+						"nullable": true
+					}
+				},
+				"required": ["enabled", "lastDigest", "lastCheckedAt", "nextCheckAt", "lastError"]
+			},
 			"ExposedEndpointViewDto": {
 				"type": "object",
 				"properties": {
@@ -4086,6 +4111,9 @@
 					"autoDeploy": {
 						"$ref": "#/components/schemas/AutoDeployViewDto"
 					},
+					"imageWatch": {
+						"$ref": "#/components/schemas/ImageWatchViewDto"
+					},
 					"internalDomain": {
 						"type": "string",
 						"nullable": true
@@ -4115,6 +4143,7 @@
 					"type",
 					"config",
 					"autoDeploy",
+					"imageWatch",
 					"internalDomain",
 					"defaultUrl",
 					"exposedEndpoints",
@@ -4123,6 +4152,16 @@
 				]
 			},
 			"AutoDeployInputDto": {
+				"type": "object",
+				"properties": {
+					"enabled": {
+						"type": "boolean",
+						"default": false
+					}
+				},
+				"required": ["enabled"]
+			},
+			"ImageWatchInputDto": {
 				"type": "object",
 				"properties": {
 					"enabled": {
@@ -4154,6 +4193,9 @@
 					},
 					"autoDeploy": {
 						"$ref": "#/components/schemas/AutoDeployInputDto"
+					},
+					"imageWatch": {
+						"$ref": "#/components/schemas/ImageWatchInputDto"
 					}
 				},
 				"required": ["name", "type", "config"]
@@ -4176,6 +4218,9 @@
 					},
 					"autoDeploy": {
 						"$ref": "#/components/schemas/AutoDeployInputDto"
+					},
+					"imageWatch": {
+						"$ref": "#/components/schemas/ImageWatchInputDto"
 					}
 				}
 			},

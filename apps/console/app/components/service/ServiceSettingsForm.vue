@@ -331,7 +331,16 @@ function buildConfig(values: ServiceSettingsValues) {
 		configFiles: values.configFiles.filter(f => f.path.trim()).map(f => ({ path: f.path.trim(), content: f.content })),
 		// Container entrypoint/args override; drop blank rows, keep order.
 		command: values.command.map(c => c.value.trim()).filter(Boolean),
-		args: values.args.map(a => a.value.trim()).filter(Boolean)
+		args: values.args.map(a => a.value.trim()).filter(Boolean),
+		// Empty password keeps the stored one (null), matching the API's keep-existing semantics.
+		registryAuth: values.registryAuth.enabled
+			? {
+					enabled: true,
+					server: values.registryAuth.server.trim(),
+					username: values.registryAuth.username.trim(),
+					password: values.registryAuth.password || null
+				}
+			: { enabled: false }
 	};
 }
 
@@ -346,10 +355,11 @@ async function onSubmit() {
 
 	const config = buildConfig(result.data);
 	const autoDeploy = isRepoType.value ? { autoDeploy: { enabled: result.data.autoDeploy.enabled } } : {};
+	const imageWatch = props.service.type === 'docker-image' ? { imageWatch: { enabled: result.data.imageWatch.enabled } } : {};
 
 	saving.value = true;
 	try {
-		const updated = await update.mutateAsync({ name: result.data.name, description: result.data.description, config, ...autoDeploy });
+		const updated = await update.mutateAsync({ name: result.data.name, description: result.data.description, config, ...autoDeploy, ...imageWatch });
 		seed(updated);
 		emit('saved', updated);
 		toast.success('Service saved');

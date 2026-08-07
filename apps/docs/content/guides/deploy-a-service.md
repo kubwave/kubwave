@@ -12,7 +12,10 @@ Ingress.
 
 ::card-grid
 ::card{title="Container image" icon="rocket"}
-A prebuilt image from any registry. Give the platform an **image** and a **tag** — no build happens, it's pulled and run as-is.
+A prebuilt image from any registry. Give the platform an **image** and a **tag** — no build happens, it's pulled and run as-is. For images in a
+**private registry**, add the registry's **server, username, and password/token** when creating the service (or later in its settings); the platform
+stores the credentials encrypted and wires them into an image-pull Secret so Kubernetes can pull the image. Turn on **Watch for updates** to have the
+platform poll the tag and deploy automatically when a new release is published.
 ::
 ::card{title="Dockerfile" icon="document"}
 A Dockerfile you paste into the console. The platform builds it in-cluster with **BuildKit** and pushes the result to the internal registry. The

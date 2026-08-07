@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import * as z from 'zod';
-import { ArrowLeft } from 'lucide-vue-next';
+import { ArrowLeft, Lock } from 'lucide-vue-next';
+import { Separator } from '~/components/ui/separator';
+import { Switch } from '~/components/ui/switch';
 import type { Service } from '~/utils/types';
 
 const props = defineProps<{ environmentId: string }>();
@@ -17,24 +19,51 @@ function parseImageRef(value: string): { image: string; tag: string } | null {
 	return image && tag ? { image, tag } : null;
 }
 
-const schema = z.object({
-	name: z.string().trim().min(1, 'Enter a service name.'),
-	imageRef: z
-		.string()
-		.trim()
-		.min(1, 'Enter an image.')
-		.refine(value => parseImageRef(value) !== null, 'Use the form registry/image:tag.'),
-	description: z.string().optional()
-});
+const schema = z
+	.object({
+		name: z.string().trim().min(1, 'Enter a service name.'),
+		imageRef: z
+			.string()
+			.trim()
+			.min(1, 'Enter an image.')
+			.refine(value => parseImageRef(value) !== null, 'Use the form registry/image:tag.'),
+		description: z.string().optional(),
+		registryEnabled: z.boolean(),
+		registryServer: z.string(),
+		registryUsername: z.string(),
+		registryPassword: z.string(),
+		watchEnabled: z.boolean()
+	})
+	.superRefine((val, ctx) => {
+		if (!val.registryEnabled) return;
+		if (!val.registryServer.trim()) {
+			ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a registry host, e.g. ghcr.io.', path: ['registryServer'] });
+		}
+		if (!val.registryUsername.trim()) {
+			ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a username or token.', path: ['registryUsername'] });
+		}
+		if (!val.registryPassword) {
+			ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a password or token.', path: ['registryPassword'] });
+		}
+	});
 
 const rootError = ref<string | null>(null);
 
 const toast = useToast();
 const createService = useCreateService(() => props.environmentId);
 
-const { form, isSubmitting } = useAppForm({
+const { form, isSubmitting, values } = useAppForm({
 	schema,
-	defaultValues: { name: '', imageRef: '', description: '' },
+	defaultValues: {
+		name: '',
+		imageRef: '',
+		description: '',
+		registryEnabled: false,
+		registryServer: '',
+		registryUsername: '',
+		registryPassword: '',
+		watchEnabled: false
+	},
 	onSubmit: async ({ value }) => {
 		const parsed = parseImageRef(value.imageRef);
 		if (!parsed) return;
@@ -44,7 +73,25 @@ const { form, isSubmitting } = useAppForm({
 				name: value.name,
 				description: value.description ?? '',
 				type: 'docker-image',
-				config: { image: parsed.image, tag: parsed.tag, containerPort: null, env: [], domains: [], volumes: [] }
+				config: {
+					image: parsed.image,
+					tag: parsed.tag,
+					containerPort: null,
+					env: [],
+					domains: [],
+					volumes: [],
+					...(value.registryEnabled
+						? {
+								registryAuth: {
+									enabled: true,
+									server: value.registryServer.trim(),
+									username: value.registryUsername.trim(),
+									password: value.registryPassword
+								}
+							}
+						: {})
+				},
+				imageWatch: { enabled: value.watchEnabled }
 			});
 			emit('created', service);
 			toast.success('Service created');
@@ -54,6 +101,9 @@ const { form, isSubmitting } = useAppForm({
 		}
 	}
 });
+
+// `values` is a Ref at runtime, and templates auto-unwrap refs — reading `.value` there would be undefined, so expose the boolean via a computed.
+const registryEnabled = computed(() => values.value.registryEnabled);
 </script>
 
 <template>
@@ -68,6 +118,43 @@ const { form, isSubmitting } = useAppForm({
 
 		<Field v-slot="{ componentField }" name="description" label="Description">
 			<Input v-bind="componentField" placeholder="Customer-facing web service" :disabled="isSubmitting" />
+		</Field>
+
+		<Separator />
+
+		<div class="flex items-start justify-between gap-3">
+			<div>
+				<h3 class="text-sm font-medium">Private registry</h3>
+				<p class="text-xs text-muted-foreground">Add credentials if the image is private. You can change them later.</p>
+			</div>
+			<Field v-slot="{ componentField }" name="registryEnabled">
+				<Switch v-bind="componentField" :disabled="isSubmitting" />
+			</Field>
+		</div>
+
+		<template v-if="registryEnabled">
+			<Field v-slot="{ componentField }" name="registryServer" label="Registry server">
+				<Input v-bind="componentField" placeholder="ghcr.io" class="font-mono text-xs" :disabled="isSubmitting" />
+			</Field>
+			<Field v-slot="{ componentField }" name="registryUsername" label="Username">
+				<div class="relative">
+					<Lock class="pointer-events-none absolute top-1/2 left-2.5 z-10 size-3.5 -translate-y-1/2 text-muted-foreground" />
+					<Input v-bind="componentField" placeholder="octocat" class="pl-8" :disabled="isSubmitting" />
+				</div>
+			</Field>
+			<Field v-slot="{ componentField }" name="registryPassword" label="Password or token">
+				<Input v-bind="componentField" type="password" placeholder="Password or token" class="font-mono text-xs" :disabled="isSubmitting" />
+			</Field>
+		</template>
+
+		<Field v-slot="{ componentField }" name="watchEnabled">
+			<div class="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+				<div>
+					<p class="text-sm font-medium">Watch for updates</p>
+					<p class="text-xs text-muted-foreground">Deploy automatically when a new release of this tag is published.</p>
+				</div>
+				<Switch v-bind="componentField" :disabled="isSubmitting" />
+			</div>
 		</Field>
 
 		<p v-if="rootError" class="text-sm text-destructive">{{ rootError }}</p>
