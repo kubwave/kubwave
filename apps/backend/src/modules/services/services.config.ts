@@ -7,6 +7,7 @@ import type {
 	GithubRepoServiceConfig,
 	PrivateRepoServiceConfig,
 	PublicRepoServiceConfig,
+	RegistryAuthConfig,
 	RuntimeConfig,
 	ServiceConfig,
 	ServiceConfigFile
@@ -23,23 +24,32 @@ import type {
 	PrivateRepoConfigInput,
 	PublicRepoConfigInput
 } from './services.dto.js';
-import type { BasicAuthView, ServiceConfigView } from './services.types.js';
+import type { BasicAuthView, RegistryAuthView, ServiceConfigView } from './services.types.js';
 
 function toBasicAuthView(stored: BasicAuthConfig | undefined): BasicAuthView | undefined {
 	if (!stored) return undefined;
 	return { enabled: true, username: stored.username, hasPassword: true };
 }
 
+function toRegistryAuthView(stored: RegistryAuthConfig | undefined): RegistryAuthView | undefined {
+	if (!stored) return undefined;
+	return { enabled: true, server: stored.server, username: stored.username, hasPassword: true };
+}
+
 export function toConfigView(stored: ServiceConfig): ServiceConfigView {
 	const { secrets, configFiles, basicAuth, ...rest } = stored;
+	// registryAuth exists on docker-image configs only, so a union-safe read beats a conditional destructure.
+	const registryAuth = 'registryAuth' in stored ? stored.registryAuth : undefined;
 	const basicAuthView = toBasicAuthView(basicAuth);
+	const registryAuthView = toRegistryAuthView(registryAuth);
 	const view = {
 		...rest,
 		domains: stored.domains ?? [],
 		secrets: (secrets ?? []).map(secret => ({ key: secret.key, hasValue: true })),
 		// Config files are decrypted for display so users can read/author their own configs.
 		...(configFiles ? { configFiles: configFiles.map(file => ({ path: file.path, content: decryptSecret(file.content) })) } : {}),
-		...(basicAuthView ? { basicAuth: basicAuthView } : {})
+		...(basicAuthView ? { basicAuth: basicAuthView } : {}),
+		...(registryAuthView ? { registryAuth: registryAuthView } : {})
 	};
 
 	delete (view as { password?: string }).password;
@@ -126,7 +136,15 @@ function normalizeRuntime(config: RuntimeConfig): RuntimeConfig {
 }
 
 export function normalizeDockerConfig(config: DockerImageServiceConfig): DockerImageServiceConfig {
-	return { image: config.image.trim(), tag: config.tag.trim(), ...normalizeRuntime(config) };
+	const registryAuth = config.registryAuth;
+	return {
+		image: config.image.trim(),
+		tag: config.tag.trim(),
+		...(registryAuth?.username != null
+			? { registryAuth: { server: registryAuth.server.trim(), username: registryAuth.username.trim(), password: registryAuth.password } }
+			: {}),
+		...normalizeRuntime(config)
+	};
 }
 
 export function normalizeDockerfileConfig(config: DockerfileServiceConfig): DockerfileServiceConfig {
@@ -216,6 +234,25 @@ export function resolveBasicAuth(
 	throw new ApiError(400, 'A password is required when enabling basic auth.');
 }
 
+export function resolveRegistryAuth(
+	incoming: { enabled: boolean; server?: string; username?: string; password?: string | null } | undefined,
+	existing: RegistryAuthConfig | undefined
+): RegistryAuthConfig | undefined {
+	if (!incoming?.enabled) return undefined;
+	const server = incoming.server?.trim();
+	const username = incoming.username?.trim();
+	if (!server) {
+		throw new ApiError(400, 'A registry server is required when enabling registry auth.');
+	}
+	if (!username) {
+		throw new ApiError(400, 'A username is required when enabling registry auth.');
+	}
+
+	if (incoming.password != null) return { server, username, password: encryptSecret(incoming.password) };
+	if (existing) return { server, username, password: existing.password };
+	throw new ApiError(400, 'A password is required when enabling registry auth.');
+}
+
 function withResolvedSensitive<
 	T extends { secrets: DockerImageConfigInput['secrets']; basicAuth?: { enabled: boolean; username?: string; password?: string | null } }
 >(
@@ -231,11 +268,13 @@ function withResolvedSensitive<
 export function buildStoredConfig(
 	input: Omit<DockerImageConfigInput, 'exposedPorts'>,
 	existingSecrets: RuntimeConfig['secrets'],
-	existingBasicAuth?: BasicAuthConfig
+	existingBasicAuth?: BasicAuthConfig,
+	existingRegistryAuth?: RegistryAuthConfig
 ): DockerImageServiceConfig {
 	return normalizeDockerConfig({
 		...withResolvedSensitive(input, existingSecrets, existingBasicAuth),
-		configFiles: resolveConfigFiles(input.configFiles)
+		configFiles: resolveConfigFiles(input.configFiles),
+		registryAuth: resolveRegistryAuth(input.registryAuth, existingRegistryAuth)
 	});
 }
 

@@ -38,7 +38,7 @@ import {
 	normalizeDockerConfig,
 	toConfigView
 } from './services.config.js';
-import type { AutoDeployInput, CreateComposeServicesInput, CreateServiceInput, UpdateServiceInput } from './services.dto.js';
+import type { AutoDeployInput, CreateComposeServicesInput, CreateServiceInput, ImageWatchInput, UpdateServiceInput } from './services.dto.js';
 import { ComposeParseError } from './compose/compose.errors.js';
 import { parseComposeServices } from './compose/compose.parser.js';
 import { composeReferenceIssues, rewriteComposeServiceReferences } from './compose/compose.references.js';
@@ -68,6 +68,16 @@ function autoDeployColumns(
 	if (!input || !isRepoType(type)) return {};
 	if (input.enabled) return { autoDeployEnabled: true, nextPollAt: now };
 	return { autoDeployEnabled: false, nextPollAt: null, lastPollError: null };
+}
+
+function imageWatchColumns(
+	type: ServiceType,
+	input: ImageWatchInput | undefined,
+	now: Date
+): Partial<Pick<typeof services.$inferInsert, 'imageWatchEnabled' | 'nextWatchAt' | 'lastWatchError'>> {
+	if (!input || type !== 'docker-image') return {};
+	if (input.enabled) return { imageWatchEnabled: true, nextWatchAt: now };
+	return { imageWatchEnabled: false, nextWatchAt: null, lastWatchError: null };
 }
 
 function trimDescription(description?: string): string {
@@ -102,6 +112,13 @@ function toServiceView(row: ServiceRow, defaultDomain: DefaultDomainContext): Se
 			lastPolledAt: row.lastPolledAt?.toISOString() ?? null,
 			nextPollAt: row.nextPollAt?.toISOString() ?? null,
 			lastPollError: row.lastPollError
+		},
+		imageWatch: {
+			enabled: row.imageWatchEnabled,
+			lastDigest: row.lastWatchedDigest,
+			lastCheckedAt: row.lastWatchedAt?.toISOString() ?? null,
+			nextCheckAt: row.nextWatchAt?.toISOString() ?? null,
+			lastError: row.lastWatchError
 		},
 		internalDomain: hasInternalService ? internalServiceName(row.id) : null,
 		defaultUrl: resolveDefaultUrl(defaultDomain, row),
@@ -185,7 +202,8 @@ export class ServicesService {
 					description: trimDescription(input.description),
 					type: input.type,
 					config,
-					...autoDeployColumns(input.type, 'autoDeploy' in input ? input.autoDeploy : undefined, new Date())
+					...autoDeployColumns(input.type, 'autoDeploy' in input ? input.autoDeploy : undefined, new Date()),
+					...imageWatchColumns(input.type, 'imageWatch' in input ? input.imageWatch : undefined, new Date())
 				})
 				.returning();
 			if (!inserted) throw new Error('failed to create service');
@@ -300,7 +318,12 @@ export class ServicesService {
 			description?: string;
 			config?: ServiceConfig;
 			updatedAt: Date;
-		} & ReturnType<typeof autoDeployColumns> = { updatedAt: now, ...autoDeployColumns(service.type, input.autoDeploy, now) };
+		} & ReturnType<typeof autoDeployColumns> &
+			ReturnType<typeof imageWatchColumns> = {
+			updatedAt: now,
+			...autoDeployColumns(service.type, input.autoDeploy, now),
+			...imageWatchColumns(service.type, input.imageWatch, now)
+		};
 
 		if (input.name !== undefined) {
 			const name = input.name.trim();
@@ -361,7 +384,8 @@ export class ServicesService {
 				values.config = buildStoredDatabaseConfig(service.type, incoming, { secrets: stored.secrets, password: stored.password });
 			} else {
 				if (!('image' in incoming)) throw new ServiceConfigTypeMismatchError();
-				values.config = buildStoredConfig(incoming, service.config.secrets, service.config.basicAuth);
+				const existingRegistryAuth = 'registryAuth' in service.config ? service.config.registryAuth : undefined;
+				values.config = buildStoredConfig(incoming, service.config.secrets, service.config.basicAuth, existingRegistryAuth);
 			}
 		}
 
@@ -407,6 +431,11 @@ export class ServicesService {
 				lastPolledAt: services.lastPolledAt,
 				nextPollAt: services.nextPollAt,
 				lastPollError: services.lastPollError,
+				imageWatchEnabled: services.imageWatchEnabled,
+				lastWatchedDigest: services.lastWatchedDigest,
+				lastWatchedAt: services.lastWatchedAt,
+				nextWatchAt: services.nextWatchAt,
+				lastWatchError: services.lastWatchError,
 				createdAt: services.createdAt,
 				updatedAt: services.updatedAt
 			})

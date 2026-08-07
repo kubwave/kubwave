@@ -8,7 +8,9 @@ export const dockerImageDeployer: Deployer = {
 
 	async reconcile(ctx: DeployContext): Promise<ReconcileResult> {
 		const config = ctx.deployment.config as DockerImageServiceConfig;
-		return reconcileRuntime(ctx, config, `${config.image}:${config.tag}`);
+		// Tag-watch snapshots pin the observed digest so the rollout pulls exactly that release, not a tag that moved meanwhile.
+		const imageRef = config.digest ? `${config.image}@${config.digest}` : `${config.image}:${config.tag}`;
+		return reconcileRuntime(ctx, config, imageRef);
 	},
 
 	async teardown(ctx: TeardownContext): Promise<void> {

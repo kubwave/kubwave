@@ -98,6 +98,14 @@ export interface BasicAuthConfig {
 	password: string;
 }
 
+// Credentials for pulling a service's image from a private registry; the worker renders them into a per-service dockerconfigjson Secret.
+export interface RegistryAuthConfig {
+	server: string;
+	username: string;
+	// Ciphertext (AES-256-GCM); worker decrypts when building the pull Secret, API returns only hasPassword.
+	password: string;
+}
+
 export interface RuntimeConfig {
 	containerPort: number | null;
 	// Only true enables the platform-generated public default domain. Absent/false stays internal-only.
@@ -124,6 +132,10 @@ export interface RuntimeConfig {
 export interface DockerImageServiceConfig extends RuntimeConfig {
 	image: string;
 	tag: string;
+	// Optional private-registry login for this image. Absent = anonymous pull (or the platform pull secret).
+	registryAuth?: RegistryAuthConfig;
+	// Digest pinned into a deployment snapshot when tag-watch enqueues; the service row stays unset so the tag keeps being tracked.
+	digest?: string;
 }
 
 export interface DockerfileServiceConfig extends RuntimeConfig {
@@ -422,6 +434,12 @@ export const services = pgTable(
 		lastPolledAt: timestamp('last_polled_at', { withTimezone: true }),
 		nextPollAt: timestamp('next_poll_at', { withTimezone: true }),
 		lastPollError: text('last_poll_error'),
+		// docker-image tag watch: mirrors the auto-deploy columns, tracking the last-seen registry digest instead of a commit.
+		imageWatchEnabled: boolean('image_watch_enabled').notNull().default(false),
+		lastWatchedDigest: text('last_watched_digest'),
+		lastWatchedAt: timestamp('last_watched_at', { withTimezone: true }),
+		nextWatchAt: timestamp('next_watch_at', { withTimezone: true }),
+		lastWatchError: text('last_watch_error'),
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 	},
@@ -429,7 +447,9 @@ export const services = pgTable(
 		index('services_environment_id_created_at_idx').on(table.environmentId, table.createdAt),
 		uniqueIndex('services_environment_id_name_unique').on(table.environmentId, table.name),
 		// Drives the git-poll sweep: find enabled services that are due.
-		index('services_auto_deploy_next_poll_idx').on(table.autoDeployEnabled, table.nextPollAt)
+		index('services_auto_deploy_next_poll_idx').on(table.autoDeployEnabled, table.nextPollAt),
+		// Drives the tag-watch sweep for docker-image services.
+		index('services_image_watch_next_watch_idx').on(table.imageWatchEnabled, table.nextWatchAt)
 	]
 );
 

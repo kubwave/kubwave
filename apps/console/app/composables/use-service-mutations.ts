@@ -11,6 +11,7 @@ export type ServiceCreateInput = {
 	type: string;
 	config: unknown;
 	autoDeploy?: { enabled: boolean };
+	imageWatch?: { enabled: boolean };
 };
 
 export function useCreateService(environmentId: MaybeRefOrGetter<string>) {

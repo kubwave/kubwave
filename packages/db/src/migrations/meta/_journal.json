@@ -183,6 +183,13 @@
 			"when": 1784713669379,
 			"tag": "0025_curly_stryfe",
 			"breakpoints": true
+		},
+		{
+			"idx": 26,
+			"version": "7",
+			"when": 1786102520239,
+			"tag": "0026_messy_gargoyle",
+			"breakpoints": true
 		}
 	]
 }
