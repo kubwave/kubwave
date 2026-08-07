@@ -190,7 +190,7 @@ describe('resolveTagDigest', () => {
 		expect(url).toBe('http://host.k3d.internal:5111/v2/env-1/web/manifests/dep-1');
 	});
 
-	test('matches an insecure platform registry by host with a different port', async () => {
+	test('matches an insecure platform registry only when host and port agree', async () => {
 		mock.module('~/shared/config/worker-env', () => ({
 			env: { registryInsecure: true, registryEndpoint: 'registry.example.com:5111', registryTagWatchTimeoutMs: 5000 }
 		}));
@@ -200,11 +200,14 @@ describe('resolveTagDigest', () => {
 			url = String(input);
 			return new Response(null, { status: 200, headers: { 'docker-content-digest': 'sha256:abc' } });
 		}) as typeof fetch;
-		// Same host, portless image ref — the endpoint's port must not break the insecure match.
+		// Same host and port as the endpoint → insecure http.
+		await resolveInsecure(parseImageRef('registry.example.com:5111/env-1/web', 'dep-1'), undefined);
+		expect(url).toBe('http://registry.example.com:5111/v2/env-1/web/manifests/dep-1');
+		// Same host, different port → a different service; must stay https, not downgrade.
+		await resolveInsecure(parseImageRef('registry.example.com:443/env-1/web', 'dep-1'), undefined);
+		expect(url).toBe('https://registry.example.com:443/v2/env-1/web/manifests/dep-1');
+		// Portless ref against a ported endpoint → default port, not the insecure registry; stays https.
 		await resolveInsecure(parseImageRef('registry.example.com/env-1/web', 'dep-1'), undefined);
-		expect(url).toBe('http://registry.example.com/v2/env-1/web/manifests/dep-1');
-		// Same host, different port on the ref — still insecure.
-		await resolveInsecure(parseImageRef('registry.example.com:5000/env-1/web', 'dep-1'), undefined);
-		expect(url).toBe('http://registry.example.com:5000/v2/env-1/web/manifests/dep-1');
+		expect(url).toBe('https://registry.example.com/v2/env-1/web/manifests/dep-1');
 	});
 });

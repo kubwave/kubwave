@@ -52,8 +52,9 @@ export function parseImageRef(image: string, tag: string): ParsedImageRef {
 // HTTP for dev registries (k3d, localhost) and the platform build registry when REGISTRY_INSECURE; https everywhere else.
 function schemeFor(host: string): string {
 	const lower = host.toLowerCase();
-	// Strip ports on both sides: the endpoint is configured as host:port but an image ref may carry a different (or no) port.
-	if (env.registryInsecure && lower.split(':')[0] === env.registryEndpoint.split(':')[0]) {
+	// Insecure only when the ref and the endpoint agree on host AND port: a portless ref or a different port targets a different service
+	// on the same host, and downgrading it to plain http would leak the stored Basic credentials in transit.
+	if (env.registryInsecure && lower === env.registryEndpoint.toLowerCase()) {
 		return 'http';
 	}
 	if (
