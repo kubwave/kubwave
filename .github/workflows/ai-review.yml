@@ -1,0 +1,192 @@
+# On-demand AI review of a pull request. Trigger it by adding the `ai-review`
+# label to a PR, or by commenting `/ai-review` on one. Never runs on its own.
+#
+# The result is posted as a single sticky comment that is updated on re-runs.
+# This is not a required check — a failed review never blocks a merge.
+#
+# `pull_request_target` and `issue_comment` both run in the context of the base
+# branch, which is the only way this workflow can see repository secrets. That
+# also means the PR revision is untrusted input: it is checked out, but the
+# reviewer runs read-only (no bash, no edits, no network fetches) and never gets
+# a git token. Prompt and opencode config are copied from the base branch before
+# the PR revision is checked out, so a PR cannot rewrite its own review rules.
+name: AI review
+
+on:
+  pull_request_target:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ai-review-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  BUN_VERSION: 1.3.14
+  OPENCODE_VERSION: 1.18.18
+  # `provider/model`, so this single value selects the provider too. Set the repo
+  # variable AI_REVIEW_MODEL to override (a secret of the same name also works,
+  # but is masked in run logs). See .github/ai-review/README.md.
+  AI_REVIEW_MODEL: ${{ vars.AI_REVIEW_MODEL || secrets.AI_REVIEW_MODEL || 'opencode-go/kimi-k3' }}
+
+jobs:
+  review:
+    name: Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Labels can only be applied by users with write access, so the label path
+    # needs no extra author check. The comment path does.
+    if: >-
+      (github.event_name == 'pull_request_target' && github.event.label.name == 'ai-review') ||
+      (github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request != null &&
+        startsWith(github.event.comment.body, '/ai-review') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+    steps:
+      - name: Resolve pull request
+        id: pr
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const number = context.eventName === 'issue_comment' ? context.payload.issue.number : context.payload.pull_request.number;
+            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: number });
+            core.setOutput('number', String(number));
+            core.setOutput('base_ref', pr.base.ref);
+            core.setOutput('head_sha', pr.head.sha);
+
+      - name: Checkout base branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.pr.outputs.base_ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Copied out before the PR revision lands, so the reviewer is configured by
+      # the base branch even when the PR edits .github/ai-review/ itself.
+      - name: Stage trusted reviewer config
+        run: cp -R .github/ai-review "${RUNNER_TEMP}/ai-review"
+
+      - name: Check out PR revision and build diff
+        env:
+          PR: ${{ steps.pr.outputs.number }}
+          BASE_REF: ${{ steps.pr.outputs.base_ref }}
+        run: |
+          set -euo pipefail
+
+          # The merge ref is what actually lands on the base branch, so review
+          # that. It does not exist when the PR conflicts — fall back to the
+          # head ref and diff against the merge base instead.
+          if git fetch --no-tags origin "refs/pull/${PR}/merge:refs/pr/rev"; then
+            git checkout --detach refs/pr/rev
+            base="$(git rev-parse HEAD^1)"
+          else
+            git fetch --no-tags origin "refs/pull/${PR}/head:refs/pr/rev"
+            git checkout --detach refs/pr/rev
+            base="$(git merge-base "origin/${BASE_REF}" HEAD)"
+          fi
+
+          # A PR may ship its own opencode config or plugins; both would override
+          # the read-only permissions staged above.
+          rm -rf opencode.json opencode.jsonc .opencode
+
+          git diff "${base}" HEAD > pr.diff
+          bytes="$(wc -c < pr.diff)"
+          echo "Diff is ${bytes} bytes"
+          if [ "${bytes}" -gt 400000 ]; then
+            head -c 400000 pr.diff > pr.diff.trimmed
+            printf '\n\n[diff truncated at 400 KB]\n' >> pr.diff.trimmed
+            mv pr.diff.trimmed pr.diff
+          fi
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      # Runs from RUNNER_TEMP so the PR's own bunfig.toml cannot redirect the
+      # opencode download; `--dir` points the reviewer at the checkout, `--pure`
+      # keeps external plugins out, `--auto` stops it waiting on a prompt.
+      - name: Run AI review
+        id: review
+        continue-on-error: true
+        working-directory: ${{ runner.temp }}
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENCODE_CONFIG: ${{ runner.temp }}/ai-review/opencode.json
+        run: |
+          set -euo pipefail
+          # The prompt goes first: `--file` is a yargs array flag and would
+          # otherwise swallow the message as another file path.
+          bunx "opencode-ai@${OPENCODE_VERSION}" run \
+            "$(cat "${RUNNER_TEMP}/ai-review/prompt.md")" \
+            --dir "${GITHUB_WORKSPACE}" \
+            --model "${AI_REVIEW_MODEL}" \
+            --pure \
+            --auto \
+            --file "${GITHUB_WORKSPACE}/pr.diff" \
+            | tee "${RUNNER_TEMP}/review-raw.txt"
+
+      - name: Post review comment
+        if: always()
+        uses: actions/github-script@v9
+        env:
+          RAW: ${{ runner.temp }}/review-raw.txt
+          MODEL: ${{ env.AI_REVIEW_MODEL }}
+          FAILED: ${{ steps.review.outcome != 'success' }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- ai-review -->';
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const raw = fs.existsSync(process.env.RAW) ? fs.readFileSync(process.env.RAW, 'utf8') : '';
+            // opencode prints tool activity around the answer and echoes the
+            // prompt, which contains the markers too — so take the last block.
+            const clean = raw.replace(/\u001B\[[0-9;]*[A-Za-z]/g, '');
+            const blocks = [...clean.matchAll(/<<<REVIEW>>>([\s\S]*?)<<<END>>>/g)];
+            let review = (blocks.length ? blocks[blocks.length - 1][1] : clean).trim();
+
+            if (process.env.FAILED === 'true' || !review) {
+              review = `The review did not complete. See the [workflow run](${run}) for details.`;
+            }
+
+            const limit = 60000;
+            if (review.length > limit) {
+              review = `${review.slice(0, limit)}\n\n_Truncated — the full review is in the [workflow run](${run})._`;
+            }
+
+            const head = process.env.HEAD_SHA.slice(0, 7);
+            const body = [
+              marker,
+              `🤖 **AI review** · \`${process.env.MODEL}\` · ${head} · [run](${run})`,
+              '',
+              review,
+              '',
+              '_On demand only: add the `ai-review` label or comment `/ai-review` to run it again._'
+            ].join('\n');
+
+            const { owner, repo } = context.repo;
+            const issue_number = Number(process.env.PR_NUMBER);
+
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const existing = comments.find(c => c.body?.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+      - name: Fail if the review errored
+        if: steps.review.outcome != 'success'
+        run: exit 1
