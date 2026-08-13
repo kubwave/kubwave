@@ -49,10 +49,8 @@ function tenantPodSecurityContext(podSecurityEnforce?: string): V1PodSecurityCon
 	};
 }
 
-// Whether the ref can be republished under us decides the pull policy, and only the caller knows: the kubelet defaults
-// to IfNotPresent for every tag but `latest`, so a moving tag boots whatever layer the node cached on its first pull -
-// arbitrarily old, and invisible because the tag string itself never changes. Only refs kubwave mints itself (the
-// unique per-deployment build tag) and digests are immutable; re-pulling those on every pod start would be pure cost.
+// The kubelet defaults to IfNotPresent for every tag but `latest`, so a republished tag boots whatever layer the node
+// cached first - silently, since the tag string never changes. Only the caller knows whether its ref can move.
 function imagePullPolicyFor(mutableTag?: boolean): string {
 	return mutableTag ? 'Always' : 'IfNotPresent';
 }
