@@ -14,16 +14,19 @@ async function resolveEngineImageRef(ctx: DeployContext, engine: DatabaseEngine,
 	if (stored) return stored;
 
 	const image = DATABASE_ENGINE_CATALOG[engine].image;
-	let resolved = databaseImageRef(engine, version);
 	try {
 		const digest = await resolveTagDigest(parseImageRef(image, version), undefined);
-		if (digest) resolved = `${image}@${digest}`;
+		if (digest) {
+			const pinned = `${image}@${digest}`;
+			await persistDeploymentImageRef(ctx.deployment.id, pinned);
+			return pinned;
+		}
 	} catch (err) {
 		// An unreachable registry must not fail the deploy: the plain tag under IfNotPresent still boots from cache.
-		console.warn(`[deploy] ${engine}: deploying ${resolved} unpinned, digest resolution failed:`, errorMessage(err));
+		console.warn(`[deploy] ${engine}: deploying ${version} unpinned, digest resolution failed:`, errorMessage(err));
 	}
-	await persistDeploymentImageRef(ctx.deployment.id, resolved);
-	return resolved;
+	// Deliberately not recorded - the write is one-way, so leaving it unset lets a later tick pin this deployment once the registry is back.
+	return databaseImageRef(engine, version);
 }
 
 // Managed single-instance database (postgres/mysql/mariadb/mongodb): no build step (public engine image); runtime config

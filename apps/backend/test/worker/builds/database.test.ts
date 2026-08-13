@@ -116,6 +116,7 @@ describe('database deployers', () => {
 	test('falls back to the plain tag when the registry cannot be reached', async () => {
 		resolveShouldThrow = true;
 		reconcileCalls.length = 0;
+		persisted.length = 0;
 		try {
 			await postgresDeployer.reconcile(makeCtx('postgres', dbConfig()));
 		} finally {
@@ -123,6 +124,23 @@ describe('database deployers', () => {
 		}
 		expect(reconcileCalls[0]!.imageRef).toBe('postgres:16');
 		expect(reconcileCalls[0]!.opts?.mutableTag).toBeUndefined();
+	});
+
+	// The recorded ref is write-once, so persisting the fallback would strand the deployment on a moving tag forever.
+	test('does not record the fallback, so a later tick still pins once the registry recovers', async () => {
+		resolveShouldThrow = true;
+		persisted.length = 0;
+		try {
+			await postgresDeployer.reconcile(makeCtx('postgres', dbConfig()));
+		} finally {
+			resolveShouldThrow = false;
+		}
+		expect(persisted).toEqual([]);
+
+		reconcileCalls.length = 0;
+		await postgresDeployer.reconcile(makeCtx('postgres', dbConfig()));
+		expect(reconcileCalls[0]!.imageRef).toBe(`postgres@${DIGEST}`);
+		expect(persisted).toEqual([{ deploymentId: 'dep-1', imageRef: `postgres@${DIGEST}` }]);
 	});
 
 	test('each deployer declares its own engine type', () => {
