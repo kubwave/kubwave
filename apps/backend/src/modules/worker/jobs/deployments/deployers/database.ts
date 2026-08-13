@@ -11,7 +11,11 @@ function makeDatabaseDeployer(engine: DatabaseEngine): Deployer {
 
 		async reconcile(ctx: DeployContext): Promise<ReconcileResult> {
 			const config = ctx.deployment.config as DatabaseServiceConfig;
-			return reconcileRuntime(ctx, buildDatabaseRuntimeConfig(engine, config), databaseImageRef(engine, config.version));
+			// The catalog selects a major line (`postgres:16`), which upstream republishes on every patch release, so the
+			// node's cached copy of that tag goes stale - a restart would otherwise resurrect an unpatched engine forever.
+			return reconcileRuntime(ctx, buildDatabaseRuntimeConfig(engine, config), databaseImageRef(engine, config.version), {
+				mutableTag: true
+			});
 		},
 
 		async teardown(ctx: TeardownContext): Promise<void> {

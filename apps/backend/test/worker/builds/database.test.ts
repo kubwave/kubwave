@@ -5,7 +5,7 @@ import type { DeployContext, ReconcileResult, TeardownContext } from '~/modules/
 
 // The database deployers synthesize a runtime config from the real engine catalog and funnel through
 // the shared runtime core. Stub only that core to assert the image ref + synthesized config.
-const reconcileCalls: Array<{ imageRef: string; config: DatabaseRuntimeForward }> = [];
+const reconcileCalls: Array<{ imageRef: string; config: DatabaseRuntimeForward; opts: { mutableTag?: boolean } | undefined }> = [];
 let teardownCalled = false;
 
 interface DatabaseRuntimeForward {
@@ -17,8 +17,13 @@ interface DatabaseRuntimeForward {
 }
 
 mock.module('~/modules/worker/jobs/deployments/deployers/runtime/runtime.service', () => ({
-	reconcileRuntime: async (_ctx: DeployContext, config: DatabaseRuntimeForward, imageRef: string): Promise<ReconcileResult> => {
-		reconcileCalls.push({ imageRef, config });
+	reconcileRuntime: async (
+		_ctx: DeployContext,
+		config: DatabaseRuntimeForward,
+		imageRef: string,
+		opts?: { mutableTag?: boolean }
+	): Promise<ReconcileResult> => {
+		reconcileCalls.push({ imageRef, config, opts });
 		return { state: 'ready' };
 	},
 	teardownRuntime: async (_ctx: TeardownContext) => {
@@ -57,6 +62,21 @@ function dbConfig(overrides: Partial<DatabaseServiceConfig> = {}): DatabaseServi
 }
 
 describe('database deployers', () => {
+	// The catalog pins a major line (postgres:16, mongo:8, mariadb:11.4), and upstream republishes those on every
+	// patch release - so a node that cached the tag months ago would otherwise keep booting an unpatched engine.
+	test('marks the engine tag as mutable so security patches are not stranded in the node cache', async () => {
+		for (const [deployer, type, version] of [
+			[postgresDeployer, 'postgres', '16'],
+			[mysqlDeployer, 'mysql', '8.4'],
+			[mariadbDeployer, 'mariadb', '11.4'],
+			[mongodbDeployer, 'mongodb', '8']
+		] as const) {
+			reconcileCalls.length = 0;
+			await deployer.reconcile(makeCtx(type, dbConfig({ version })));
+			expect(reconcileCalls[0]!.opts?.mutableTag).toBe(true);
+		}
+	});
+
 	test('each deployer declares its own engine type', () => {
 		expect(postgresDeployer.type).toBe('postgres');
 		expect(mysqlDeployer.type).toBe('mysql');
