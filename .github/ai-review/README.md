@@ -68,6 +68,15 @@ Re-triggering updates the existing comment instead of posting a new one. Removin
 
 The comment path is restricted to users with `OWNER`, `MEMBER`, or `COLLABORATOR` association. The label path needs no extra check, because applying a label already requires write access.
 
+### Knowing that it is running
+
+A review takes several minutes, and `issue_comment` runs produce no check on the pull request, so the workflow acknowledges the trigger within seconds instead of leaving you guessing:
+
+- A 👀 reaction lands on the `/ai-review` comment straight away, and is replaced by 👍 when the review is posted, or 😕 when it failed. The label path gets no reaction — there is nothing to react to.
+- The sticky comment is posted immediately as `⏳ Reviewing…` and rewritten with the findings at the end.
+
+The second one matters more than it looks. GitHub does not move an edited comment to the bottom of the thread, so once the sticky comment exists it is updated in place, somewhere above whatever you last wrote. Without the placeholder, a run genuinely looks like nothing happened.
+
 ## Adapting it to another repository
 
 Only `prompt.md` is project-specific. Rewrite these parts of it:
@@ -83,10 +92,11 @@ In `ai-review.yml`, the only values worth revisiting are `BUN_VERSION`, `OPENCOD
 ## How it works
 
 1. `pull_request_target` (on `labeled`) and `issue_comment` both run in the context of the **base** branch. That is the only way the workflow can read repository secrets, including on pull requests from forks.
-2. The base branch is checked out first, and `.github/ai-review/` is copied to a temp directory. Everything after this point uses that trusted copy.
-3. The pull request revision is then checked out — preferring `refs/pull/<n>/merge`, which is the merged result, and falling back to `refs/pull/<n>/head` when the pull request has conflicts. The diff is taken against the merge parent or the merge base respectively.
-4. opencode runs over the checkout with the diff attached, and prints its review to stdout.
-5. The block between the markers is extracted and posted as a comment carrying the `<!-- ai-review -->` marker, updating the existing one if present.
+2. The trigger is acknowledged before any real work starts: the 👀 reaction and the `⏳ Reviewing…` placeholder. The placeholder's comment id is carried forward as a step output, so the final step updates that exact comment instead of searching for it again.
+3. The base branch is checked out first, and `.github/ai-review/` is copied to a temp directory. Everything after this point uses that trusted copy.
+4. The pull request revision is then checked out — preferring `refs/pull/<n>/merge`, which is the merged result, and falling back to `refs/pull/<n>/head` when the pull request has conflicts. The diff is taken against the merge parent or the merge base respectively.
+5. opencode runs over the checkout with the diff attached, and prints its review to stdout.
+6. The block between the markers is extracted, the placeholder comment is rewritten with it, and the reaction is swapped for the verdict.
 
 ## Security
 
@@ -107,7 +117,11 @@ Each run is one agent session over the diff plus whatever files it reads. Larger
 
 ## Troubleshooting
 
+**Nothing seems to happen after commenting.** Check for the 👀 reaction on your comment. If it is there, the run started and you are waiting on it — the result rewrites the sticky comment further up the thread, it does not appear as a new comment at the bottom.
+
 **The workflow does not start.** Both triggers must exist on the **default branch** — GitHub ignores `pull_request_target` and `issue_comment` workflows that only exist on a feature branch.
+
+**No reaction, and no run under Actions.** The comment must _begin_ with `/ai-review`, and the author needs write access. `please /ai-review` does not match.
 
 **The comment says the review did not complete.** Open the run. The usual causes are a missing or expired `OPENCODE_API_KEY`, a model name that does not exist for that provider, or the 15-minute timeout on a very large diff.
 

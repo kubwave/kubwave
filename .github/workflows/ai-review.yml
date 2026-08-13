@@ -20,6 +20,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
   pull-requests: write
 
 concurrency:
@@ -59,6 +60,45 @@ jobs:
             core.setOutput('number', String(number));
             core.setOutput('base_ref', pr.base.ref);
             core.setOutput('head_sha', pr.head.sha);
+
+      # The review takes minutes and produces no check on the PR, so acknowledge
+      # it immediately: react to the triggering comment, and put the sticky
+      # comment in place up front. Editing a comment does not bump it in the
+      # thread, so without this a run looks like nothing happened at all.
+      - name: Acknowledge trigger
+        id: ack
+        uses: actions/github-script@v9
+        env:
+          MODEL: ${{ env.AI_REVIEW_MODEL }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const issue_number = Number(process.env.PR_NUMBER);
+
+            if (context.eventName === 'issue_comment') {
+              const comment_id = context.payload.comment.id;
+              const { data: reaction } = await github.rest.reactions.createForIssueComment({ owner, repo, comment_id, content: 'eyes' });
+              core.setOutput('trigger_comment_id', String(comment_id));
+              core.setOutput('reaction_id', String(reaction.id));
+            }
+
+            const marker = '<!-- ai-review -->';
+            const run = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const body = [
+              marker,
+              `🤖 **AI review** · \`${process.env.MODEL}\` · ${process.env.HEAD_SHA.slice(0, 7)} · [run](${run})`,
+              '',
+              '⏳ Reviewing…'
+            ].join('\n');
+
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const existing = comments.find(c => c.body?.includes(marker));
+            const { data: comment } = existing
+              ? await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body })
+              : await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            core.setOutput('comment_id', String(comment.id));
 
       - name: Checkout base branch
         uses: actions/checkout@v7
@@ -143,6 +183,9 @@ jobs:
           FAILED: ${{ steps.review.outcome != 'success' }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          COMMENT_ID: ${{ steps.ack.outputs.comment_id }}
+          TRIGGER_COMMENT_ID: ${{ steps.ack.outputs.trigger_comment_id }}
+          REACTION_ID: ${{ steps.ack.outputs.reaction_id }}
         with:
           script: |
             const fs = require('fs');
@@ -176,15 +219,27 @@ jobs:
             ].join('\n');
 
             const { owner, repo } = context.repo;
-            const issue_number = Number(process.env.PR_NUMBER);
+            const commentId = Number(process.env.COMMENT_ID || 0);
 
-            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
-            const existing = comments.find(c => c.body?.includes(marker));
-
-            if (existing) {
-              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            // The placeholder is already there in the normal case; only fall
+            // back to creating one if the acknowledge step never got that far.
+            if (commentId) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: commentId, body });
             } else {
-              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+              await github.rest.issues.createComment({ owner, repo, issue_number: Number(process.env.PR_NUMBER), body });
+            }
+
+            const triggerCommentId = Number(process.env.TRIGGER_COMMENT_ID || 0);
+            const reactionId = Number(process.env.REACTION_ID || 0);
+            if (triggerCommentId && reactionId) {
+              // A stuck 👀 would read as "still running", so swap it for a verdict.
+              await github.rest.reactions.deleteForIssueComment({ owner, repo, comment_id: triggerCommentId, reaction_id: reactionId });
+              await github.rest.reactions.createForIssueComment({
+                owner,
+                repo,
+                comment_id: triggerCommentId,
+                content: process.env.FAILED === 'true' ? 'confused' : '+1'
+              });
             }
 
       - name: Fail if the review errored
