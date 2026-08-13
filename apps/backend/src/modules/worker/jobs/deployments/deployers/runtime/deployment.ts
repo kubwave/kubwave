@@ -49,6 +49,14 @@ function tenantPodSecurityContext(podSecurityEnforce?: string): V1PodSecurityCon
 	};
 }
 
+// Whether the ref can be republished under us decides the pull policy, and only the caller knows: the kubelet defaults
+// to IfNotPresent for every tag but `latest`, so a moving tag boots whatever layer the node cached on its first pull -
+// arbitrarily old, and invisible because the tag string itself never changes. Refs kubwave mints (unique per-deployment
+// build tag), pinned engine versions and digests are immutable, so re-pulling those on every pod start is pure cost.
+function imagePullPolicyFor(mutableTag?: boolean): string {
+	return mutableTag ? 'Always' : 'IfNotPresent';
+}
+
 export function buildEnv(deployment: Deployment, config: RuntimeConfig): V1EnvVar[] {
 	const plain: V1EnvVar[] = config.env.map(e => ({ name: e.key, value: e.value }));
 	const secrets: V1EnvVar[] = secretList(config).map(s => ({
@@ -63,7 +71,13 @@ export function buildDeployment(
 	namespace: string,
 	config: RuntimeConfig,
 	imageRef: string,
-	opts?: { imagePullSecretNames?: string[]; podSecurityEnforce?: string; runtimeClass?: string; defaultResources?: ResourceConfig }
+	opts?: {
+		imagePullSecretNames?: string[];
+		podSecurityEnforce?: string;
+		runtimeClass?: string;
+		defaultResources?: ResourceConfig;
+		mutableTag?: boolean;
+	}
 ): V1Deployment {
 	const name = resourceName(deployment.serviceId);
 	const labels = commonLabels(deployment.serviceId);
@@ -119,6 +133,7 @@ export function buildDeployment(
 						{
 							name: CONTAINER_NAME,
 							image: imageRef,
+							imagePullPolicy: imagePullPolicyFor(opts?.mutableTag),
 							securityContext: tenantContainerSecurityContext(opts?.podSecurityEnforce),
 							...(config.containerPort != null ? { ports: [{ containerPort: config.containerPort }] } : {}),
 							...(config.command && config.command.length > 0 ? { command: config.command } : {}),
@@ -143,11 +158,14 @@ export function deploymentMatchesConfig(
 	serviceId: string,
 	podSecurityEnforce?: string,
 	runtimeClass?: string,
-	defaultResources?: ResourceConfig
+	defaultResources?: ResourceConfig,
+	mutableTag?: boolean
 ): boolean {
 	const container = existing.spec?.template?.spec?.containers?.find(c => c.name === CONTAINER_NAME);
 	if (!container) return false;
 	if (container.image !== imageRef) return false;
+	// A pre-feature Deployment has the kubelet default (absent here) and must roll once to pick the explicit policy up.
+	if ((container.imagePullPolicy ?? null) !== imagePullPolicyFor(mutableTag)) return false;
 	// When an HPA owns replicas, accept whatever it set; otherwise pin to 1.
 	if (!autoscalingEnabled(config) && (existing.spec?.replicas ?? 1) !== 1) return false;
 	// Volume-backed -> Recreate, else RollingUpdate; the API reports an explicit type, so compare against the default we omit on write.

@@ -10,7 +10,8 @@ export const dockerImageDeployer: Deployer = {
 		const config = ctx.deployment.config as DockerImageServiceConfig;
 		// Tag-watch snapshots pin the observed digest so the rollout pulls exactly that release, not a tag that moved meanwhile.
 		const imageRef = config.digest ? `${config.image}@${config.digest}` : `${config.image}:${config.tag}`;
-		return reconcileRuntime(ctx, config, imageRef);
+		// Without a digest the ref is a tag the user's registry keeps republishing, so the node's image cache must not be trusted.
+		return reconcileRuntime(ctx, config, imageRef, { mutableTag: !config.digest });
 	},
 
 	async teardown(ctx: TeardownContext): Promise<void> {
