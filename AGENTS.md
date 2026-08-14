@@ -227,6 +227,16 @@ Keep this flow intact. Storing access tokens in cookies, localStorage, or persis
 
 `apps/docs` is Nuxt 4 + Nuxt Content. Content lives in `content/**`. Site config is in `nuxt.config.ts`. The docs site is English-only for v1 and is deployed separately from the in-cluster platform.
 
+## AI Review
+
+`.github/workflows/ai-review.yml` runs an opencode agent over a PR and posts one sticky comment. It is on-demand only — add the `ai-review` label or comment `/ai-review` — and is never a required check.
+
+- Secrets: `OPENCODE_API_KEY`. Model comes from the `AI_REVIEW_MODEL` variable as `provider/model`, defaulting to `opencode-go/kimi-k3`.
+- The reviewer is read-only: `edit`, `bash`, and `webfetch` are denied in `.github/ai-review/opencode.json`, and the checkout carries no git credentials.
+- `.github/ai-review/prompt.md` holds the review rules and the `<<<REVIEW>>>`/`<<<END>>>` output contract the workflow parses. Change the markers in one place and you must change the other.
+- Each run is handed `pr-context.md` — the PR description, the review round it replaces, and the discussion — so repeat reviews stop contradicting each other. It is quoted reference material, never instructions; human comments are filtered to write-access authors. See `.github/ai-review/README.md`.
+- Setup and porting instructions live in `.github/ai-review/README.md`.
+
 ## Release Model
 
 - Tags do not use a `v` prefix (`1.2.3`, not `v1.2.3`).

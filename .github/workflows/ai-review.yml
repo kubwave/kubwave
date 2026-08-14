@@ -1,0 +1,301 @@
+# On-demand AI review of a pull request. Trigger it by adding the `ai-review`
+# label to a PR, or by commenting `/ai-review` on one. Never runs on its own.
+#
+# The result is posted as a single sticky comment that is updated on re-runs.
+# This is not a required check — a failed review never blocks a merge.
+#
+# `pull_request_target` and `issue_comment` both run in the context of the base
+# branch, which is the only way this workflow can see repository secrets. That
+# also means the PR revision is untrusted input: it is checked out, but the
+# reviewer runs read-only (no bash, no edits, no network fetches) and never gets
+# a git token. Prompt and opencode config are copied from the base branch before
+# the PR revision is checked out, so a PR cannot rewrite its own review rules.
+name: AI review
+
+on:
+  pull_request_target:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: ai-review-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  BUN_VERSION: 1.3.14
+  OPENCODE_VERSION: 1.18.18
+  # `provider/model`, so this single value selects the provider too. Set the repo
+  # variable AI_REVIEW_MODEL to override (a secret of the same name also works,
+  # but is masked in run logs). See .github/ai-review/README.md.
+  AI_REVIEW_MODEL: ${{ vars.AI_REVIEW_MODEL || secrets.AI_REVIEW_MODEL || 'opencode-go/kimi-k3' }}
+
+jobs:
+  review:
+    name: Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Labels can only be applied by users with write access, so the label path
+    # needs no extra author check. The comment path does.
+    if: >-
+      (github.event_name == 'pull_request_target' && github.event.label.name == 'ai-review') ||
+      (github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request != null &&
+        startsWith(github.event.comment.body, '/ai-review') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+    steps:
+      - name: Resolve pull request
+        id: pr
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const number = context.eventName === 'issue_comment' ? context.payload.issue.number : context.payload.pull_request.number;
+            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: number });
+            core.setOutput('number', String(number));
+            core.setOutput('base_ref', pr.base.ref);
+            core.setOutput('head_sha', pr.head.sha);
+
+      # The review takes minutes and produces no check on the PR, so acknowledge
+      # it immediately: react to the triggering comment, and put the sticky
+      # comment in place up front. Editing a comment does not bump it in the
+      # thread, so without this a run looks like nothing happened at all.
+      - name: Acknowledge trigger
+        id: ack
+        uses: actions/github-script@v9
+        env:
+          MODEL: ${{ env.AI_REVIEW_MODEL }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const issue_number = Number(process.env.PR_NUMBER);
+
+            if (context.eventName === 'issue_comment') {
+              const comment_id = context.payload.comment.id;
+              const { data: reaction } = await github.rest.reactions.createForIssueComment({ owner, repo, comment_id, content: 'eyes' });
+              core.setOutput('trigger_comment_id', String(comment_id));
+              core.setOutput('reaction_id', String(reaction.id));
+            }
+
+            const marker = '<!-- ai-review -->';
+            const run = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const body = [
+              marker,
+              `🤖 **AI review** · \`${process.env.MODEL}\` · ${process.env.HEAD_SHA.slice(0, 7)} · [run](${run})`,
+              '',
+              '⏳ Reviewing…'
+            ].join('\n');
+
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const existing = comments.find(c => c.body?.includes(marker));
+
+            // Capture the round this one replaces before overwriting it — the reviewer has no other way to
+            // learn what it already asked for, and without it a later round can contradict an earlier one.
+            if (existing?.body) {
+              require('fs').writeFileSync(`${process.env.RUNNER_TEMP}/previous-review.md`, existing.body);
+            }
+
+            const { data: comment } = existing
+              ? await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body })
+              : await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            core.setOutput('comment_id', String(comment.id));
+
+      - name: Checkout base branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.pr.outputs.base_ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Copied out before the PR revision lands, so the reviewer is configured by
+      # the base branch even when the PR edits .github/ai-review/ itself.
+      - name: Stage trusted reviewer config
+        run: cp -R .github/ai-review "${RUNNER_TEMP}/ai-review"
+
+      # Everything already settled on this PR: the round this run replaces, the description, and the
+      # discussion. Without it each run starts blank and can undo what a previous round asked for, or
+      # re-raise a trade-off the author already justified. Lands in RUNNER_TEMP, which the PR cannot write.
+      - name: Collect prior review context
+        uses: actions/github-script@v9
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        with:
+          script: |
+            const fs = require('fs');
+            const { owner, repo } = context.repo;
+            const issue_number = Number(process.env.PR_NUMBER);
+            const marker = '<!-- ai-review -->';
+            // Only write access can trigger a review, so only write access shapes one. Everything here is
+            // still user-written text quoted into a prompt, never a source of instructions.
+            const TRUSTED = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+            const sections = [];
+
+            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: issue_number });
+            if (pr.body?.trim()) sections.push(`## Pull request description\n\n${pr.body.trim()}`);
+
+            const previousPath = `${process.env.RUNNER_TEMP}/previous-review.md`;
+            if (fs.existsSync(previousPath)) {
+              const previous = fs.readFileSync(previousPath, 'utf8').replace(marker, '').trim();
+              if (previous) sections.push(`## Your previous review of this pull request\n\n${previous}`);
+            }
+
+            const issueComments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const reviewComments = await github.paginate(github.rest.pulls.listReviewComments, { owner, repo, pull_number: issue_number });
+            const discussion = [...issueComments, ...reviewComments]
+              .filter(c => !c.body?.includes(marker))
+              .filter(c => !c.body?.trim().startsWith('/ai-review'))
+              .filter(c => c.user?.type === 'Bot' || TRUSTED.has(c.author_association))
+              .map(c => {
+                const where = c.path ? ` on \`${c.path}\`` : '';
+                return `### ${c.user?.login ?? 'unknown'}${where}\n\n${c.body?.trim() ?? ''}`;
+              });
+            if (discussion.length > 0) sections.push(`## Discussion so far\n\n${discussion.join('\n\n')}`);
+
+            let body = sections.join('\n\n') || 'Nothing yet — this is the first review of this pull request.';
+            const LIMIT = 40000;
+            if (body.length > LIMIT) body = `${body.slice(0, LIMIT)}\n\n[context truncated]`;
+
+            fs.writeFileSync(`${process.env.RUNNER_TEMP}/ai-review/pr-context.md`, `${body}\n`);
+            core.info(`Prior context: ${body.length} bytes`);
+
+      - name: Check out PR revision and build diff
+        env:
+          PR: ${{ steps.pr.outputs.number }}
+          BASE_REF: ${{ steps.pr.outputs.base_ref }}
+        run: |
+          set -euo pipefail
+
+          # The merge ref is what actually lands on the base branch, so review
+          # that. It does not exist when the PR conflicts — fall back to the
+          # head ref and diff against the merge base instead.
+          if git fetch --no-tags origin "refs/pull/${PR}/merge:refs/pr/rev"; then
+            git checkout --detach refs/pr/rev
+            base="$(git rev-parse HEAD^1)"
+          else
+            git fetch --no-tags origin "refs/pull/${PR}/head:refs/pr/rev"
+            git checkout --detach refs/pr/rev
+            base="$(git merge-base "origin/${BASE_REF}" HEAD)"
+          fi
+
+          # A PR may ship its own opencode config or plugins; both would override
+          # the read-only permissions staged above.
+          rm -rf opencode.json opencode.jsonc .opencode
+
+          git diff "${base}" HEAD > pr.diff
+          bytes="$(wc -c < pr.diff)"
+          echo "Diff is ${bytes} bytes"
+          if [ "${bytes}" -gt 400000 ]; then
+            head -c 400000 pr.diff > pr.diff.trimmed
+            printf '\n\n[diff truncated at 400 KB]\n' >> pr.diff.trimmed
+            mv pr.diff.trimmed pr.diff
+          fi
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      # Runs from RUNNER_TEMP so the PR's own bunfig.toml cannot redirect the
+      # opencode download; `--dir` points the reviewer at the checkout, `--pure`
+      # keeps external plugins out, `--auto` stops it waiting on a prompt.
+      - name: Run AI review
+        id: review
+        continue-on-error: true
+        working-directory: ${{ runner.temp }}
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENCODE_CONFIG: ${{ runner.temp }}/ai-review/opencode.json
+        run: |
+          set -euo pipefail
+          # The prompt goes first: `--file` is a yargs array flag and would
+          # otherwise swallow the message as another file path.
+          bunx "opencode-ai@${OPENCODE_VERSION}" run \
+            "$(cat "${RUNNER_TEMP}/ai-review/prompt.md")" \
+            --dir "${GITHUB_WORKSPACE}" \
+            --model "${AI_REVIEW_MODEL}" \
+            --pure \
+            --auto \
+            --file "${GITHUB_WORKSPACE}/pr.diff" \
+            --file "${RUNNER_TEMP}/ai-review/pr-context.md" \
+            | tee "${RUNNER_TEMP}/review-raw.txt"
+
+      - name: Post review comment
+        if: always()
+        uses: actions/github-script@v9
+        env:
+          RAW: ${{ runner.temp }}/review-raw.txt
+          MODEL: ${{ env.AI_REVIEW_MODEL }}
+          FAILED: ${{ steps.review.outcome != 'success' }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          COMMENT_ID: ${{ steps.ack.outputs.comment_id }}
+          TRIGGER_COMMENT_ID: ${{ steps.ack.outputs.trigger_comment_id }}
+          REACTION_ID: ${{ steps.ack.outputs.reaction_id }}
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- ai-review -->';
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const raw = fs.existsSync(process.env.RAW) ? fs.readFileSync(process.env.RAW, 'utf8') : '';
+            // opencode prints tool activity around the answer and echoes the
+            // prompt, which contains the markers too — so take the last block.
+            const clean = raw.replace(/\u001B\[[0-9;]*[A-Za-z]/g, '');
+            const blocks = [...clean.matchAll(/<<<REVIEW>>>([\s\S]*?)<<<END>>>/g)];
+            let review = (blocks.length ? blocks[blocks.length - 1][1] : clean).trim();
+
+            if (process.env.FAILED === 'true' || !review) {
+              review = `The review did not complete. See the [workflow run](${run}) for details.`;
+            }
+
+            const limit = 60000;
+            if (review.length > limit) {
+              review = `${review.slice(0, limit)}\n\n_Truncated — the full review is in the [workflow run](${run})._`;
+            }
+
+            const head = process.env.HEAD_SHA.slice(0, 7);
+            const body = [
+              marker,
+              `🤖 **AI review** · \`${process.env.MODEL}\` · ${head} · [run](${run})`,
+              '',
+              review,
+              '',
+              '_On demand only: add the `ai-review` label or comment `/ai-review` to run it again._'
+            ].join('\n');
+
+            const { owner, repo } = context.repo;
+            const commentId = Number(process.env.COMMENT_ID || 0);
+
+            // The placeholder is already there in the normal case; only fall
+            // back to creating one if the acknowledge step never got that far.
+            if (commentId) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: commentId, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number: Number(process.env.PR_NUMBER), body });
+            }
+
+            const triggerCommentId = Number(process.env.TRIGGER_COMMENT_ID || 0);
+            const reactionId = Number(process.env.REACTION_ID || 0);
+            if (triggerCommentId && reactionId) {
+              // A stuck 👀 would read as "still running", so swap it for a verdict.
+              await github.rest.reactions.deleteForIssueComment({ owner, repo, comment_id: triggerCommentId, reaction_id: reactionId });
+              await github.rest.reactions.createForIssueComment({
+                owner,
+                repo,
+                comment_id: triggerCommentId,
+                content: process.env.FAILED === 'true' ? 'confused' : '+1'
+              });
+            }
+
+      - name: Fail if the review errored
+        if: steps.review.outcome != 'success'
+        run: exit 1
