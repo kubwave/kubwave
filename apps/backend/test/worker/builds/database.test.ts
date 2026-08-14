@@ -20,6 +20,7 @@ const DIGEST = 'sha256:1f0e3dad99908345f7439f8ffabdffc418afc3c1a9e0f3bcd2f2e1a9c
 const resolveCalls: Array<{ repo: string; tag: string }> = [];
 const persisted: Array<{ deploymentId: string; imageRef: string }> = [];
 let resolveShouldThrow = false;
+let persistShouldThrow = false;
 
 mock.module('~/modules/worker/jobs/registry-tag-watch/registry', () => ({
 	parseImageRef: (image: string, tag: string) => ({ host: 'registry-1.docker.io', repo: `library/${image}`, tag }),
@@ -32,6 +33,7 @@ mock.module('~/modules/worker/jobs/registry-tag-watch/registry', () => ({
 
 mock.module('~/modules/worker/jobs/deployments/image-ref', () => ({
 	persistDeploymentImageRef: async (deploymentId: string, imageRef: string) => {
+		if (persistShouldThrow) throw new Error('db write failed');
 		persisted.push({ deploymentId, imageRef });
 	}
 }));
@@ -124,6 +126,17 @@ describe('database deployers', () => {
 		}
 		expect(reconcileCalls[0]!.imageRef).toBe('postgres:16');
 		expect(reconcileCalls[0]!.opts?.mutableTag).toBeUndefined();
+	});
+
+	// Recording the ref is a control-plane write; swallowing it here would report a reachable registry as unreachable
+	// and silently deploy the unpinned tag.
+	test('does not disguise a failed record as a registry failure', async () => {
+		persistShouldThrow = true;
+		try {
+			await expect(postgresDeployer.reconcile(makeCtx('postgres', dbConfig()))).rejects.toThrow('db write failed');
+		} finally {
+			persistShouldThrow = false;
+		}
 	});
 
 	// The recorded ref is write-once, so persisting the fallback would strand the deployment on a moving tag forever.
