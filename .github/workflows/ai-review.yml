@@ -95,6 +95,13 @@ jobs:
 
             const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
             const existing = comments.find(c => c.body?.includes(marker));
+
+            // Capture the round this one replaces before overwriting it — the reviewer has no other way to
+            // learn what it already asked for, and without it a later round can contradict an earlier one.
+            if (existing?.body) {
+              require('fs').writeFileSync(`${process.env.RUNNER_TEMP}/previous-review.md`, existing.body);
+            }
+
             const { data: comment } = existing
               ? await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body })
               : await github.rest.issues.createComment({ owner, repo, issue_number, body });
@@ -111,6 +118,52 @@ jobs:
       # the base branch even when the PR edits .github/ai-review/ itself.
       - name: Stage trusted reviewer config
         run: cp -R .github/ai-review "${RUNNER_TEMP}/ai-review"
+
+      # Everything already settled on this PR: the round this run replaces, the description, and the
+      # discussion. Without it each run starts blank and can undo what a previous round asked for, or
+      # re-raise a trade-off the author already justified. Lands in RUNNER_TEMP, which the PR cannot write.
+      - name: Collect prior review context
+        uses: actions/github-script@v9
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        with:
+          script: |
+            const fs = require('fs');
+            const { owner, repo } = context.repo;
+            const issue_number = Number(process.env.PR_NUMBER);
+            const marker = '<!-- ai-review -->';
+            // Only write access can trigger a review, so only write access shapes one. Everything here is
+            // still user-written text quoted into a prompt, never a source of instructions.
+            const TRUSTED = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+            const sections = [];
+
+            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: issue_number });
+            if (pr.body?.trim()) sections.push(`## Pull request description\n\n${pr.body.trim()}`);
+
+            const previousPath = `${process.env.RUNNER_TEMP}/previous-review.md`;
+            if (fs.existsSync(previousPath)) {
+              const previous = fs.readFileSync(previousPath, 'utf8').replace(marker, '').trim();
+              if (previous) sections.push(`## Your previous review of this pull request\n\n${previous}`);
+            }
+
+            const issueComments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const reviewComments = await github.paginate(github.rest.pulls.listReviewComments, { owner, repo, pull_number: issue_number });
+            const discussion = [...issueComments, ...reviewComments]
+              .filter(c => !c.body?.includes(marker))
+              .filter(c => !c.body?.trim().startsWith('/ai-review'))
+              .filter(c => c.user?.type === 'Bot' || TRUSTED.has(c.author_association))
+              .map(c => {
+                const where = c.path ? ` on \`${c.path}\`` : '';
+                return `### ${c.user?.login ?? 'unknown'}${where}\n\n${c.body?.trim() ?? ''}`;
+              });
+            if (discussion.length > 0) sections.push(`## Discussion so far\n\n${discussion.join('\n\n')}`);
+
+            let body = sections.join('\n\n') || 'Nothing yet — this is the first review of this pull request.';
+            const LIMIT = 40000;
+            if (body.length > LIMIT) body = `${body.slice(0, LIMIT)}\n\n[context truncated]`;
+
+            fs.writeFileSync(`${process.env.RUNNER_TEMP}/ai-review/pr-context.md`, `${body}\n`);
+            core.info(`Prior context: ${body.length} bytes`);
 
       - name: Check out PR revision and build diff
         env:
@@ -172,6 +225,7 @@ jobs:
             --pure \
             --auto \
             --file "${GITHUB_WORKSPACE}/pr.diff" \
+            --file "${RUNNER_TEMP}/ai-review/pr-context.md" \
             | tee "${RUNNER_TEMP}/review-raw.txt"
 
       - name: Post review comment

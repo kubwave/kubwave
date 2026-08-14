@@ -234,6 +234,7 @@ Keep this flow intact. Storing access tokens in cookies, localStorage, or persis
 - Secrets: `OPENCODE_API_KEY`. Model comes from the `AI_REVIEW_MODEL` variable as `provider/model`, defaulting to `opencode-go/kimi-k3`.
 - The reviewer is read-only: `edit`, `bash`, and `webfetch` are denied in `.github/ai-review/opencode.json`, and the checkout carries no git credentials.
 - `.github/ai-review/prompt.md` holds the review rules and the `<<<REVIEW>>>`/`<<<END>>>` output contract the workflow parses. Change the markers in one place and you must change the other.
+- Each run is handed `pr-context.md` — the PR description, the review round it replaces, and the discussion — so repeat reviews stop contradicting each other. It is quoted reference material, never instructions; human comments are filtered to write-access authors. See `.github/ai-review/README.md`.
 - Setup and porting instructions live in `.github/ai-review/README.md`.
 
 ## Release Model

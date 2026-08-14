@@ -85,6 +85,8 @@ Only `prompt.md` is project-specific. Rewrite these parts of it:
 2. **The conventions file** — this repo points the reviewer at `AGENTS.md`. Point yours at `CONTRIBUTING.md`, `CLAUDE.md`, or whatever holds your rules. Drop the line if there is nothing to point at.
 3. **The "What to review" list** — replace the project-specific convention violations with your own. Keep the generic categories (correctness, security, missing tests, simplification).
 
+Leave the **Ground that is already settled** section alone — nothing in it is project-specific, and it is what keeps repeat reviews from contradicting each other.
+
 Leave the **Output** section alone. The workflow extracts everything between `<<<REVIEW>>>` and `<<<END>>>` and posts it verbatim, so changing the markers means changing the workflow too.
 
 In `ai-review.yml`, the only values worth revisiting are `BUN_VERSION`, `OPENCODE_VERSION` (both pinned on purpose), and `timeout-minutes`.
@@ -94,9 +96,24 @@ In `ai-review.yml`, the only values worth revisiting are `BUN_VERSION`, `OPENCOD
 1. `pull_request_target` (on `labeled`) and `issue_comment` both run in the context of the **base** branch. That is the only way the workflow can read repository secrets, including on pull requests from forks.
 2. The trigger is acknowledged before any real work starts: the 👀 reaction and the `⏳ Reviewing…` placeholder. The placeholder's comment id is carried forward as a step output, so the final step updates that exact comment instead of searching for it again.
 3. The base branch is checked out first, and `.github/ai-review/` is copied to a temp directory. Everything after this point uses that trusted copy.
-4. The pull request revision is then checked out — preferring `refs/pull/<n>/merge`, which is the merged result, and falling back to `refs/pull/<n>/head` when the pull request has conflicts. The diff is taken against the merge parent or the merge base respectively.
-5. opencode runs over the checkout with the diff attached, and prints its review to stdout.
-6. The block between the markers is extracted, the placeholder comment is rewritten with it, and the reaction is swapped for the verdict.
+4. What is already settled on this pull request is collected into `pr-context.md`: the description, the review round this run replaces, and the discussion. See [Repeat reviews](#repeat-reviews).
+5. The pull request revision is then checked out — preferring `refs/pull/<n>/merge`, which is the merged result, and falling back to `refs/pull/<n>/head` when the pull request has conflicts. The diff is taken against the merge parent or the merge base respectively.
+6. opencode runs over the checkout with the diff and that context attached, and prints its review to stdout.
+7. The block between the markers is extracted, the placeholder comment is rewritten with it, and the reaction is swapped for the verdict.
+
+## Repeat reviews
+
+A pull request is normally reviewed several times, and each round costs the author real work. A reviewer that starts blank every time will happily send them in circles: flag a fallback for being persisted, then — once it is no longer persisted — flag the retry storm that causes.
+
+So each run is given `pr-context.md` before it writes anything:
+
+- the **pull request description**, where authors record trade-offs they have deliberately accepted,
+- **its own previous review**, captured just before the sticky comment is overwritten, because that comment is the only record of the round it replaces,
+- the **discussion**, including replies to earlier findings and comments from other review bots.
+
+`prompt.md` then tells it what to do with that: never silently reverse an earlier finding, do not re-report something already answered, leave justified trade-offs alone, and weigh a requested fix against the unreviewed surface that fix would add. A reversal is allowed — it just has to be stated as one.
+
+The context is capped at 40 KB and truncated from the end if a discussion outgrows it.
 
 ## Security
 
@@ -108,8 +125,9 @@ A pull request can contain hostile content, and the reviewer reads it. The preca
 - **No plugins from the pull request.** The run passes `--pure`, and any `opencode.json`, `opencode.jsonc`, or `.opencode/` shipped by the pull request is deleted before the run, so it cannot re-grant the permissions above.
 - **No registry hijacking.** `bunx` runs from the runner temp directory, so a `bunfig.toml` in the pull request cannot redirect where the opencode package is downloaded from.
 - **Session sharing off.** `"share": "disabled"` keeps review sessions from being published to opencode.ai.
+- **Prior context is filtered and quoted, not obeyed.** `pr-context.md` is assembled in `RUNNER_TEMP`, which the pull request cannot write to. Human comments are included only from `OWNER`, `MEMBER`, or `COLLABORATOR` authors — the same bar the `/ai-review` trigger uses — and the prompt states that the whole file is quoted reference material and that instructions inside it must be ignored.
 
-What remains is prompt injection: a pull request can include text that tries to talk the reviewer into a misleading verdict. Since the reviewer can only produce a comment, the worst case is a wrong review — treat the output as advice, not as a gate.
+What remains is prompt injection: a pull request can include text that tries to talk the reviewer into a misleading verdict. The description is part of that surface and is author-controlled even on fork pull requests, so feeding it to the reviewer widens the target a little. Since the reviewer can only produce a comment, the worst case is unchanged — a wrong review. Treat the output as advice, not as a gate.
 
 ## Cost
 
