@@ -1,4 +1,3 @@
-import { and, eq, isNull } from 'drizzle-orm';
 import { BatchV1Api, CoreV1Api, NetworkingV1Api } from '@kubernetes/client-node';
 import type { KubeConfig, V1Job, V1Pod } from '@kubernetes/client-node';
 import type { DeploymentLogEntry, RuntimeConfig } from '@kubwave/db';
@@ -10,6 +9,7 @@ import type { DeployContext, ReconcileResult } from '../deployers/types.js';
 import { env } from '../../../../../shared/config/worker-env.js';
 import { registryAuthHeaders } from '../../registry/auth.js';
 import { buildCacheRef } from './buildkit.js';
+import { persistDeploymentImageRef } from '../image-ref.js';
 
 // Shared build-Job machinery for all build types; component label selects objects for reap/prune sweeps, deployment-id ties an object to its build attempt.
 export const LABEL_COMPONENT = 'app.kubernetes.io/component';
@@ -216,15 +216,6 @@ export async function buildFailureReason(api: CoreV1Api, namespace: string, jobN
 	return 'Build failed';
 }
 
-async function persistImageRef(deploymentId: string, imageRef: string): Promise<void> {
-	const { db, deployments } = await import('@kubwave/db');
-	await db
-		.update(deployments)
-		.set({ imageRef })
-		.where(and(eq(deployments.id, deploymentId), isNull(deployments.imageRef)))
-		.returning({ id: deployments.id });
-}
-
 // Shared build->deploy state machine driven off observed cluster state (idempotent, re-claim safe); per-type differences passed in.
 export async function runBuildReconcile(
 	ctx: DeployContext,
@@ -262,7 +253,7 @@ export async function runBuildReconcile(
 			};
 		}
 
-		if (!storedImageRef) await persistImageRef(deploymentId, imageRef);
+		if (!storedImageRef) await persistDeploymentImageRef(deploymentId, imageRef);
 		const result = await reconcileRuntime(ctx, config, imageRef);
 		return result;
 	}
@@ -271,7 +262,7 @@ export async function runBuildReconcile(
 
 	const namespace = env.podNamespace;
 	const imageRef = storedImageRef ?? buildImageRef(env.registryEndpoint, ctx.environmentId, serviceId, deploymentId);
-	if (!storedImageRef) await persistImageRef(deploymentId, imageRef);
+	if (!storedImageRef) await persistDeploymentImageRef(deploymentId, imageRef);
 	const cacheRef = env.registryEndpoint ? buildCacheRef(env.registryEndpoint, ctx.environmentId, serviceId) : null;
 	const coreApi = ctx.kc.makeApiClient(CoreV1Api);
 	const batchApi = ctx.kc.makeApiClient(BatchV1Api);

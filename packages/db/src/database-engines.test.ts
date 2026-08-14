@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test';
 import {
 	buildDatabaseRuntimeConfig,
 	databaseConnectionUri,
-	databaseImageRef,
 	DATABASE_ENGINES,
 	defaultDatabaseVersion,
 	isAllowedDatabaseVersion,
@@ -33,12 +32,6 @@ describe('database engine catalog', () => {
 		expect(isDatabaseEngine('mongodb')).toBe(true);
 		expect(isDatabaseEngine('docker-image')).toBe(false);
 		expect(isDatabaseEngine('redis')).toBe(false);
-	});
-
-	test('image ref combines image and version', () => {
-		expect(databaseImageRef('postgres', '16')).toBe('postgres:16');
-		expect(databaseImageRef('mongodb', '7')).toBe('mongo:7');
-		expect(databaseImageRef('mariadb', '11.4')).toBe('mariadb:11.4');
 	});
 
 	test('version helpers track the curated list', () => {

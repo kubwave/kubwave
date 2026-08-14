@@ -1,5 +1,6 @@
 import type { DatabaseEngine, DatabaseServiceConfig } from '@kubwave/db';
-import { buildDatabaseRuntimeConfig, databaseImageRef } from '@kubwave/db/database-engines';
+import { buildDatabaseRuntimeConfig, DATABASE_ENGINE_CATALOG } from '@kubwave/db/database-engines';
+import { resolveDeploymentImageRef } from '../image-ref.js';
 import { reconcileRuntime, teardownRuntime } from './runtime/runtime.service.js';
 import type { Deployer, DeployContext, ReconcileResult, TeardownContext } from './types.js';
 
@@ -11,7 +12,16 @@ function makeDatabaseDeployer(engine: DatabaseEngine): Deployer {
 
 		async reconcile(ctx: DeployContext): Promise<ReconcileResult> {
 			const config = ctx.deployment.config as DatabaseServiceConfig;
-			return reconcileRuntime(ctx, buildDatabaseRuntimeConfig(engine, config), databaseImageRef(engine, config.version));
+			// The catalog selects a major line (`postgres:16`), which upstream republishes on every patch release.
+			const { ref } = await resolveDeploymentImageRef({
+				deploymentId: ctx.deployment.id,
+				recordedRef: ctx.deployment.imageRef,
+				image: DATABASE_ENGINE_CATALOG[engine].image,
+				tag: config.version,
+				label: engine
+			});
+			// Stays IfNotPresent even unpinned: a database that cannot reach the registry must still boot from cache.
+			return reconcileRuntime(ctx, buildDatabaseRuntimeConfig(engine, config), ref);
 		},
 
 		async teardown(ctx: TeardownContext): Promise<void> {

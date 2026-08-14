@@ -102,10 +102,6 @@ export function isAllowedDatabaseVersion(engine: DatabaseEngine, version: string
 	return DATABASE_ENGINE_CATALOG[engine].versions.allowed.includes(version);
 }
 
-export function databaseImageRef(engine: DatabaseEngine, version: string): string {
-	return `${DATABASE_ENGINE_CATALOG[engine].image}:${version}`;
-}
-
 // Connection URI for a consumer service; username/password are URL-encoded so special characters survive.
 export function databaseConnectionUri(input: {
 	engine: DatabaseEngine;

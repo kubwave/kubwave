@@ -113,7 +113,14 @@ async function rolloutResult(
 }
 
 // Shared deploy core: converge every cluster resource for the config + image ref and report rollout state. Idempotent - called every tick until terminal.
-export async function reconcileRuntime(ctx: DeployContext, config: RuntimeConfig, imageRef: string): Promise<ReconcileResult> {
+// `mutableTag` says the ref can be republished under the same name, so the pod must re-pull instead of trusting the node's image cache.
+export async function reconcileRuntime(
+	ctx: DeployContext,
+	config: RuntimeConfig,
+	imageRef: string,
+	opts?: { mutableTag?: boolean }
+): Promise<ReconcileResult> {
+	const mutableTag = opts?.mutableTag === true;
 	const serviceId = ctx.deployment.serviceId;
 	const name = resourceName(serviceId);
 	const appsApi = ctx.kc.makeApiClient(AppsV1Api);
@@ -171,14 +178,15 @@ export async function reconcileRuntime(ctx: DeployContext, config: RuntimeConfig
 				imagePullSecretNames,
 				podSecurityEnforce,
 				runtimeClass,
-				defaultResources
+				defaultResources,
+				mutableTag
 			})
 		});
 		events.push(stepEvent('deployment-created', `Created Deployment ${name} with image ${imageRef}`));
 		await syncNetworking();
 		return { state: 'progressing', phase: 'applying', events };
 	}
-	if (!deploymentMatchesConfig(existing, config, imageRef, serviceId, podSecurityEnforce, runtimeClass, defaultResources)) {
+	if (!deploymentMatchesConfig(existing, config, imageRef, serviceId, podSecurityEnforce, runtimeClass, defaultResources, mutableTag)) {
 		await replaceWithRetry({
 			label: `Deployment ${name}`,
 			read: () => readDeploymentOrNull(appsApi, ctx.namespace, name),
@@ -187,7 +195,8 @@ export async function reconcileRuntime(ctx: DeployContext, config: RuntimeConfig
 					imagePullSecretNames,
 					podSecurityEnforce,
 					runtimeClass,
-					defaultResources
+					defaultResources,
+					mutableTag
 				}),
 			carryOver: (fresh, desired) => {
 				desired.metadata = { ...desired.metadata, resourceVersion: fresh.metadata?.resourceVersion ?? undefined };

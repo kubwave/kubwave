@@ -12,6 +12,8 @@ let pullSecretName: string | undefined; // env.registryPullSecretName
 let existingPVCs: Record<string, V1PersistentVolumeClaim | null> = {};
 let existingDeployment: V1Deployment | null = null;
 let deploymentMatches = true;
+const buildDeploymentOpts: Array<{ mutableTag?: boolean } | undefined> = [];
+const matchesConfigMutableTag: Array<boolean | undefined> = [];
 let unhealthy: string | null = null;
 let hpaEnabled = false;
 
@@ -106,21 +108,42 @@ mock.module('~/modules/worker/jobs/deployments/deployers/runtime/autoscaling', (
 }));
 
 mock.module('~/modules/worker/jobs/deployments/deployers/runtime/deployment', () => ({
-	buildDeployment: (_dep: unknown, _ns: string, _cfg: unknown, imageRef: string, opts?: { imagePullSecretNames?: string[] }) => ({
-		metadata: { name: 'svc-svc-1', resourceVersion: undefined },
-		spec: {
-			replicas: 1,
-			template: {
-				spec: {
-					containers: [{ image: imageRef }],
-					imagePullSecrets: opts?.imagePullSecretNames?.map(name => ({ name }))
+	buildDeployment: (
+		_dep: unknown,
+		_ns: string,
+		_cfg: unknown,
+		imageRef: string,
+		opts?: { imagePullSecretNames?: string[]; mutableTag?: boolean }
+	) => (
+		buildDeploymentOpts.push(opts),
+		{
+			metadata: { name: 'svc-svc-1', resourceVersion: undefined },
+			spec: {
+				replicas: 1,
+				template: {
+					spec: {
+						containers: [{ image: imageRef }],
+						imagePullSecrets: opts?.imagePullSecretNames?.map(name => ({ name }))
+					}
 				}
 			}
 		}
-	}),
+	),
 	containerPorts: () => [8080],
 	withDefaultDomain: () => [],
-	deploymentMatchesConfig: () => deploymentMatches
+	deploymentMatchesConfig: (
+		_existing: unknown,
+		_cfg: unknown,
+		_imageRef: string,
+		_serviceId: string,
+		_pss?: string,
+		_rc?: string,
+		_res?: unknown,
+		mutableTag?: boolean
+	) => {
+		matchesConfigMutableTag.push(mutableTag);
+		return deploymentMatches;
+	}
 }));
 
 const { reconcileRuntime, teardownRuntime } = await import('~/modules/worker/jobs/deployments/deployers/runtime/runtime.service');
@@ -190,6 +213,8 @@ afterEach(() => {
 	existingPVCs = {};
 	existingDeployment = null;
 	deploymentMatches = true;
+	buildDeploymentOpts.length = 0;
+	matchesConfigMutableTag.length = 0;
 	unhealthy = null;
 	hpaEnabled = false;
 });
@@ -219,6 +244,31 @@ describe('reconcileRuntime — first deploy (no existing Deployment)', () => {
 		const result = await reconcileRuntime(makeCtx(baseConfig()), baseConfig(), IMAGE_REF);
 		// Seam wiring is covered by runtime-shared; just assert the pull-secret name didn't change the outcome.
 		expect(result.state).toBe('progressing');
+	});
+});
+
+// The flag decides imagePullPolicy, so a threading regression would silently restore the stale-cache bug.
+describe('reconcileRuntime — mutableTag threading', () => {
+	test('reaches buildDeployment on create', async () => {
+		existingDeployment = null;
+		await reconcileRuntime(makeCtx(baseConfig()), baseConfig(), IMAGE_REF, { mutableTag: true });
+		expect(buildDeploymentOpts.at(-1)?.mutableTag).toBe(true);
+	});
+
+	test('reaches both deploymentMatchesConfig and buildDeployment on replace', async () => {
+		existingDeployment = readyDeployment();
+		deploymentMatches = false;
+		await reconcileRuntime(makeCtx(baseConfig()), baseConfig(), IMAGE_REF, { mutableTag: true });
+		expect(matchesConfigMutableTag.at(-1)).toBe(true);
+		expect(buildDeploymentOpts.at(-1)?.mutableTag).toBe(true);
+	});
+
+	test('defaults to false when the caller passes no opts', async () => {
+		existingDeployment = readyDeployment();
+		deploymentMatches = false;
+		await reconcileRuntime(makeCtx(baseConfig()), baseConfig(), IMAGE_REF);
+		expect(matchesConfigMutableTag.at(-1)).toBe(false);
+		expect(buildDeploymentOpts.at(-1)?.mutableTag).toBe(false);
 	});
 });
 
