@@ -20,8 +20,9 @@ export interface PinnedImageRef {
 
 // Resolve a moving tag to a digest so the pod runs an immutable ref: the node cache is then correct by construction and
 // a republished tag still produces a new ref, which is what makes a redeploy actually roll.
-// Resolution happens exactly once per deployment - the outcome is recorded either way, because reconcileInFlight walks
-// its rows sequentially and a retry on every tick would stall every other in-flight deployment behind this one.
+// Only a digest is recorded. Recording the tag fallback too would end the retry a tick sooner, but it also makes a
+// momentary registry blip permanent: the deployment would keep that moving tag for its whole life, which is the very
+// bug this exists to prevent. Retrying is bounded anyway - once the rollout is terminal the reconcile loop drops it.
 export async function resolveDeploymentImageRef(args: {
 	deploymentId: string;
 	recordedRef?: string | null;
@@ -43,7 +44,9 @@ export async function resolveDeploymentImageRef(args: {
 		console.warn(`[deploy] ${args.label}: deploying ${tagRef} unpinned, digest resolution failed:`, errorMessage(err));
 	}
 
-	const ref = digest ? `${args.image}@${digest}` : tagRef;
+	if (!digest) return { ref: tagRef, pinned: false };
+
+	const ref = `${args.image}@${digest}`;
 	await persistDeploymentImageRef(args.deploymentId, ref);
-	return { ref, pinned: digest != null };
+	return { ref, pinned: true };
 }

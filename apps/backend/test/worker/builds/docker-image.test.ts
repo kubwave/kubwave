@@ -8,10 +8,14 @@ const DIGEST = 'sha256:357ec2ceadfc097b09cd1cace7b0645e111b30bf7ac7fc79adf20af2a
 // the shared runtime core. Stub that core to assert the forwarded image ref and that teardown delegates.
 const reconcileCalls: Array<{ imageRef: string; config: unknown; opts: { mutableTag?: boolean } | undefined }> = [];
 const resolveCalls: Array<{ image: string; tag: string; registryAuth?: unknown; recordedRef?: string | null }> = [];
+const persisted: Array<{ deploymentId: string; imageRef: string }> = [];
 let resolvePinned = true;
 let teardownCalled = false;
 
 mock.module('~/modules/worker/jobs/deployments/image-ref', () => ({
+	persistDeploymentImageRef: async (deploymentId: string, imageRef: string) => {
+		persisted.push({ deploymentId, imageRef });
+	},
 	resolveDeploymentImageRef: async (args: { image: string; tag: string; registryAuth?: unknown; recordedRef?: string | null }) => {
 		resolveCalls.push(args);
 		if (args.recordedRef) return { ref: args.recordedRef, pinned: args.recordedRef.includes('@') };
@@ -66,12 +70,15 @@ describe('dockerImageDeployer', () => {
 		expect(reconcileCalls[0]!.opts?.mutableTag).toBe(false);
 	});
 
-	test('uses the tag-watch digest directly, without re-resolving', async () => {
+	// Recorded on this path too, so `deployments.image_ref` means the same thing whichever path wrote it.
+	test('uses the tag-watch digest directly, without re-resolving, and records it', async () => {
 		reconcileCalls.length = 0;
 		resolveCalls.length = 0;
+		persisted.length = 0;
 		await dockerImageDeployer.reconcile(makeCtx('ghcr.io/acme/web', 'next', DIGEST));
 		expect(resolveCalls).toHaveLength(0);
 		expect(reconcileCalls[0]!.imageRef).toBe(`ghcr.io/acme/web@${DIGEST}`);
+		expect(persisted).toEqual([{ deploymentId: 'dep-1', imageRef: `ghcr.io/acme/web@${DIGEST}` }]);
 	});
 
 	// Unlike a database, a stateless service prefers a failed pull over silently booting a stale cached layer.

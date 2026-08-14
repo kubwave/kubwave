@@ -4,10 +4,12 @@ const DIGEST = 'sha256:357ec2ceadfc097b09cd1cace7b0645e111b30bf7ac7fc79adf20af2a
 const persisted: Array<{ deploymentId: string; imageRef: string }> = [];
 let digestResult: string | null = DIGEST;
 let digestThrows = false;
+const registryCalls: Array<{ ref: { repo: string; tag: string }; registryAuth: unknown }> = [];
 
 mock.module('~/modules/worker/jobs/registry-tag-watch/registry', () => ({
 	parseImageRef: (image: string, tag: string) => ({ host: 'registry-1.docker.io', repo: image, tag }),
-	resolveTagDigest: async () => {
+	resolveTagDigest: async (ref: { repo: string; tag: string }, registryAuth: unknown) => {
+		registryCalls.push({ ref, registryAuth });
 		if (digestThrows) throw new Error('registry unreachable');
 		return digestResult;
 	}
@@ -46,8 +48,9 @@ describe('resolveDeploymentImageRef', () => {
 		expect(result).toEqual({ ref: 'postgres:16', pinned: false });
 	});
 
-	// reconcileInFlight walks its rows sequentially, so retrying every tick would stall every other in-flight deployment.
-	test('records the tag fallback too, so a failure is resolved exactly once per deployment', async () => {
+	// Recording the fallback would make a momentary outage permanent: the deployment would keep the moving tag for its
+	// whole life. Retrying costs a HEAD per tick, but only until the rollout goes terminal.
+	test('does not record a tag fallback, so a later tick can still pin it', async () => {
 		digestThrows = true;
 		persisted.length = 0;
 		try {
@@ -56,7 +59,23 @@ describe('resolveDeploymentImageRef', () => {
 		} finally {
 			digestThrows = false;
 		}
-		expect(persisted).toEqual([{ deploymentId: 'captured', imageRef: 'postgres:16' }]);
+		expect(persisted).toEqual([]);
+	});
+
+	// The credentials are the whole point for a private registry, and the deployer tests only cover the hop into here.
+	test('forwards per-service registry credentials to the registry call', async () => {
+		registryCalls.length = 0;
+		const registryAuth = { server: 'ghcr.io', username: 'u', password: 'v1:cipher' };
+		await resolveDeploymentImageRef(args({ image: 'ghcr.io/acme/web', tag: 'next', registryAuth }));
+		expect(registryCalls).toHaveLength(1);
+		expect(registryCalls[0]!.registryAuth).toBe(registryAuth);
+		expect(registryCalls[0]!.ref).toMatchObject({ repo: 'ghcr.io/acme/web', tag: 'next' });
+	});
+
+	test('resolves anonymously when a service configures no credentials', async () => {
+		registryCalls.length = 0;
+		await resolveDeploymentImageRef(args());
+		expect(registryCalls[0]!.registryAuth).toBeUndefined();
 	});
 
 	// A 404 returns null rather than throwing, so without its own branch this fallback would be entirely silent.
