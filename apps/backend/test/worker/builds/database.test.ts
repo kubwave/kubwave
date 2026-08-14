@@ -17,24 +17,14 @@ interface DatabaseRuntimeForward {
 }
 
 const DIGEST = 'sha256:1f0e3dad99908345f7439f8ffabdffc418afc3c1a9e0f3bcd2f2e1a9c0b7d6e5';
-const resolveCalls: Array<{ repo: string; tag: string }> = [];
-const persisted: Array<{ deploymentId: string; imageRef: string }> = [];
-let resolveShouldThrow = false;
-let persistShouldThrow = false;
-
-mock.module('~/modules/worker/jobs/registry-tag-watch/registry', () => ({
-	parseImageRef: (image: string, tag: string) => ({ host: 'registry-1.docker.io', repo: `library/${image}`, tag }),
-	resolveTagDigest: async (ref: { repo: string; tag: string }) => {
-		resolveCalls.push({ repo: ref.repo, tag: ref.tag });
-		if (resolveShouldThrow) throw new Error('registry unreachable');
-		return DIGEST;
-	}
-}));
+const resolveCalls: Array<{ deploymentId: string; recordedRef?: string | null; image: string; tag: string; label: string }> = [];
+let resolvePinned = true;
 
 mock.module('~/modules/worker/jobs/deployments/image-ref', () => ({
-	persistDeploymentImageRef: async (deploymentId: string, imageRef: string) => {
-		if (persistShouldThrow) throw new Error('db write failed');
-		persisted.push({ deploymentId, imageRef });
+	resolveDeploymentImageRef: async (args: { deploymentId: string; recordedRef?: string | null; image: string; tag: string; label: string }) => {
+		resolveCalls.push(args);
+		if (args.recordedRef) return { ref: args.recordedRef, pinned: args.recordedRef.includes('@') };
+		return resolvePinned ? { ref: `${args.image}@${DIGEST}`, pinned: true } : { ref: `${args.image}:${args.tag}`, pinned: false };
 	}
 }));
 
@@ -85,8 +75,7 @@ function dbConfig(overrides: Partial<DatabaseServiceConfig> = {}): DatabaseServi
 
 describe('database deployers', () => {
 	// The catalog selects a major line (postgres:16, mongo:8), which upstream republishes on every patch release.
-	// Resolving it to a digest keeps the node cache correct without Always, which would tie pod start to Docker Hub.
-	test('resolves the engine tag to a digest and deploys that immutable ref', async () => {
+	test('resolves the engine tag through the shared resolver and deploys the pinned ref', async () => {
 		for (const [deployer, type, version, image] of [
 			[postgresDeployer, 'postgres', '16', 'postgres'],
 			[mysqlDeployer, 'mysql', '8.4', 'mysql'],
@@ -96,64 +85,29 @@ describe('database deployers', () => {
 			reconcileCalls.length = 0;
 			resolveCalls.length = 0;
 			await deployer.reconcile(makeCtx(type, dbConfig({ version })));
-			expect(resolveCalls[0]).toMatchObject({ repo: `library/${image}`, tag: version });
+			expect(resolveCalls[0]).toMatchObject({ deploymentId: 'dep-1', image, tag: version, label: type });
 			expect(reconcileCalls[0]!.imageRef).toBe(`${image}@${DIGEST}`);
-			expect(reconcileCalls[0]!.opts?.mutableTag).toBeUndefined();
 		}
 	});
 
-	test('records the resolved ref so later ticks reuse it instead of hitting the registry again', async () => {
-		persisted.length = 0;
-		await postgresDeployer.reconcile(makeCtx('postgres', dbConfig()));
-		expect(persisted).toEqual([{ deploymentId: 'dep-1', imageRef: `postgres@${DIGEST}` }]);
-
-		resolveCalls.length = 0;
+	test('passes the recorded ref through so a later tick never re-resolves', async () => {
 		reconcileCalls.length = 0;
 		await postgresDeployer.reconcile(makeCtx('postgres', dbConfig(), `postgres@${DIGEST}`));
-		expect(resolveCalls).toHaveLength(0);
+		expect(resolveCalls.at(-1)?.recordedRef).toBe(`postgres@${DIGEST}`);
 		expect(reconcileCalls[0]!.imageRef).toBe(`postgres@${DIGEST}`);
 	});
 
-	// A registry outage must not block the deploy: falling back to the tag under IfNotPresent still boots from cache.
-	test('falls back to the plain tag when the registry cannot be reached', async () => {
-		resolveShouldThrow = true;
+	// A database that cannot reach the registry must still boot from its node cache, so the unpinned fallback stays IfNotPresent.
+	test('never forces a re-pull, even when the tag could not be pinned', async () => {
+		resolvePinned = false;
 		reconcileCalls.length = 0;
-		persisted.length = 0;
 		try {
 			await postgresDeployer.reconcile(makeCtx('postgres', dbConfig()));
 		} finally {
-			resolveShouldThrow = false;
+			resolvePinned = true;
 		}
 		expect(reconcileCalls[0]!.imageRef).toBe('postgres:16');
 		expect(reconcileCalls[0]!.opts?.mutableTag).toBeUndefined();
-	});
-
-	// Recording the ref is a control-plane write; swallowing it here would report a reachable registry as unreachable
-	// and silently deploy the unpinned tag.
-	test('does not disguise a failed record as a registry failure', async () => {
-		persistShouldThrow = true;
-		try {
-			await expect(postgresDeployer.reconcile(makeCtx('postgres', dbConfig()))).rejects.toThrow('db write failed');
-		} finally {
-			persistShouldThrow = false;
-		}
-	});
-
-	// The recorded ref is write-once, so persisting the fallback would strand the deployment on a moving tag forever.
-	test('does not record the fallback, so a later tick still pins once the registry recovers', async () => {
-		resolveShouldThrow = true;
-		persisted.length = 0;
-		try {
-			await postgresDeployer.reconcile(makeCtx('postgres', dbConfig()));
-		} finally {
-			resolveShouldThrow = false;
-		}
-		expect(persisted).toEqual([]);
-
-		reconcileCalls.length = 0;
-		await postgresDeployer.reconcile(makeCtx('postgres', dbConfig()));
-		expect(reconcileCalls[0]!.imageRef).toBe(`postgres@${DIGEST}`);
-		expect(persisted).toEqual([{ deploymentId: 'dep-1', imageRef: `postgres@${DIGEST}` }]);
 	});
 
 	test('each deployer declares its own engine type', () => {
