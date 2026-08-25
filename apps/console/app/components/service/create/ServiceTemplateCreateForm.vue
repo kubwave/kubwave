@@ -38,6 +38,11 @@ async function copy(value: string, label: string) {
 	}
 }
 
+function finishReview() {
+	generatedSecrets.value = null;
+	emit('done');
+}
+
 const { form, isSubmitting } = useAppForm({
 	schema: z.object(schemaShape),
 	defaultValues: initialValues,
@@ -101,7 +106,7 @@ const { form, isSubmitting } = useAppForm({
 		</div>
 
 		<div class="flex items-center justify-end pt-2">
-			<Button type="button" @click="emit('done')">Continue</Button>
+			<Button type="button" @click="finishReview">Continue</Button>
 		</div>
 	</div>
 

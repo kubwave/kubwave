@@ -126,6 +126,10 @@ function preventDismiss(event: Event) {
 function onDone() {
 	reviewingSecrets.value = false;
 	open.value = false;
+	selectedTemplate.value = null;
+	selectedType.value = null;
+	step.value = 'select';
+	upcomingExpanded.value = false;
 }
 
 function selectTemplate(template: TemplateListItem) {
@@ -164,6 +168,7 @@ function onCreatedMany(services: Service[]) {
 			:show-close-button="!reviewingSecrets"
 			@escape-key-down="preventDismiss"
 			@pointer-down-outside="preventDismiss"
+			@focus-outside="preventDismiss"
 			@interact-outside="preventDismiss"
 		>
 			<DialogHeader>
