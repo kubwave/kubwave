@@ -13,3 +13,11 @@ describe('supabase logo', () => {
 		expect(() => assertSafeSvg(svg, 'supabase.svg')).not.toThrow();
 	});
 });
+
+describe('gitlab logo', () => {
+	test('exists and is a safe SVG', () => {
+		const svg = readFileSync(join(logosDir, 'gitlab.svg'), 'utf8');
+		expect(svg).toContain('<svg');
+		expect(() => assertSafeSvg(svg, 'gitlab.svg')).not.toThrow();
+	});
+});
