@@ -3009,10 +3009,7 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"type": "array",
-									"items": {
-										"$ref": "#/components/schemas/ServiceViewDto"
-									}
+									"$ref": "#/components/schemas/CreateFromTemplateResponseDto"
 								}
 							}
 						}
@@ -5492,6 +5489,36 @@
 					}
 				},
 				"required": ["templateId"]
+			},
+			"GeneratedTemplateSecretDto": {
+				"type": "object",
+				"properties": {
+					"key": {
+						"type": "string"
+					},
+					"value": {
+						"type": "string"
+					}
+				},
+				"required": ["key", "value"]
+			},
+			"CreateFromTemplateResponseDto": {
+				"type": "object",
+				"properties": {
+					"services": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/ServiceViewDto"
+						}
+					},
+					"generatedSecrets": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/GeneratedTemplateSecretDto"
+						}
+					}
+				},
+				"required": ["services", "generatedSecrets"]
 			},
 			"GithubManifestDto": {
 				"type": "object",
