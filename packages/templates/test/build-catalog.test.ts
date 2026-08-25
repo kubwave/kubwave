@@ -7,6 +7,7 @@ describe('buildCatalog', () => {
 		const ids = catalog.map(t => t.id);
 		// Sorted by id; assert the known templates are present (membership, not an exact list).
 		expect(ids).toContain('ghost');
+		expect(ids).toContain('gitlab');
 		expect(ids).toContain('supabase');
 		expect(ids).toContain('uptime-kuma');
 		for (const t of catalog) {
