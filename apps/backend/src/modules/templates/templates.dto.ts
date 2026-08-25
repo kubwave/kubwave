@@ -1,6 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { z } from 'zod';
 import type { CatalogTemplate } from '@kubwave/templates';
+import { ServiceViewDto } from '../services/services.dto.js';
+import type { ServiceView } from '../services/services.types.js';
 
 export const templateIdParamSchema = z.object({ templateId: z.string().trim().min(1).max(100) });
 export type TemplateIdParam = z.infer<typeof templateIdParamSchema>;
@@ -37,6 +39,23 @@ export class CreateFromTemplateDto {
 	@ApiProperty({ type: String }) templateId!: string;
 	@ApiPropertyOptional({ type: String }) name?: string;
 	@ApiPropertyOptional({ type: Object, additionalProperties: { type: 'string' } }) inputs?: Record<string, string>;
+}
+
+export type GeneratedTemplateSecret = { key: string; value: string };
+
+export type CreateFromTemplateResult = {
+	services: ServiceView[];
+	generatedSecrets: GeneratedTemplateSecret[];
+};
+
+export class GeneratedTemplateSecretDto implements GeneratedTemplateSecret {
+	@ApiProperty({ type: String }) key!: string;
+	@ApiProperty({ type: String }) value!: string;
+}
+
+export class CreateFromTemplateResponseDto implements CreateFromTemplateResult {
+	@ApiProperty({ type: [ServiceViewDto] }) services!: ServiceViewDto[];
+	@ApiProperty({ type: [GeneratedTemplateSecretDto] }) generatedSecrets!: GeneratedTemplateSecretDto[];
 }
 
 // Maps a catalog entry to the public DTO (drops logoSvg + service internals; logo via URL).

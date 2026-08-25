@@ -91,6 +91,7 @@ const UPCOMING_COUNT = UPCOMING_GROUPS.reduce((sum, group) => sum + group.option
 const step = ref<'select' | 'configure'>('select');
 const selectedType = ref<AvailableServiceType | null>(null);
 const upcomingExpanded = ref(false);
+const reviewingSecrets = ref(false);
 
 // Reset the flow whenever the modal opens.
 watch(open, isOpen => {
@@ -99,6 +100,7 @@ watch(open, isOpen => {
 		selectedType.value = null;
 		selectedTemplate.value = null;
 		upcomingExpanded.value = false;
+		reviewingSecrets.value = false;
 	}
 });
 
@@ -107,9 +109,24 @@ const selectedIcon = computed(() => selectedOption.value?.icon ?? Container);
 
 const title = computed(() => {
 	if (step.value === 'select') return 'New service';
+	if (reviewingSecrets.value) return 'Generated secrets';
 
 	return selectedType.value === 'docker-compose' ? 'Import services' : 'Create service';
 });
+
+function handleOpen(next: boolean) {
+	if (!next && reviewingSecrets.value) return;
+	open.value = next;
+}
+
+function preventDismiss(event: Event) {
+	if (reviewingSecrets.value) event.preventDefault();
+}
+
+function onDone() {
+	reviewingSecrets.value = false;
+	open.value = false;
+}
 
 function selectTemplate(template: TemplateListItem) {
 	selectedTemplate.value = template;
@@ -141,11 +158,18 @@ function onCreatedMany(services: Service[]) {
 </script>
 
 <template>
-	<Dialog v-model:open="open">
-		<DialogContent class="sm:max-w-3xl">
+	<Dialog :open="open" @update:open="handleOpen">
+		<DialogContent
+			class="sm:max-w-3xl"
+			:show-close-button="!reviewingSecrets"
+			@escape-key-down="preventDismiss"
+			@pointer-down-outside="preventDismiss"
+			@interact-outside="preventDismiss"
+		>
 			<DialogHeader>
 				<DialogTitle>{{ title }}</DialogTitle>
 				<DialogDescription v-if="step === 'select'">Pick how you want to deploy.</DialogDescription>
+				<DialogDescription v-else-if="reviewingSecrets">Copy these now — they will not be shown again.</DialogDescription>
 				<DialogDescription v-else>{{ selectedTemplate?.description ?? selectedOption?.description ?? 'Configure your service.' }}</DialogDescription>
 			</DialogHeader>
 
@@ -241,7 +265,7 @@ function onCreatedMany(services: Service[]) {
 			</template>
 
 			<template v-else>
-				<div class="mb-1 flex items-center gap-2 text-sm font-medium">
+				<div v-if="!reviewingSecrets" class="mb-1 flex items-center gap-2 text-sm font-medium">
 					<component :is="selectedIcon" class="size-5 text-primary" />
 					<Badge variant="secondary">{{ selectedTemplate?.name ?? selectedOption?.name ?? 'Service' }}</Badge>
 				</div>
@@ -251,8 +275,9 @@ function onCreatedMany(services: Service[]) {
 					:environment-id="props.environmentId"
 					:template="selectedTemplate"
 					@created="onCreatedMany"
+					@reviewing-secrets="reviewingSecrets = true"
 					@back="step = 'select'"
-					@done="open = false"
+					@done="onDone"
 				/>
 				<ServiceComposeCreateForm
 					v-else-if="selectedType === 'docker-compose'"

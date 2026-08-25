@@ -721,6 +721,16 @@ export type CreateFromTemplateDto = {
 	};
 };
 
+export type GeneratedTemplateSecretDto = {
+	key: string;
+	value: string;
+};
+
+export type CreateFromTemplateResponseDto = {
+	services: Array<ServiceViewDto>;
+	generatedSecrets: Array<GeneratedTemplateSecretDto>;
+};
+
 export type GithubManifestDto = {
 	/**
 	 * POST the form here (carries the signed state in its query).
@@ -2078,7 +2088,7 @@ export type EnvironmentServicesCreateFromTemplateData = {
 };
 
 export type EnvironmentServicesCreateFromTemplateResponses = {
-	201: Array<ServiceViewDto>;
+	201: CreateFromTemplateResponseDto;
 };
 
 export type EnvironmentServicesCreateFromTemplateResponse =

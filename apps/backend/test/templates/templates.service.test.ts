@@ -93,6 +93,55 @@ describe('TemplatesService.instantiate', () => {
 		expect(dbSecret.length).toBeGreaterThan(0);
 	});
 
+	test('returns generated secrets once, matching the values injected into services', async () => {
+		const { svc, created } = makeService(ghost);
+		const result = await svc.instantiate('u', 'env', 'ghost', 'myblog', { url: 'https://blog.test' });
+		expect(result.services.map(s => s.name)).toEqual(['myblog-db', 'myblog']);
+		expect(result.generatedSecrets).toHaveLength(1);
+		expect(result.generatedSecrets[0]!.key).toBe('db_password');
+		const injected = (created[0]!.config.secrets as Array<{ key: string; value: string }>).find(s => s.key === 'MYSQL_PASSWORD')!.value;
+		expect(result.generatedSecrets[0]!.value).toBe(injected);
+	});
+
+	test('returns an empty generatedSecrets list when the template has none', async () => {
+		const cyclic: CatalogTemplate = {
+			id: 'cyc',
+			name: 'Cyc',
+			description: 'x',
+			category: 'test',
+			tags: [],
+			logo: 'x.svg',
+			logoSvg: '<svg/>',
+			documentation: 'https://example.com',
+			schemaVersion: 1,
+			version: 1,
+			inputs: [],
+			secrets: [],
+			services: [
+				{
+					name: 'a',
+					primary: true,
+					type: 'docker-image',
+					config: {
+						image: 'a',
+						tag: '1',
+						containerPort: 80,
+						env: [],
+						secrets: [],
+						domains: [],
+						exposedPorts: [],
+						volumes: [],
+						configFiles: []
+					}
+				}
+			]
+		};
+		const { svc } = makeService(cyclic);
+		const result = await svc.instantiate('u', 'env', 'cyc', 'app', {});
+		expect(result.generatedSecrets).toEqual([]);
+		expect(result.services).toHaveLength(1);
+	});
+
 	test('resolves cyclic service references (a <-> b) via pre-generated hosts', async () => {
 		const cyclic: CatalogTemplate = {
 			id: 'cyc',
