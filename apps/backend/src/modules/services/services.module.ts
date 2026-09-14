@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { EnvironmentsModule } from '../environments/environments.module.js';
+import { GitModule } from '../git/git.module.js';
 import { ServiceComposeController } from './compose/compose.controller.js';
 import { ServiceLogsController } from './logs/logs.controller.js';
 import { ServiceLogsService } from './logs/logs.service.js';
@@ -12,7 +13,7 @@ import { ServiceStatusController } from './status/status.controller.js';
 import { ServiceStatusService } from './status/status.service.js';
 
 @Module({
-	imports: [EnvironmentsModule],
+	imports: [EnvironmentsModule, GitModule],
 	controllers: [ServicesController, ServiceStatusController, ServiceLogsController, ServiceComposeController, ServiceMetricsController],
 	providers: [ServicesService, ServiceStatusService, ServiceLogsService, ServiceMetricsService, PrometheusMetricsService],
 	exports: [ServicesService, ServiceStatusService, ServiceLogsService, ServiceMetricsService]

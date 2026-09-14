@@ -5,6 +5,7 @@ import type {
 	DockerfileServiceConfig,
 	DockerImageServiceConfig,
 	GithubRepoServiceConfig,
+	GiteaRepoServiceConfig,
 	PrivateRepoServiceConfig,
 	PublicRepoServiceConfig,
 	RegistryAuthConfig,
@@ -16,11 +17,13 @@ import { DATABASE_ENGINE_CATALOG } from '@kubwave/db/database-engines';
 import { decryptSecret, encryptSecret, generatePassword } from '@kubwave/crypto';
 import { ApiError } from '../../shared/errors/api-error';
 import { normalizeRepoRelativePath, normalizeWatchPaths } from '../../shared/git/repo-relative-path.js';
+import { giteaCloneUrl } from '../git/gitea-api.js';
 import type {
 	DatabaseUpdateConfigInput,
 	DockerfileConfigInput,
 	DockerImageConfigInput,
 	GithubRepoConfigInput,
+	GiteaRepoConfigInput,
 	PrivateRepoConfigInput,
 	PublicRepoConfigInput
 } from './services.dto.js';
@@ -186,6 +189,11 @@ export function normalizeGithubRepoConfig(config: GithubRepoServiceConfig): Gith
 	return { ...normalizePublicRepoConfig(rest as PublicRepoServiceConfig), installationId: installationId.trim(), repoFullName: repoFullName.trim() };
 }
 
+export function normalizeGiteaRepoConfig(config: GiteaRepoServiceConfig): GiteaRepoServiceConfig {
+	const { installationId, repoFullName, ...rest } = config;
+	return { ...normalizePublicRepoConfig(rest as PublicRepoServiceConfig), installationId: installationId.trim(), repoFullName: repoFullName.trim() };
+}
+
 export function resolveSecrets(
 	incoming: DockerImageConfigInput['secrets'],
 	existing: RuntimeConfig['secrets']
@@ -314,6 +322,20 @@ export function buildStoredGithubRepoConfig(
 		...withResolvedSensitive(input, existingSecrets, existingBasicAuth),
 		repoUrl
 	} as unknown as GithubRepoServiceConfig);
+}
+
+export function buildStoredGiteaRepoConfig(
+	input: Omit<GiteaRepoConfigInput, 'exposedPorts'>,
+	existingSecrets: RuntimeConfig['secrets'],
+	existingBasicAuth: BasicAuthConfig | undefined,
+	instanceUrl: string
+): GiteaRepoServiceConfig {
+	const repoFullName = input.repoFullName.trim();
+	const repoUrl = giteaCloneUrl(instanceUrl, repoFullName);
+	return normalizeGiteaRepoConfig({
+		...withResolvedSensitive(input, existingSecrets, existingBasicAuth),
+		repoUrl
+	} as unknown as GiteaRepoServiceConfig);
 }
 
 function normalizeDatabaseConfig(

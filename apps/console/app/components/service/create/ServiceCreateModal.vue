@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Component } from 'vue';
-import { ChevronDown, ChevronRight, Container, FileCode2, FileStack, Github, GitBranch, Lock, Sparkles } from 'lucide-vue-next';
+import { ChevronDown, ChevronRight, Container, FileCode2, FileStack, Github, GitBranch, GitFork, Lock, Sparkles } from 'lucide-vue-next';
 import type { Service } from '~/utils/types';
 import { DATABASE_ENGINES, DATABASE_ENGINE_UI, isDatabaseEngine, type DatabaseEngine } from '~/utils/database-engines';
 import type { TemplateListItem } from '~/composables/use-templates';
@@ -14,7 +14,15 @@ const emit = defineEmits<{ createdMany: [Service[]] }>();
 
 const open = defineModel<boolean>('open', { default: false });
 
-type AvailableServiceType = 'docker-image' | 'docker-compose' | 'dockerfile' | 'public-repo' | 'private-repo' | 'github-repo' | DatabaseEngine;
+type AvailableServiceType =
+	| 'docker-image'
+	| 'docker-compose'
+	| 'dockerfile'
+	| 'public-repo'
+	| 'private-repo'
+	| 'github-repo'
+	| 'gitea-repo'
+	| DatabaseEngine;
 
 type TypeOption = {
 	id: string;
@@ -47,6 +55,13 @@ const TYPE_GROUPS: TypeGroup[] = [
 				name: 'GitHub repository',
 				description: 'Build & deploy a repo from a connected GitHub App — private repos without a deploy key.',
 				icon: Github,
+				available: true
+			},
+			{
+				id: 'gitea-repo',
+				name: 'Gitea repository',
+				description: 'Build & deploy a repo from a connected Gitea account — private repos without a deploy key.',
+				icon: GitFork,
 				available: true
 			},
 			{
@@ -149,6 +164,7 @@ function selectOption(option: TypeOption) {
 		id === 'public-repo' ||
 		id === 'private-repo' ||
 		id === 'github-repo' ||
+		id === 'gitea-repo' ||
 		isDatabaseEngine(id);
 	if (!allowed) return;
 
@@ -314,6 +330,13 @@ function onCreatedMany(services: Service[]) {
 				/>
 				<ServiceGithubRepoCreateForm
 					v-else-if="selectedType === 'github-repo'"
+					:environment-id="props.environmentId"
+					@created="service => onCreatedMany([service])"
+					@back="step = 'select'"
+					@done="open = false"
+				/>
+				<ServiceGiteaRepoCreateForm
+					v-else-if="selectedType === 'gitea-repo'"
 					:environment-id="props.environmentId"
 					@created="service => onCreatedMany([service])"
 					@back="step = 'select'"

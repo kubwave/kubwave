@@ -11,6 +11,7 @@ import {
 	databaseConnectionUri,
 	db,
 	environments,
+	gitAppConnections,
 	gitInstallations,
 	isAllowedDatabaseVersion,
 	isDatabaseEngine,
@@ -25,6 +26,7 @@ import type { DatabaseServiceConfig, ServiceConfig, ServiceType } from '@kubwave
 import { decryptSecret } from '@kubwave/crypto';
 import { internalServiceName, parseMemoryToBytes } from '@kubwave/kube';
 import { EnvironmentsService } from '../environments/environments.service.js';
+import { GiteaInstallationsService } from '../git/gitea-installations.service.js';
 import { BackendConfigService } from '../../shared/config/backend-config.service.js';
 import { SettingsService } from '../../shared/settings/settings.service.js';
 import { reconcileExposedPorts } from './port-exposures.js';
@@ -33,6 +35,7 @@ import {
 	buildStoredDatabaseConfig,
 	buildStoredDockerfileConfig,
 	buildStoredGithubRepoConfig,
+	buildStoredGiteaRepoConfig,
 	buildStoredPrivateRepoConfig,
 	buildStoredPublicRepoConfig,
 	normalizeDockerConfig,
@@ -57,7 +60,7 @@ import {
 import type { DefaultDomainContext, ServiceConnectionView, ServiceRow, ServiceView } from './services.types.js';
 
 function isRepoType(type: ServiceType): boolean {
-	return type === 'public-repo' || type === 'private-repo' || type === 'github-repo';
+	return type === 'public-repo' || type === 'private-repo' || type === 'github-repo' || type === 'gitea-repo';
 }
 
 function autoDeployColumns(
@@ -137,7 +140,8 @@ export class ServicesService {
 	constructor(
 		private readonly environmentsService: EnvironmentsService,
 		private readonly settings: SettingsService,
-		private readonly backendConfig: BackendConfigService
+		private readonly backendConfig: BackendConfigService,
+		private readonly gitea: GiteaInstallationsService
 	) {}
 
 	async listServicesForEnvironment(actingUserId: string, environmentId: string): Promise<ServiceView[]> {
@@ -164,8 +168,14 @@ export class ServicesService {
 			await this.assertSshKeyForTeam(environment.teamId, input.config.sshKeyId);
 		}
 		if (input.type === 'github-repo') {
-			await this.assertInstallationForTeam(environment.teamId, input.config.installationId);
+			await this.assertInstallationForTeam(environment.teamId, input.config.installationId, 'github');
 		}
+		if (input.type === 'gitea-repo') {
+			await this.assertInstallationForTeam(environment.teamId, input.config.installationId, 'gitea');
+		}
+
+		const giteaInstanceUrl =
+			input.type === 'gitea-repo' ? await this.gitea.instanceUrlForInstallation(environment.teamId, input.config.installationId) : null;
 
 		const config: ServiceConfig = (() => {
 			switch (input.type) {
@@ -177,6 +187,8 @@ export class ServicesService {
 					return buildStoredPrivateRepoConfig(input.config, []);
 				case 'github-repo':
 					return buildStoredGithubRepoConfig(input.config, []);
+				case 'gitea-repo':
+					return buildStoredGiteaRepoConfig(input.config, [], undefined, giteaInstanceUrl!);
 				case 'postgres':
 				case 'mysql':
 				case 'mariadb':
@@ -218,6 +230,10 @@ export class ServicesService {
 			if (!withPorts) throw new Error('failed to create service');
 			return withPorts;
 		});
+
+		if (input.type === 'gitea-repo') {
+			await this.gitea.tryRegisterRepoHook(input.config.installationId, input.config.repoFullName);
+		}
 
 		return toServiceView(service, await this.loadDefaultDomainContext());
 	}
@@ -370,8 +386,13 @@ export class ServicesService {
 				values.config = buildStoredPublicRepoConfig(incoming, service.config.secrets, service.config.basicAuth);
 			} else if (service.type === 'github-repo') {
 				if (!('installationId' in incoming) || !('repoFullName' in incoming)) throw new ServiceConfigTypeMismatchError();
-				await this.assertInstallationForTeam(service.teamId, incoming.installationId);
+				await this.assertInstallationForTeam(service.teamId, incoming.installationId, 'github');
 				values.config = buildStoredGithubRepoConfig(incoming, service.config.secrets, service.config.basicAuth);
+			} else if (service.type === 'gitea-repo') {
+				if (!('installationId' in incoming) || !('repoFullName' in incoming)) throw new ServiceConfigTypeMismatchError();
+				await this.assertInstallationForTeam(service.teamId, incoming.installationId, 'gitea');
+				const instanceUrl = await this.gitea.instanceUrlForInstallation(service.teamId, incoming.installationId);
+				values.config = buildStoredGiteaRepoConfig(incoming, service.config.secrets, service.config.basicAuth, instanceUrl);
 			} else if (isDatabaseEngine(service.type)) {
 				if (!('version' in incoming) || !('storage' in incoming)) throw new ServiceConfigTypeMismatchError();
 				if (!isAllowedDatabaseVersion(service.type, incoming.version)) throw new InvalidDatabaseVersionError(incoming.version);
@@ -474,11 +495,12 @@ export class ServicesService {
 		if (!row) throw new SshKeyNotAvailableError();
 	}
 
-	private async assertInstallationForTeam(teamId: string, installationId: string): Promise<void> {
+	private async assertInstallationForTeam(teamId: string, installationId: string, provider: 'github' | 'gitea'): Promise<void> {
 		const [row] = await db
 			.select({ id: gitInstallations.id })
 			.from(gitInstallations)
-			.where(and(eq(gitInstallations.id, installationId), eq(gitInstallations.teamId, teamId)))
+			.innerJoin(gitAppConnections, eq(gitInstallations.connectionId, gitAppConnections.id))
+			.where(and(eq(gitInstallations.id, installationId), eq(gitInstallations.teamId, teamId), eq(gitAppConnections.provider, provider)))
 			.limit(1);
 
 		if (!row) throw new GitInstallationNotAvailableError();

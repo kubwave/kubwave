@@ -3,6 +3,7 @@ import {
 	db,
 	services,
 	type GithubRepoServiceConfig,
+	type GiteaRepoServiceConfig,
 	type PrivateRepoServiceConfig,
 	type PublicRepoServiceConfig,
 	type ServiceConfig
@@ -17,12 +18,12 @@ import { effectiveWatchPaths, pathsMatch } from './watch-paths.js';
 import type { DueService } from './claim.js';
 
 function repoRef(config: ServiceConfig): { repoUrl: string; branch: string; sshKeyId?: string; installationId?: string } {
-	const repo = config as PublicRepoServiceConfig | PrivateRepoServiceConfig | GithubRepoServiceConfig;
+	const repo = config as PublicRepoServiceConfig | PrivateRepoServiceConfig | GithubRepoServiceConfig | GiteaRepoServiceConfig;
 	return {
 		repoUrl: repo.repoUrl,
 		branch: repo.branch,
 		sshKeyId: (repo as PrivateRepoServiceConfig).sshKeyId,
-		installationId: (repo as GithubRepoServiceConfig).installationId
+		installationId: (repo as GithubRepoServiceConfig | GiteaRepoServiceConfig).installationId
 	};
 }
 

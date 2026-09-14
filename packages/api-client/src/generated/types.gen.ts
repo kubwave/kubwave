@@ -260,7 +260,7 @@ export type ServiceViewDto = {
 	environmentId: string;
 	name: string;
 	description: string;
-	type: 'docker-image' | 'dockerfile' | 'public-repo' | 'private-repo' | 'github-repo' | 'postgres' | 'mysql' | 'mariadb' | 'mongodb';
+	type: 'docker-image' | 'dockerfile' | 'public-repo' | 'private-repo' | 'github-repo' | 'gitea-repo' | 'postgres' | 'mysql' | 'mariadb' | 'mongodb';
 	config: {
 		[key: string]: unknown;
 	};
@@ -284,7 +284,7 @@ export type ImageWatchInputDto = {
 export type CreateServiceDto = {
 	name: string;
 	description?: string;
-	type: 'docker-image' | 'dockerfile' | 'public-repo' | 'private-repo' | 'github-repo' | 'postgres' | 'mysql' | 'mariadb' | 'mongodb';
+	type: 'docker-image' | 'dockerfile' | 'public-repo' | 'private-repo' | 'github-repo' | 'gitea-repo' | 'postgres' | 'mysql' | 'mariadb' | 'mongodb';
 	config: {
 		[key: string]: unknown;
 	};
@@ -395,6 +395,95 @@ export type ServiceMetricsDto = {
 	series: ServiceMetricsSeriesDto;
 };
 
+export type GithubManifestDto = {
+	/**
+	 * POST the form here (carries the signed state in its query).
+	 */
+	postUrl: string;
+	/**
+	 * JSON string to submit as the `manifest` form field.
+	 */
+	manifest: string;
+};
+
+export type GithubConnectionDto = {
+	connected: boolean;
+	appSlug: string | null;
+	appId: string | null;
+	/**
+	 * Send the admin here to install the App on their repositories.
+	 */
+	installUrl: string | null;
+	connectedAt: string | null;
+};
+
+export type ClaimInstallationDto = {
+	/**
+	 * Signed grant from the install callback redirect (git_grant query param).
+	 */
+	grant: string;
+};
+
+export type GitInstallationDto = {
+	id: string;
+	githubInstallationId: string;
+	accountLogin: string;
+	accountType: string;
+	suspended: boolean;
+	createdAt: string;
+};
+
+export type TeamGitConnectionDto = {
+	connected: boolean;
+	/**
+	 * Where a team owner installs the App on their repositories.
+	 */
+	installUrl: string | null;
+};
+
+export type GitRepositoryDto = {
+	repoFullName: string;
+	defaultBranch: string;
+	isPrivate: boolean;
+};
+
+export type ConnectGiteaDto = {
+	instanceUrl: string;
+	clientId: string;
+	clientSecret: string;
+};
+
+export type GiteaConnectionDto = {
+	connected: boolean;
+	instanceUrl: string | null;
+	clientId: string | null;
+	/**
+	 * Paste this as the OAuth redirect URI on the Gitea application.
+	 */
+	callbackUrl: string | null;
+	/**
+	 * Optional repo webhook URL for instant auto-deploy.
+	 */
+	webhookUrl: string | null;
+	connectedAt: string | null;
+};
+
+export type GiteaAccountDto = {
+	id: string;
+	giteaUserId: string;
+	accountLogin: string;
+	accountType: string;
+	createdAt: string;
+};
+
+export type TeamGiteaConnectionDto = {
+	connected: boolean;
+	/**
+	 * Where a team owner authorizes kubwave against Gitea.
+	 */
+	authorizeUrl: string | null;
+};
+
 export type TeamDeploymentViewDto = {
 	id: string;
 	status: 'pending' | 'deploying' | 'canceling' | 'succeeded' | 'failed' | 'superseded' | 'canceled';
@@ -412,7 +501,7 @@ export type TeamDeploymentViewDto = {
 export type DeploymentViewDto = {
 	id: string;
 	serviceId: string;
-	type: 'docker-image' | 'dockerfile' | 'public-repo' | 'private-repo' | 'github-repo' | 'postgres' | 'mysql' | 'mariadb' | 'mongodb';
+	type: 'docker-image' | 'dockerfile' | 'public-repo' | 'private-repo' | 'github-repo' | 'gitea-repo' | 'postgres' | 'mysql' | 'mariadb' | 'mongodb';
 	status: 'pending' | 'deploying' | 'canceling' | 'succeeded' | 'failed' | 'superseded' | 'canceled';
 	phase: string | null;
 	lastError: string | null;
@@ -729,58 +818,6 @@ export type GeneratedTemplateSecretDto = {
 export type CreateFromTemplateResponseDto = {
 	services: Array<ServiceViewDto>;
 	generatedSecrets: Array<GeneratedTemplateSecretDto>;
-};
-
-export type GithubManifestDto = {
-	/**
-	 * POST the form here (carries the signed state in its query).
-	 */
-	postUrl: string;
-	/**
-	 * JSON string to submit as the `manifest` form field.
-	 */
-	manifest: string;
-};
-
-export type GithubConnectionDto = {
-	connected: boolean;
-	appSlug: string | null;
-	appId: string | null;
-	/**
-	 * Send the admin here to install the App on their repositories.
-	 */
-	installUrl: string | null;
-	connectedAt: string | null;
-};
-
-export type ClaimInstallationDto = {
-	/**
-	 * Signed grant from the install callback redirect (git_grant query param).
-	 */
-	grant: string;
-};
-
-export type GitInstallationDto = {
-	id: string;
-	githubInstallationId: string;
-	accountLogin: string;
-	accountType: string;
-	suspended: boolean;
-	createdAt: string;
-};
-
-export type TeamGitConnectionDto = {
-	connected: boolean;
-	/**
-	 * Where a team owner installs the App on their repositories.
-	 */
-	installUrl: string | null;
-};
-
-export type GitRepositoryDto = {
-	repoFullName: string;
-	defaultBranch: string;
-	isPrivate: boolean;
 };
 
 export type UpdateSmtpSettingsDtoWritable = {
@@ -1450,6 +1487,272 @@ export type ServiceMetricsGetResponses = {
 
 export type ServiceMetricsGetResponse = ServiceMetricsGetResponses[keyof ServiceMetricsGetResponses];
 
+export type GitGithubCreateManifestData = {
+	body?: never;
+	path?: never;
+	query?: {
+		organization?: string;
+	};
+	url: '/api/git/github/manifest';
+};
+
+export type GitGithubCreateManifestResponses = {
+	200: GithubManifestDto;
+};
+
+export type GitGithubCreateManifestResponse = GitGithubCreateManifestResponses[keyof GitGithubCreateManifestResponses];
+
+export type GitGithubDisconnectData = {
+	body?: never;
+	path?: never;
+	query?: never;
+	url: '/api/git/github';
+};
+
+export type GitGithubDisconnectResponses = {
+	204: void;
+};
+
+export type GitGithubDisconnectResponse = GitGithubDisconnectResponses[keyof GitGithubDisconnectResponses];
+
+export type GitGithubConnectionGetData = {
+	body?: never;
+	path?: never;
+	query?: never;
+	url: '/api/git/github';
+};
+
+export type GitGithubConnectionGetResponses = {
+	200: GithubConnectionDto;
+};
+
+export type GitGithubConnectionGetResponse = GitGithubConnectionGetResponses[keyof GitGithubConnectionGetResponses];
+
+export type TeamGitInstallationsClaimData = {
+	body: ClaimInstallationDto;
+	path: {
+		teamId: string;
+	};
+	query?: never;
+	url: '/api/teams/{teamId}/git/installations/claim';
+};
+
+export type TeamGitInstallationsClaimResponses = {
+	200: GitInstallationDto;
+};
+
+export type TeamGitInstallationsClaimResponse = TeamGitInstallationsClaimResponses[keyof TeamGitInstallationsClaimResponses];
+
+export type TeamGitConnectionGetData = {
+	body?: never;
+	path: {
+		teamId: string;
+	};
+	query?: never;
+	url: '/api/teams/{teamId}/git/connection';
+};
+
+export type TeamGitConnectionGetResponses = {
+	200: TeamGitConnectionDto;
+};
+
+export type TeamGitConnectionGetResponse = TeamGitConnectionGetResponses[keyof TeamGitConnectionGetResponses];
+
+export type TeamGitInstallationsListData = {
+	body?: never;
+	path: {
+		teamId: string;
+	};
+	query?: never;
+	url: '/api/teams/{teamId}/git/installations';
+};
+
+export type TeamGitInstallationsListResponses = {
+	200: Array<GitInstallationDto>;
+};
+
+export type TeamGitInstallationsListResponse = TeamGitInstallationsListResponses[keyof TeamGitInstallationsListResponses];
+
+export type TeamGitInstallationReposListData = {
+	body?: never;
+	path: {
+		teamId: string;
+		installationId: string;
+	};
+	query?: never;
+	url: '/api/teams/{teamId}/git/installations/{installationId}/repos';
+};
+
+export type TeamGitInstallationReposListResponses = {
+	200: Array<GitRepositoryDto>;
+};
+
+export type TeamGitInstallationReposListResponse = TeamGitInstallationReposListResponses[keyof TeamGitInstallationReposListResponses];
+
+export type TeamGitInstallationReposSyncData = {
+	body?: never;
+	path: {
+		teamId: string;
+		installationId: string;
+	};
+	query?: never;
+	url: '/api/teams/{teamId}/git/installations/{installationId}/repos/sync';
+};
+
+export type TeamGitInstallationReposSyncResponses = {
+	200: Array<GitRepositoryDto>;
+};
+
+export type TeamGitInstallationReposSyncResponse = TeamGitInstallationReposSyncResponses[keyof TeamGitInstallationReposSyncResponses];
+
+export type TeamGitInstallationsUnbindData = {
+	body?: never;
+	path: {
+		teamId: string;
+		installationId: string;
+	};
+	query?: never;
+	url: '/api/teams/{teamId}/git/installations/{installationId}';
+};
+
+export type TeamGitInstallationsUnbindResponses = {
+	204: void;
+};
+
+export type TeamGitInstallationsUnbindResponse = TeamGitInstallationsUnbindResponses[keyof TeamGitInstallationsUnbindResponses];
+
+export type GitGiteaDisconnectData = {
+	body?: never;
+	path?: never;
+	query?: never;
+	url: '/api/git/gitea';
+};
+
+export type GitGiteaDisconnectResponses = {
+	204: void;
+};
+
+export type GitGiteaDisconnectResponse = GitGiteaDisconnectResponses[keyof GitGiteaDisconnectResponses];
+
+export type GitGiteaConnectionGetData = {
+	body?: never;
+	path?: never;
+	query?: never;
+	url: '/api/git/gitea';
+};
+
+export type GitGiteaConnectionGetResponses = {
+	200: GiteaConnectionDto;
+};
+
+export type GitGiteaConnectionGetResponse = GitGiteaConnectionGetResponses[keyof GitGiteaConnectionGetResponses];
+
+export type GitGiteaConnectData = {
+	body: ConnectGiteaDto;
+	path?: never;
+	query?: never;
+	url: '/api/git/gitea';
+};
+
+export type GitGiteaConnectResponses = {
+	200: GiteaConnectionDto;
+};
+
+export type GitGiteaConnectResponse = GitGiteaConnectResponses[keyof GitGiteaConnectResponses];
+
+export type TeamGiteaInstallationsClaimData = {
+	body: ClaimInstallationDto;
+	path: {
+		teamId: string;
+	};
+	query?: never;
+	url: '/api/teams/{teamId}/git/gitea/installations/claim';
+};
+
+export type TeamGiteaInstallationsClaimResponses = {
+	200: GiteaAccountDto;
+};
+
+export type TeamGiteaInstallationsClaimResponse = TeamGiteaInstallationsClaimResponses[keyof TeamGiteaInstallationsClaimResponses];
+
+export type TeamGiteaConnectionGetData = {
+	body?: never;
+	path: {
+		teamId: string;
+	};
+	query?: never;
+	url: '/api/teams/{teamId}/git/gitea/connection';
+};
+
+export type TeamGiteaConnectionGetResponses = {
+	200: TeamGiteaConnectionDto;
+};
+
+export type TeamGiteaConnectionGetResponse = TeamGiteaConnectionGetResponses[keyof TeamGiteaConnectionGetResponses];
+
+export type TeamGiteaInstallationsListData = {
+	body?: never;
+	path: {
+		teamId: string;
+	};
+	query?: never;
+	url: '/api/teams/{teamId}/git/gitea/installations';
+};
+
+export type TeamGiteaInstallationsListResponses = {
+	200: Array<GiteaAccountDto>;
+};
+
+export type TeamGiteaInstallationsListResponse = TeamGiteaInstallationsListResponses[keyof TeamGiteaInstallationsListResponses];
+
+export type TeamGiteaInstallationReposListData = {
+	body?: never;
+	path: {
+		teamId: string;
+		installationId: string;
+	};
+	query?: never;
+	url: '/api/teams/{teamId}/git/gitea/installations/{installationId}/repos';
+};
+
+export type TeamGiteaInstallationReposListResponses = {
+	200: Array<GitRepositoryDto>;
+};
+
+export type TeamGiteaInstallationReposListResponse = TeamGiteaInstallationReposListResponses[keyof TeamGiteaInstallationReposListResponses];
+
+export type TeamGiteaInstallationReposSyncData = {
+	body?: never;
+	path: {
+		teamId: string;
+		installationId: string;
+	};
+	query?: never;
+	url: '/api/teams/{teamId}/git/gitea/installations/{installationId}/repos/sync';
+};
+
+export type TeamGiteaInstallationReposSyncResponses = {
+	200: Array<GitRepositoryDto>;
+};
+
+export type TeamGiteaInstallationReposSyncResponse = TeamGiteaInstallationReposSyncResponses[keyof TeamGiteaInstallationReposSyncResponses];
+
+export type TeamGiteaInstallationsUnbindData = {
+	body?: never;
+	path: {
+		teamId: string;
+		installationId: string;
+	};
+	query?: never;
+	url: '/api/teams/{teamId}/git/gitea/installations/{installationId}';
+};
+
+export type TeamGiteaInstallationsUnbindResponses = {
+	204: void;
+};
+
+export type TeamGiteaInstallationsUnbindResponse = TeamGiteaInstallationsUnbindResponses[keyof TeamGiteaInstallationsUnbindResponses];
+
 export type TeamDeploymentsListData = {
 	body?: never;
 	path: {
@@ -2093,137 +2396,3 @@ export type EnvironmentServicesCreateFromTemplateResponses = {
 
 export type EnvironmentServicesCreateFromTemplateResponse =
 	EnvironmentServicesCreateFromTemplateResponses[keyof EnvironmentServicesCreateFromTemplateResponses];
-
-export type GitGithubCreateManifestData = {
-	body?: never;
-	path?: never;
-	query?: {
-		organization?: string;
-	};
-	url: '/api/git/github/manifest';
-};
-
-export type GitGithubCreateManifestResponses = {
-	200: GithubManifestDto;
-};
-
-export type GitGithubCreateManifestResponse = GitGithubCreateManifestResponses[keyof GitGithubCreateManifestResponses];
-
-export type GitGithubDisconnectData = {
-	body?: never;
-	path?: never;
-	query?: never;
-	url: '/api/git/github';
-};
-
-export type GitGithubDisconnectResponses = {
-	204: void;
-};
-
-export type GitGithubDisconnectResponse = GitGithubDisconnectResponses[keyof GitGithubDisconnectResponses];
-
-export type GitGithubConnectionGetData = {
-	body?: never;
-	path?: never;
-	query?: never;
-	url: '/api/git/github';
-};
-
-export type GitGithubConnectionGetResponses = {
-	200: GithubConnectionDto;
-};
-
-export type GitGithubConnectionGetResponse = GitGithubConnectionGetResponses[keyof GitGithubConnectionGetResponses];
-
-export type TeamGitInstallationsClaimData = {
-	body: ClaimInstallationDto;
-	path: {
-		teamId: string;
-	};
-	query?: never;
-	url: '/api/teams/{teamId}/git/installations/claim';
-};
-
-export type TeamGitInstallationsClaimResponses = {
-	200: GitInstallationDto;
-};
-
-export type TeamGitInstallationsClaimResponse = TeamGitInstallationsClaimResponses[keyof TeamGitInstallationsClaimResponses];
-
-export type TeamGitConnectionGetData = {
-	body?: never;
-	path: {
-		teamId: string;
-	};
-	query?: never;
-	url: '/api/teams/{teamId}/git/connection';
-};
-
-export type TeamGitConnectionGetResponses = {
-	200: TeamGitConnectionDto;
-};
-
-export type TeamGitConnectionGetResponse = TeamGitConnectionGetResponses[keyof TeamGitConnectionGetResponses];
-
-export type TeamGitInstallationsListData = {
-	body?: never;
-	path: {
-		teamId: string;
-	};
-	query?: never;
-	url: '/api/teams/{teamId}/git/installations';
-};
-
-export type TeamGitInstallationsListResponses = {
-	200: Array<GitInstallationDto>;
-};
-
-export type TeamGitInstallationsListResponse = TeamGitInstallationsListResponses[keyof TeamGitInstallationsListResponses];
-
-export type TeamGitInstallationReposListData = {
-	body?: never;
-	path: {
-		teamId: string;
-		installationId: string;
-	};
-	query?: never;
-	url: '/api/teams/{teamId}/git/installations/{installationId}/repos';
-};
-
-export type TeamGitInstallationReposListResponses = {
-	200: Array<GitRepositoryDto>;
-};
-
-export type TeamGitInstallationReposListResponse = TeamGitInstallationReposListResponses[keyof TeamGitInstallationReposListResponses];
-
-export type TeamGitInstallationReposSyncData = {
-	body?: never;
-	path: {
-		teamId: string;
-		installationId: string;
-	};
-	query?: never;
-	url: '/api/teams/{teamId}/git/installations/{installationId}/repos/sync';
-};
-
-export type TeamGitInstallationReposSyncResponses = {
-	200: Array<GitRepositoryDto>;
-};
-
-export type TeamGitInstallationReposSyncResponse = TeamGitInstallationReposSyncResponses[keyof TeamGitInstallationReposSyncResponses];
-
-export type TeamGitInstallationsUnbindData = {
-	body?: never;
-	path: {
-		teamId: string;
-		installationId: string;
-	};
-	query?: never;
-	url: '/api/teams/{teamId}/git/installations/{installationId}';
-};
-
-export type TeamGitInstallationsUnbindResponses = {
-	204: void;
-};
-
-export type TeamGitInstallationsUnbindResponse = TeamGitInstallationsUnbindResponses[keyof TeamGitInstallationsUnbindResponses];

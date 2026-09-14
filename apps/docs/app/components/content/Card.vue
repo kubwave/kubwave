@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BookOpen, CheckCircle2, Container, FileText, Github, Lock, Puzzle, Rocket, Settings } from 'lucide-vue-next';
+import { BookOpen, CheckCircle2, Container, FileText, Github, GitFork, Lock, Puzzle, Rocket, Settings } from 'lucide-vue-next';
 
 const props = defineProps<{
 	readonly title: string;
@@ -14,6 +14,8 @@ const iconComponent = computed(() => {
 			return FileText;
 		case 'github':
 			return Github;
+		case 'git-fork':
+			return GitFork;
 		case 'puzzle':
 			return Puzzle;
 		case 'setting':

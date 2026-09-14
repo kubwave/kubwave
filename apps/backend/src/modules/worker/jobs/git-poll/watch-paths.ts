@@ -1,9 +1,9 @@
-import type { GithubRepoServiceConfig, PrivateRepoServiceConfig, PublicRepoServiceConfig, ServiceConfig } from '@kubwave/db';
+import type { GithubRepoServiceConfig, GiteaRepoServiceConfig, PrivateRepoServiceConfig, PublicRepoServiceConfig, ServiceConfig } from '@kubwave/db';
 import { normalizeRepoRelativePath } from '../../../../shared/git/repo-relative-path.js';
 
 // Prefixes that gate auto-deploy. Empty = watch the whole repo (current behavior).
 export function effectiveWatchPaths(config: ServiceConfig): string[] {
-	const repo = config as PublicRepoServiceConfig | PrivateRepoServiceConfig | GithubRepoServiceConfig;
+	const repo = config as PublicRepoServiceConfig | PrivateRepoServiceConfig | GithubRepoServiceConfig | GiteaRepoServiceConfig;
 	if (repo.watchEntireRepo === true) return [];
 
 	const prefixes: string[] = [];

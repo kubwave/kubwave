@@ -6,6 +6,7 @@ export type ServiceType =
 	| 'public-repo'
 	| 'private-repo'
 	| 'github-repo'
+	| 'gitea-repo'
 	| 'postgres'
 	| 'mysql'
 	| 'mariadb'
@@ -131,6 +132,11 @@ export interface GithubRepoServiceConfig<TSecret = SecretView> extends PublicRep
 	installationId: string;
 }
 
+export interface GiteaRepoServiceConfig<TSecret = SecretView> extends PublicRepoServiceConfig<TSecret> {
+	repoFullName: string;
+	installationId: string;
+}
+
 export interface DatabaseServiceConfig<TSecret = SecretView> extends RuntimeConfig<TSecret> {
 	version: string;
 	storage: {
@@ -146,6 +152,7 @@ export type ServiceConfigView =
 	| PublicRepoServiceConfig<SecretView>
 	| PrivateRepoServiceConfig<SecretView>
 	| GithubRepoServiceConfig<SecretView>
+	| GiteaRepoServiceConfig<SecretView>
 	| DatabaseServiceConfig<SecretView>;
 
 export type ServiceConfigInput =
@@ -154,6 +161,7 @@ export type ServiceConfigInput =
 	| PublicRepoServiceConfig<SecretInput>
 	| PrivateRepoServiceConfig<SecretInput>
 	| GithubRepoServiceConfig<SecretInput>
+	| GiteaRepoServiceConfig<SecretInput>
 	| DatabaseServiceConfig<SecretInput>;
 
 export type ServiceView = Omit<ServiceViewDto, 'config'> & {

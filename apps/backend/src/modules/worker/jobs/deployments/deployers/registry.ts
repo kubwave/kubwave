@@ -4,6 +4,7 @@ import { dockerfileDeployer } from './dockerfile/deployer.js';
 import { publicRepoDeployer } from './public-repo/deployer.js';
 import { privateRepoDeployer } from './private-repo/deployer.js';
 import { githubRepoDeployer } from './github-repo/deployer.js';
+import { giteaRepoDeployer } from './gitea-repo/deployer.js';
 import { mariadbDeployer, mongodbDeployer, mysqlDeployer, postgresDeployer } from './database.js';
 export type { DeployContext, TeardownContext, ReconcileResult, Deployer } from './types.js';
 import type { Deployer } from './types.js';
@@ -16,6 +17,7 @@ const deployers: Record<ServiceType, Deployer> = {
 	'public-repo': publicRepoDeployer,
 	'private-repo': privateRepoDeployer,
 	'github-repo': githubRepoDeployer,
+	'gitea-repo': giteaRepoDeployer,
 	postgres: postgresDeployer,
 	mysql: mysqlDeployer,
 	mariadb: mariadbDeployer,

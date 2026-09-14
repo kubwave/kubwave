@@ -22,6 +22,8 @@ defineProps<{
 
 		<ServiceSettingsSourceGithub v-if="service.type === 'github-repo'" :state :saving :service />
 
+		<ServiceSettingsSourceGitea v-if="service.type === 'gitea-repo'" :state :saving :service />
+
 		<ServiceSettingsSourceDatabase v-if="isDatabaseEngine(service.type)" :state :saving :service />
 	</div>
 </template>

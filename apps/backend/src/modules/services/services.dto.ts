@@ -403,6 +403,9 @@ const githubRepoConfigBase = publicRepoConfigBase.omit({ repoUrl: true }).extend
 export const githubRepoConfigSchema = githubRepoConfigBase.superRefine(refineRuntimeConfig);
 export type GithubRepoConfigInput = z.infer<typeof githubRepoConfigSchema>;
 
+export const giteaRepoConfigSchema = githubRepoConfigBase.superRefine(refineRuntimeConfig);
+export type GiteaRepoConfigInput = z.infer<typeof giteaRepoConfigSchema>;
+
 const dbIdentifierSchema = z
 	.string()
 	.trim()
@@ -458,6 +461,7 @@ export const serviceTypeSchema = z.enum([
 	'public-repo',
 	'private-repo',
 	'github-repo',
+	'gitea-repo',
 	'postgres',
 	'mysql',
 	'mariadb',
@@ -499,6 +503,12 @@ export const createServiceSchema = z.discriminatedUnion('type', [
 		type: z.literal('github-repo'),
 		config: githubRepoConfigSchema,
 		autoDeploy: autoDeployInputSchema.optional()
+	}),
+	z.object({
+		...createServiceCommonFields,
+		type: z.literal('gitea-repo'),
+		config: giteaRepoConfigSchema,
+		autoDeploy: autoDeployInputSchema.optional()
 	})
 ]);
 
@@ -513,6 +523,7 @@ export const updateServiceSchema = z.object({
 			// github-repo update that round-trips its derived repoUrl would otherwise match public-repo first and have installationId/repoFullName stripped
 			// as unknown keys — then the type-mismatch guard in updateService rejects a valid update.
 			githubRepoConfigSchema,
+			giteaRepoConfigSchema,
 			privateRepoConfigSchema,
 			publicRepoConfigSchema,
 			databaseUpdateConfigSchema

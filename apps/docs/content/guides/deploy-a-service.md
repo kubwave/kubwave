@@ -1,10 +1,10 @@
 ---
 title: Deploy a service
-description: The five kinds of service — container image, Dockerfile, public repo, private repo, GitHub App — plus docker-compose import and auto-deploy.
+description: The six kinds of service — container image, Dockerfile, public repo, private repo, GitHub App, Gitea — plus docker-compose import and auto-deploy.
 ---
 
 A **service** is one workload running in an environment. You create it from the console inside a
-project's environment, and you can build it from five kinds of source. Every type ends up the same
+project's environment, and you can build it from six kinds of source. Every type ends up the same
 way: a container image running as a Kubernetes Deployment, behind a Service and (optionally) an
 Ingress.
 
@@ -32,11 +32,14 @@ A private Git repository, built exactly like a public repo but cloned over an **
 A GitHub repository deployed through a connected **GitHub App** — no SSH keys or tokens to manage. Pick an account and repo from a list, and get
 **instant deploys** on push.
 ::
+::card{title="Gitea" icon="git-fork"}
+A Gitea or Forgejo repository deployed through a connected **OAuth application** — same picker flow as GitHub, against your own instance.
+::
 ::
 
 ### Building from a Git repo
 
-All three repo-based types — public repo, private repo, and GitHub App — share the same build options:
+All four repo-based types — public repo, private repo, GitHub App, and Gitea — share the same build options:
 
 - **Repository & branch** — the Git URL and a branch (defaults to `main`). Optionally pin a specific
   **commit** so deploys are reproducible, or set a **root directory** to build from a sub-folder of a
@@ -50,7 +53,8 @@ The types differ only in how the clone authenticates: a **public repo** uses an 
 clones anonymously; a **private repo** uses an SSH URL (`git@host:org/repo.git`) and a **team deploy
 key** (add the key under your team's SSH keys, then give the repo read access to its public half); a
 **GitHub App** repo clones over a short-lived installation token minted per build — see
-[Deploy from GitHub](#deploy-from-github) below.
+[Deploy from GitHub](#deploy-from-github) below; a **Gitea** repo clones over the team's OAuth access
+token — see [Deploy from Gitea](#deploy-from-gitea).
 
 ## Deploy from GitHub
 
@@ -73,6 +77,28 @@ private-network instance the App is created **without** a webhook, and auto-depl
 repositories won't appear until you either set the installation to **All repositories** or click **Refresh from GitHub** in the repository picker.
 ::
 
+## Deploy from Gitea
+
+The **Gitea** type deploys from a Gitea or Forgejo instance without SSH keys or personal access tokens.
+Forgejo works the same way — point the instance URL at your Forgejo host. Setup is a one-time, two-step
+flow:
+
+1. **Connect the OAuth app (admin, once per instance).** Create an OAuth2 application on Gitea
+   (Settings → Applications). In **Admin → Settings → Integrations**, paste the **instance URL**,
+   **client ID**, and **client secret**. Register the callback URL shown on that card as the OAuth
+   redirect URI.
+2. **Authorize it for your team (team owner).** In **Team settings → Gitea**, connect a Gitea account.
+   After Gitea redirects back, the console claims the grant so the tokens never appear in the URL.
+
+Then create a service, choose **Gitea repository**, and pick an account, repository, and branch. Each
+clone uses an `Authorization: token` header — the token never touches the repo URL or the build logs.
+
+::callout{type="caution" title="Webhooks need a public URL"}
+Instant push deploys arrive over a Gitea webhook, which Gitea can only deliver to a **publicly reachable** address. On a `localhost` or
+private-network instance, auto-deploy falls back to polling. Newly granted repositories won't appear until you click **Refresh from Gitea** in the
+repository picker.
+::
+
 ## Import from docker-compose
 
 To stand up several related services at once, paste a `docker-compose.yml` into the environment's
@@ -83,8 +109,8 @@ environment carried over — a quick way to bring an existing compose stack into
 
 Services that build from a Git repo can opt into **auto-deploy**. The platform periodically polls the
 repository, and when the tracked branch gets a new commit it kicks off a fresh build and rollout
-automatically — no manual redeploy needed. **GitHub App** services also deploy the moment a push
-webhook arrives, so the poll interval isn't the floor on how fast they react.
+automatically — no manual redeploy needed. **GitHub App** and **Gitea** services also deploy the moment a
+push webhook arrives, so the poll interval isn't the floor on how fast they react.
 
 When a **root directory** is set, auto-deploy only triggers if the new commit changes files under
 that directory (or under any **additional watch paths** you list — useful for shared monorepo
@@ -92,8 +118,8 @@ packages such as `packages/db`). Turn on **Watch entire repository** to keep the
 redeploy on every push regardless of path.
 
 ::callout{type="note"}
-Auto-deploy applies to the **public repo**, **private repo**, and **GitHub App** types. GitHub App services deploy **instantly** on push via the App
-webhook (with polling as a fallback); the others poll on an interval. Image and Dockerfile services are deployed on demand.
+Auto-deploy applies to the **public repo**, **private repo**, **GitHub App**, and **Gitea** types. GitHub App and Gitea services deploy **instantly**
+on push via webhook (with polling as a fallback); the others poll on an interval. Image and Dockerfile services are deployed on demand.
 ::
 
 ## Deployments and rollback
