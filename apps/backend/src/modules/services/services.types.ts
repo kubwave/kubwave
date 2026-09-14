@@ -5,6 +5,7 @@ import type {
 	DockerfileServiceConfig,
 	DockerImageServiceConfig,
 	GithubRepoServiceConfig,
+	GiteaRepoServiceConfig,
 	PrivateRepoServiceConfig,
 	PublicRepoServiceConfig,
 	ServiceConfig,
@@ -38,6 +39,7 @@ export type DockerfileConfigView = Omit<DockerfileServiceConfig, SensitiveRuntim
 export type PublicRepoConfigView = Omit<PublicRepoServiceConfig, SensitiveRuntime> & { secrets: SecretsView; basicAuth?: BasicAuthView };
 export type PrivateRepoConfigView = Omit<PrivateRepoServiceConfig, SensitiveRuntime> & { secrets: SecretsView; basicAuth?: BasicAuthView };
 export type GithubRepoConfigView = Omit<GithubRepoServiceConfig, SensitiveRuntime> & { secrets: SecretsView; basicAuth?: BasicAuthView };
+export type GiteaRepoConfigView = Omit<GiteaRepoServiceConfig, SensitiveRuntime> & { secrets: SecretsView; basicAuth?: BasicAuthView };
 export type DatabaseConfigView = Omit<DatabaseServiceConfig, SensitiveRuntime | 'password'> & { secrets: SecretsView; basicAuth?: BasicAuthView };
 export type ServiceConfigView =
 	| DockerImageConfigView
@@ -45,6 +47,7 @@ export type ServiceConfigView =
 	| PublicRepoConfigView
 	| PrivateRepoConfigView
 	| GithubRepoConfigView
+	| GiteaRepoConfigView
 	| DatabaseConfigView;
 
 export interface ServiceConnectionView {

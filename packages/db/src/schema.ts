@@ -47,7 +47,7 @@ export const teams = pgTable(
 export type Team = typeof teams.$inferSelect;
 export type NewTeam = typeof teams.$inferInsert;
 
-export type ServiceType = 'docker-image' | 'dockerfile' | 'public-repo' | 'private-repo' | 'github-repo' | DatabaseEngine;
+export type ServiceType = 'docker-image' | 'dockerfile' | 'public-repo' | 'private-repo' | 'github-repo' | 'gitea-repo' | DatabaseEngine;
 
 // Single-instance managed-database engines; each is its own service type but shares one config shape (DatabaseServiceConfig) and one worker deployer.
 export type DatabaseEngine = 'postgres' | 'mysql' | 'mariadb' | 'mongodb';
@@ -192,6 +192,21 @@ export interface GithubRepoServiceConfig extends RuntimeConfig {
 	dockerfilePath?: string;
 }
 
+export interface GiteaRepoServiceConfig extends RuntimeConfig {
+	repoUrl: string;
+	branch: string;
+	commit?: string;
+	rootDirectory?: string;
+	watchPaths?: string[];
+	watchEntireRepo?: boolean;
+	buildCommand?: string;
+	startCommand?: string;
+	installationId: string;
+	repoFullName: string;
+	builder: 'nixpacks' | 'dockerfile';
+	dockerfilePath?: string;
+}
+
 // Single-instance managed database; reuses RuntimeConfig but the worker derives image/port/init-env/volume/probe from the engine catalog.
 export interface DatabaseServiceConfig extends RuntimeConfig {
 	version: string; // engine major, validated against the engine catalog (e.g. "16", "8.4")
@@ -221,6 +236,7 @@ export type ServiceConfig =
 	| PublicRepoServiceConfig
 	| PrivateRepoServiceConfig
 	| GithubRepoServiceConfig
+	| GiteaRepoServiceConfig
 	| DatabaseServiceConfig;
 
 export const teamMembers = pgTable(
@@ -277,20 +293,23 @@ export const sshKeys = pgTable(
 export type SshKey = typeof sshKeys.$inferSelect;
 export type NewSshKey = typeof sshKeys.$inferInsert;
 
-export const gitProvider = pgEnum('git_provider', ['github']);
+export const gitProvider = pgEnum('git_provider', ['github', 'gitea']);
 
 export const gitAppConnections = pgTable(
 	'git_app_connections',
 	{
 		id: uuid('id').primaryKey().defaultRandom(),
 		provider: gitProvider('provider').notNull().default('github'),
-		// GitHub App numeric id, as text; its URL slug is display-only.
+		// GitHub App numeric id, as text; for Gitea this is the OAuth client id.
 		appId: text('app_id').notNull(),
 		appSlug: text('app_slug').notNull(),
+		// Self-hosted Gitea/Forgejo origin (no trailing slash). Null for github.com.
+		instanceUrl: text('instance_url'),
 		// clientId isn't secret; the client secret and RSA private key are encryptSecret() ciphertext, never returned to clients.
 		clientId: text('client_id'),
 		clientSecretCiphertext: text('client_secret_ciphertext'),
-		privateKeyCiphertext: text('private_key_ciphertext').notNull(),
+		// GitHub App PEM; Gitea OAuth has none.
+		privateKeyCiphertext: text('private_key_ciphertext'),
 		webhookSecretCiphertext: text('webhook_secret_ciphertext').notNull(),
 		createdByUserId: uuid('created_by_user_id').references(() => users.id, { onDelete: 'set null' }),
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -317,6 +336,10 @@ export const gitInstallations = pgTable(
 			.notNull()
 			.references(() => teams.id, { onDelete: 'cascade' }),
 		suspendedAt: timestamp('suspended_at', { withTimezone: true }),
+		// Gitea OAuth user tokens (GitHub uses short-lived installation tokens instead).
+		accessTokenCiphertext: text('access_token_ciphertext'),
+		refreshTokenCiphertext: text('refresh_token_ciphertext'),
+		tokenExpiresAt: timestamp('token_expires_at', { withTimezone: true }),
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 	},
@@ -328,6 +351,27 @@ export const gitInstallations = pgTable(
 
 export type GitInstallation = typeof gitInstallations.$inferSelect;
 export type NewGitInstallation = typeof gitInstallations.$inferInsert;
+
+export const gitOauthPending = pgTable('git_oauth_pending', {
+	id: uuid('id').primaryKey().defaultRandom(),
+	connectionId: uuid('connection_id')
+		.notNull()
+		.references(() => gitAppConnections.id, { onDelete: 'cascade' }),
+	userId: uuid('user_id').notNull(),
+	teamId: uuid('team_id')
+		.notNull()
+		.references(() => teams.id, { onDelete: 'cascade' }),
+	externalId: text('external_id').notNull(),
+	accountLogin: text('account_login').notNull(),
+	accessTokenCiphertext: text('access_token_ciphertext').notNull(),
+	refreshTokenCiphertext: text('refresh_token_ciphertext'),
+	tokenExpiresAt: timestamp('token_expires_at', { withTimezone: true }),
+	expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+});
+
+export type GitOauthPending = typeof gitOauthPending.$inferSelect;
+export type NewGitOauthPending = typeof gitOauthPending.$inferInsert;
 
 export const gitRepositories = pgTable(
 	'git_repositories',
@@ -412,6 +456,7 @@ export const serviceType = pgEnum('service_type', [
 	'public-repo',
 	'private-repo',
 	'github-repo',
+	'gitea-repo',
 	'postgres',
 	'mysql',
 	'mariadb',

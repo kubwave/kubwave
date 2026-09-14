@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { createHmac } from 'node:crypto';
-import { verifyWebhookSignature } from '../src/index';
+import { verifyGiteaWebhookSignature, verifyWebhookSignature } from '../src/index';
 
 const secret = 'webhook-secret-123';
 const body = JSON.stringify({ action: 'push', ref: 'refs/heads/main' });
@@ -29,5 +29,31 @@ describe('verifyWebhookSignature', () => {
 		expect(verifyWebhookSignature(body, null, secret)).toBe(false);
 		expect(verifyWebhookSignature(body, 'garbage', secret)).toBe(false);
 		expect(verifyWebhookSignature(body, 'sha256=', secret)).toBe(false);
+	});
+});
+
+function giteaSign(payload: string, key: string): string {
+	return createHmac('sha256', key).update(payload).digest('hex');
+}
+
+describe('verifyGiteaWebhookSignature', () => {
+	test('accepts a raw hex HMAC over the body', () => {
+		expect(verifyGiteaWebhookSignature(body, giteaSign(body, secret), secret)).toBe(true);
+	});
+
+	test('accepts a Buffer body', () => {
+		expect(verifyGiteaWebhookSignature(Buffer.from(body), giteaSign(body, secret), secret)).toBe(true);
+	});
+
+	test('rejects a wrong secret or tampered body', () => {
+		expect(verifyGiteaWebhookSignature(body, giteaSign(body, 'other-secret'), secret)).toBe(false);
+		expect(verifyGiteaWebhookSignature(`${body} `, giteaSign(body, secret), secret)).toBe(false);
+	});
+
+	test('rejects missing or malformed headers', () => {
+		expect(verifyGiteaWebhookSignature(body, undefined, secret)).toBe(false);
+		expect(verifyGiteaWebhookSignature(body, null, secret)).toBe(false);
+		expect(verifyGiteaWebhookSignature(body, 'garbage', secret)).toBe(false);
+		expect(verifyGiteaWebhookSignature(body, 'sha256=' + giteaSign(body, secret), secret)).toBe(false);
 	});
 });

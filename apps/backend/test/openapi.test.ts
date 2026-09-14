@@ -121,15 +121,27 @@ describe('Nest OpenAPI contract', () => {
 		expect(operation('/api/git/github/manifest', 'post').operationId).toBe('gitGithubCreateManifest');
 		expect(operation('/api/git/github', 'get').operationId).toBe('gitGithubConnectionGet');
 		expect(operation('/api/git/github', 'delete').operationId).toBe('gitGithubDisconnect');
+		expect(operation('/api/git/gitea', 'post').operationId).toBe('gitGiteaConnect');
+		expect(operation('/api/git/gitea', 'get').operationId).toBe('gitGiteaConnectionGet');
+		expect(operation('/api/git/gitea', 'delete').operationId).toBe('gitGiteaDisconnect');
 		expect(operation('/api/teams/{teamId}/git/connection', 'get').operationId).toBe('teamGitConnectionGet');
 		expect(operation('/api/teams/{teamId}/git/installations', 'get').operationId).toBe('teamGitInstallationsList');
 		expect(operation('/api/teams/{teamId}/git/installations/claim', 'post').operationId).toBe('teamGitInstallationsClaim');
+		expect(operation('/api/teams/{teamId}/git/gitea/connection', 'get').operationId).toBe('teamGiteaConnectionGet');
+		expect(operation('/api/teams/{teamId}/git/gitea/installations', 'get').operationId).toBe('teamGiteaInstallationsList');
+		expect(operation('/api/teams/{teamId}/git/gitea/installations/claim', 'post').operationId).toBe('teamGiteaInstallationsClaim');
+		expect(operation('/api/teams/{teamId}/git/gitea/installations/{installationId}/repos', 'get').operationId).toBe('teamGiteaInstallationReposList');
+		expect(operation('/api/teams/{teamId}/git/gitea/installations/{installationId}/repos/sync', 'post').operationId).toBe(
+			'teamGiteaInstallationReposSync'
+		);
+		expect(operation('/api/teams/{teamId}/git/gitea/installations/{installationId}', 'delete').operationId).toBe('teamGiteaInstallationsUnbind');
 		// Binding takes no caller-supplied installation id: the only write path redeems an ownership-verified grant from the install callback.
 		expect(spec.paths['/api/teams/{teamId}/git/installations']?.post).toBeUndefined();
 		expect(operation('/api/teams/{teamId}/git/installations/{installationId}/repos', 'get').operationId).toBe('teamGitInstallationReposList');
 		expect(spec.paths['/api/environments/{environmentId}/flow-layout/ws']).toBeUndefined();
 		// The manifest-flow callback is a browser-only redirect (ApiExcludeEndpoint) — never part of the generated client.
 		expect(spec.paths['/api/git/github/callback']).toBeUndefined();
+		expect(spec.paths['/api/git/gitea/callback']).toBeUndefined();
 	});
 
 	test('marks protected routes with bearer security', () => {

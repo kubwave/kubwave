@@ -31,6 +31,10 @@ import type {
 	EnvironmentsDeleteResponses,
 	EnvironmentsUpdateData,
 	EnvironmentsUpdateResponses,
+	GitGiteaConnectData,
+	GitGiteaConnectResponses,
+	GitGiteaConnectionGetResponses,
+	GitGiteaDisconnectResponses,
 	GitGithubConnectionGetResponses,
 	GitGithubCreateManifestData,
 	GitGithubCreateManifestResponses,
@@ -117,6 +121,13 @@ import type {
 	TeamGitInstallationsClaimResponses,
 	TeamGitInstallationsListResponses,
 	TeamGitInstallationsUnbindResponses,
+	TeamGiteaConnectionGetResponses,
+	TeamGiteaInstallationReposListResponses,
+	TeamGiteaInstallationReposSyncResponses,
+	TeamGiteaInstallationsClaimData,
+	TeamGiteaInstallationsClaimResponses,
+	TeamGiteaInstallationsListResponses,
+	TeamGiteaInstallationsUnbindResponses,
 	TeamMembersAddData,
 	TeamMembersAddResponses,
 	TeamMembersListResponses,
@@ -293,7 +304,14 @@ export type KubwaveEnvironmentsEnvironmentIdServicesStatusResource = {
 };
 
 export type KubwaveGitResource = {
+	gitea: KubwaveGitGiteaResource;
 	github: KubwaveGitGithubResource;
+};
+
+export type KubwaveGitGiteaResource = {
+	get(): OperationResult<GitGiteaConnectionGetResponses>;
+	post(body: GitGiteaConnectData['body']): OperationResult<GitGiteaConnectResponses>;
+	delete(): OperationResult<GitGiteaDisconnectResponses>;
 };
 
 export type KubwaveGitGithubResource = {
@@ -535,11 +553,45 @@ export type KubwaveTeamsTeamIdDeploymentsResource = {
 
 export type KubwaveTeamsTeamIdGitResource = {
 	connection: KubwaveTeamsTeamIdGitConnectionResource;
+	gitea: KubwaveTeamsTeamIdGitGiteaResource;
 	installations: KubwaveTeamsTeamIdGitInstallationsResource;
 };
 
 export type KubwaveTeamsTeamIdGitConnectionResource = {
 	get(): OperationResult<TeamGitConnectionGetResponses>;
+};
+
+export type KubwaveTeamsTeamIdGitGiteaResource = {
+	connection: KubwaveTeamsTeamIdGitGiteaConnectionResource;
+	installations: KubwaveTeamsTeamIdGitGiteaInstallationsResource;
+};
+
+export type KubwaveTeamsTeamIdGitGiteaConnectionResource = {
+	get(): OperationResult<TeamGiteaConnectionGetResponses>;
+};
+
+export type KubwaveTeamsTeamIdGitGiteaInstallationsResource = {
+	(installationId: string): KubwaveTeamsTeamIdGitGiteaInstallationsInstallationIdResource;
+	get(): OperationResult<TeamGiteaInstallationsListResponses>;
+	claim: KubwaveTeamsTeamIdGitGiteaInstallationsClaimResource;
+};
+
+export type KubwaveTeamsTeamIdGitGiteaInstallationsInstallationIdResource = {
+	delete(): OperationResult<TeamGiteaInstallationsUnbindResponses>;
+	repos: KubwaveTeamsTeamIdGitGiteaInstallationsInstallationIdReposResource;
+};
+
+export type KubwaveTeamsTeamIdGitGiteaInstallationsInstallationIdReposResource = {
+	get(): OperationResult<TeamGiteaInstallationReposListResponses>;
+	sync: KubwaveTeamsTeamIdGitGiteaInstallationsInstallationIdReposSyncResource;
+};
+
+export type KubwaveTeamsTeamIdGitGiteaInstallationsInstallationIdReposSyncResource = {
+	post(): OperationResult<TeamGiteaInstallationReposSyncResponses>;
+};
+
+export type KubwaveTeamsTeamIdGitGiteaInstallationsClaimResource = {
+	post(body: TeamGiteaInstallationsClaimData['body']): OperationResult<TeamGiteaInstallationsClaimResponses>;
 };
 
 export type KubwaveTeamsTeamIdGitInstallationsResource = {
@@ -689,6 +741,11 @@ export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClie
 			{}
 		),
 		git: {
+			gitea: {
+				get: () => apiResult(raw.gitGiteaConnectionGet({})),
+				post: (body: GitGiteaConnectData['body']) => apiResult(raw.gitGiteaConnect({ body })),
+				delete: () => apiResult(raw.gitGiteaDisconnect({}))
+			},
 			github: {
 				get: () => apiResult(raw.gitGithubConnectionGet({})),
 				delete: () => apiResult(raw.gitGithubDisconnect({})),
@@ -847,6 +904,29 @@ export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClie
 				git: {
 					connection: {
 						get: () => apiResult(raw.teamGitConnectionGet({ path: { teamId: teamId } }))
+					},
+					gitea: {
+						connection: {
+							get: () => apiResult(raw.teamGiteaConnectionGet({ path: { teamId: teamId } }))
+						},
+						installations: Object.assign(
+							(installationId: string) => ({
+								delete: () => apiResult(raw.teamGiteaInstallationsUnbind({ path: { teamId: teamId, installationId: installationId } })),
+								repos: {
+									get: () => apiResult(raw.teamGiteaInstallationReposList({ path: { teamId: teamId, installationId: installationId } })),
+									sync: {
+										post: () => apiResult(raw.teamGiteaInstallationReposSync({ path: { teamId: teamId, installationId: installationId } }))
+									}
+								}
+							}),
+							{
+								get: () => apiResult(raw.teamGiteaInstallationsList({ path: { teamId: teamId } })),
+								claim: {
+									post: (body: TeamGiteaInstallationsClaimData['body']) =>
+										apiResult(raw.teamGiteaInstallationsClaim({ path: { teamId: teamId }, body }))
+								}
+							}
+						)
 					},
 					installations: Object.assign(
 						(installationId: string) => ({

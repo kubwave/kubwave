@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
-import { db, gitInstallations, gitRepositories, services, type GitInstallation } from '@kubwave/db';
+import { db, gitAppConnections, gitInstallations, gitRepositories, services, type GitInstallation } from '@kubwave/db';
 import { ApiError } from '../../shared/errors/api-error.js';
 import { TeamsService } from '../teams/teams.service.js';
 import { GitConnectionService } from './git-connection.service.js';
@@ -62,8 +62,13 @@ export class GitInstallationsService {
 
 	async listForTeam(userId: string, teamId: string): Promise<GitInstallationDto[]> {
 		await this.teams.requireTeamRole(userId, teamId, 'member');
-		const rows = await db.select().from(gitInstallations).where(eq(gitInstallations.teamId, teamId)).orderBy(desc(gitInstallations.createdAt));
-		return rows.map(toInstallationView);
+		const rows = await db
+			.select({ installation: gitInstallations })
+			.from(gitInstallations)
+			.innerJoin(gitAppConnections, eq(gitInstallations.connectionId, gitAppConnections.id))
+			.where(and(eq(gitInstallations.teamId, teamId), eq(gitAppConnections.provider, 'github')))
+			.orderBy(desc(gitInstallations.createdAt));
+		return rows.map(r => toInstallationView(r.installation));
 	}
 
 	async teamConnection(userId: string, teamId: string): Promise<{ connected: boolean; installUrl: string | null }> {
@@ -122,12 +127,13 @@ export class GitInstallationsService {
 
 	private async requireTeamInstallation(teamId: string, installationRowId: string): Promise<GitInstallation> {
 		const [row] = await db
-			.select()
+			.select({ installation: gitInstallations })
 			.from(gitInstallations)
-			.where(and(eq(gitInstallations.id, installationRowId), eq(gitInstallations.teamId, teamId)))
+			.innerJoin(gitAppConnections, eq(gitInstallations.connectionId, gitAppConnections.id))
+			.where(and(eq(gitInstallations.id, installationRowId), eq(gitInstallations.teamId, teamId), eq(gitAppConnections.provider, 'github')))
 			.limit(1);
 		if (!row) throw new ApiError(404, 'installation_not_found');
-		return row;
+		return row.installation;
 	}
 
 	// Replace the repo mirror with a fresh listing from GitHub, so a full sync corrects any drift left by webhook-only updates.
@@ -152,11 +158,12 @@ export class GitInstallationsService {
 
 	private findByGithubId(githubInstallationId: string): Promise<GitInstallation | undefined> {
 		return db
-			.select()
+			.select({ installation: gitInstallations })
 			.from(gitInstallations)
-			.where(eq(gitInstallations.githubInstallationId, githubInstallationId))
+			.innerJoin(gitAppConnections, eq(gitInstallations.connectionId, gitAppConnections.id))
+			.where(and(eq(gitInstallations.githubInstallationId, githubInstallationId), eq(gitAppConnections.provider, 'github')))
 			.limit(1)
-			.then(rows => rows[0]);
+			.then(rows => rows[0]?.installation);
 	}
 
 	// Apply a parsed webhook to the mirror. Events for an installation we haven't bound to a team yet are no-ops — the setup redirect creates and syncs it.
@@ -173,11 +180,12 @@ export class GitInstallationsService {
 			}
 			case 'installation-suspended': {
 				const row = await this.findByGithubId(action.githubInstallationId);
+				if (!row) return;
 				await db
 					.update(gitInstallations)
 					.set({ suspendedAt: action.suspended ? new Date() : null, updatedAt: new Date() })
-					.where(eq(gitInstallations.githubInstallationId, action.githubInstallationId));
-				if (row) clearInstallationTokenCache(row.id);
+					.where(eq(gitInstallations.id, row.id));
+				clearInstallationTokenCache(row.id);
 				return;
 			}
 			case 'repos-added': {

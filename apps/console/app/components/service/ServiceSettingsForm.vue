@@ -144,7 +144,11 @@ watch(
 );
 
 const isRepoType = computed(
-	() => props.service.type === 'public-repo' || props.service.type === 'private-repo' || props.service.type === 'github-repo'
+	() =>
+		props.service.type === 'public-repo' ||
+		props.service.type === 'private-repo' ||
+		props.service.type === 'github-repo' ||
+		props.service.type === 'gitea-repo'
 );
 
 function addEnv() {
@@ -320,7 +324,7 @@ function buildConfig(values: ServiceSettingsValues) {
 	if (props.service.type === 'private-repo') {
 		return { repoUrl: values.repoUrl.trim(), sshKeyId: values.sshKeyId.trim(), ...repoBuildFields(values), ...sharedConfig };
 	}
-	if (props.service.type === 'github-repo') {
+	if (props.service.type === 'github-repo' || props.service.type === 'gitea-repo') {
 		return { installationId: values.installationId.trim(), repoFullName: values.repoFullName.trim(), ...repoBuildFields(values), ...sharedConfig };
 	}
 	return {

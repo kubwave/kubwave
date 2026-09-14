@@ -73,7 +73,7 @@ export const serviceSettingsSchema = z
 		startCommand: z.string(),
 		// private-repo only: the team deploy key id. Empty for every other type.
 		sshKeyId: z.string(),
-		// github-repo only: the installation row id + owner/repo. Empty for every other type.
+		// github-repo / gitea-repo: the installation row id + owner/repo. Empty for every other type.
 		installationId: z.string(),
 		repoFullName: z.string(),
 		// public/private-repo only: build method + (dockerfile mode) the Dockerfile path. Empty otherwise.
@@ -303,11 +303,15 @@ export function makeServiceSettingsSchema(type: Service['type'], originalVolumeS
 			}
 			if (!val.branch.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a branch.', path: ['branch'] });
 			if (!val.sshKeyId.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Select a deploy key.', path: ['sshKeyId'] });
-		} else if (type === 'github-repo') {
+		} else if (type === 'github-repo' || type === 'gitea-repo') {
 			if (!val.branch.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a branch.', path: ['branch'] });
-			// repoFullName + installationId are fixed at creation and read-only here; flag defensively if the link is somehow missing.
 			if (!val.installationId.trim() || !val.repoFullName.trim()) {
-				ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'This service is missing its GitHub repository link.', path: ['repoFullName'] });
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					message:
+						type === 'gitea-repo' ? 'This service is missing its Gitea repository link.' : 'This service is missing its GitHub repository link.',
+					path: ['repoFullName']
+				});
 			}
 		} else if (isDatabaseEngine(type)) {
 			if (!val.version.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Pick a version.', path: ['version'] });
@@ -319,7 +323,7 @@ export function makeServiceSettingsSchema(type: Service['type'], originalVolumeS
 			if (!val.image.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter an image.', path: ['image'] });
 			if (!val.tag.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a tag.', path: ['tag'] });
 		}
-		if (type === 'public-repo' || type === 'private-repo' || type === 'github-repo') {
+		if (type === 'public-repo' || type === 'private-repo' || type === 'github-repo' || type === 'gitea-repo') {
 			if (val.commit.trim() && !/^[0-9a-fA-F]{7,64}$/.test(val.commit.trim())) {
 				ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a valid commit SHA.', path: ['commit'] });
 			}

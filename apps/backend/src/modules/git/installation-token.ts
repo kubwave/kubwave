@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db, gitAppConnections, gitInstallations } from '@kubwave/db';
 import { decryptSecret, signJwtRs256 } from '@kubwave/crypto';
 import { errorMessage } from '../../shared/worker-common/errors.js';
@@ -30,9 +30,10 @@ export async function getInstallationToken(installationRowId: string): Promise<s
 		})
 		.from(gitInstallations)
 		.innerJoin(gitAppConnections, eq(gitInstallations.connectionId, gitAppConnections.id))
-		.where(eq(gitInstallations.id, installationRowId))
+		.where(and(eq(gitInstallations.id, installationRowId), eq(gitAppConnections.provider, 'github')))
 		.limit(1);
-	if (!row) throw new Error('GitHub installation not found — the connection may have been removed. Reconnect it in platform settings.');
+	if (!row?.privateKeyCiphertext)
+		throw new Error('GitHub installation not found — the connection may have been removed. Reconnect it in platform settings.');
 
 	const jwt = signAppJwt(row.appId, decryptSecret(row.privateKeyCiphertext));
 	let res: Response;

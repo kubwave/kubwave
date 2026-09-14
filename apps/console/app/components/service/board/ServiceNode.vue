@@ -33,6 +33,7 @@ const typeLabel = computed(() => {
 	if (service.value.type === 'public-repo') return 'Git';
 	if (service.value.type === 'private-repo') return 'Git (SSH)';
 	if (service.value.type === 'github-repo') return 'GitHub';
+	if (service.value.type === 'gitea-repo') return 'Gitea';
 	return 'Docker';
 });
 // Datastores use the database icon as a subtle signal rather than a colour change.
