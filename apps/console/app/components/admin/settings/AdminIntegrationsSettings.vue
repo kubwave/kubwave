@@ -8,7 +8,8 @@ const sections = [
 	{ id: 'integration-github', label: 'GitHub' },
 	{ id: 'integration-gitea', label: 'Gitea' },
 	{ id: 'integration-email', label: 'Email' },
-	{ id: 'integration-metrics', label: 'Service metrics' }
+	{ id: 'integration-metrics', label: 'Service metrics' },
+	{ id: 'integration-ai', label: 'AI assistant' }
 ] as const;
 
 function scrollTo(id: string) {
@@ -37,6 +38,7 @@ function scrollTo(id: string) {
 			<div id="integration-gitea" class="scroll-mt-16"><AdminGiteaCard /></div>
 			<div id="integration-email" class="scroll-mt-16"><AdminEmailCard /></div>
 			<div id="integration-metrics" class="scroll-mt-16"><AdminMetricsCard /></div>
+			<div id="integration-ai" class="scroll-mt-16"><AdminAiCard /></div>
 
 			<SettingsSaveBar :count="store.dirtyCount" :saving="store.isSaving" :can-save="store.canSave" @save="store.save" @discard="store.discard" />
 		</div>

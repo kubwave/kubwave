@@ -538,7 +538,7 @@ export class ServicesService {
 		return Boolean(row);
 	}
 
-	private async assertSshKeyForTeam(teamId: string, sshKeyId: string): Promise<void> {
+	async assertSshKeyForTeam(teamId: string, sshKeyId: string): Promise<void> {
 		const [row] = await db
 			.select({ id: sshKeys.id })
 			.from(sshKeys)
@@ -548,7 +548,7 @@ export class ServicesService {
 		if (!row) throw new SshKeyNotAvailableError();
 	}
 
-	private async assertInstallationForTeam(teamId: string, installationId: string, provider: 'github' | 'gitea'): Promise<void> {
+	async assertInstallationForTeam(teamId: string, installationId: string, provider: 'github' | 'gitea'): Promise<void> {
 		const [row] = await db
 			.select({ id: gitInstallations.id })
 			.from(gitInstallations)
@@ -559,7 +559,7 @@ export class ServicesService {
 		if (!row) throw new GitInstallationNotAvailableError();
 	}
 
-	private async loadDefaultDomainContext(): Promise<DefaultDomainContext> {
+	async loadDefaultDomainContext(): Promise<DefaultDomainContext> {
 		const [settings, runtime] = await Promise.all([
 			this.settings.get<Partial<DefaultDomainContext['settings']>>(DEFAULT_DOMAIN_SETTINGS_KEY),
 			this.settings.get<Partial<DefaultDomainContext['runtime']>>(DEFAULT_DOMAIN_RUNTIME_KEY)

@@ -1,6 +1,6 @@
 import { errorMessage } from '../../../../shared/worker-common/errors.js';
-import { prepareGitAuthEnv } from './git-auth.js';
-import { runGit } from './run-git.js';
+import { prepareGitAuthEnv } from '../../../git/git-auth.js';
+import { runGit } from '../../../git/run-git.js';
 
 // Resolve branch HEAD via git ls-remote; private repos auth with the team deploy key decrypted into a 0600 temp file, removed afterwards.
 

@@ -1735,6 +1735,122 @@
 				"tags": ["environments"]
 			}
 		},
+		"/api/ai/status": {
+			"get": {
+				"operationId": "aiStatusGet",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AiStatusDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Whether the AI assistant is enabled on this instance",
+				"tags": ["environments"]
+			}
+		},
+		"/api/environments/{environmentId}/services/analyze": {
+			"post": {
+				"operationId": "environmentServicesAnalyzeRepository",
+				"parameters": [
+					{
+						"name": "environmentId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/AnalyzeRepositoryDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DeploymentPlanDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Propose services for a repository with the configured AI model",
+				"tags": ["environments"]
+			}
+		},
+		"/api/environments/{environmentId}/services/from-plan": {
+			"post": {
+				"operationId": "environmentServicesCreateFromPlan",
+				"parameters": [
+					{
+						"name": "environmentId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateServicesFromPlanDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/ServiceViewDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Create the services of a reviewed deployment plan",
+				"tags": ["environments"]
+			}
+		},
 		"/api/services/{serviceId}/metrics": {
 			"get": {
 				"operationId": "serviceMetricsGet",
@@ -3596,6 +3712,64 @@
 				"tags": ["platform-settings"]
 			}
 		},
+		"/api/platform/settings/ai": {
+			"get": {
+				"operationId": "platformSettingsAiGet",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AiSettingsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get AI assistant settings",
+				"tags": ["platform-settings"]
+			},
+			"put": {
+				"operationId": "platformSettingsAiUpdate",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateAiSettingsDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AiSettingsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Update AI assistant settings",
+				"tags": ["platform-settings"]
+			}
+		},
 		"/api/platform/updates": {
 			"get": {
 				"operationId": "platformUpdatesList",
@@ -5104,6 +5278,470 @@
 				},
 				"required": ["compose"]
 			},
+			"AiStatusDto": {
+				"type": "object",
+				"properties": {
+					"enabled": {
+						"type": "boolean"
+					}
+				},
+				"required": ["enabled"]
+			},
+			"RepoSourceDto": {
+				"type": "object",
+				"properties": {
+					"type": {
+						"type": "string",
+						"enum": ["public-repo", "private-repo", "github-repo", "gitea-repo"]
+					},
+					"branch": {
+						"type": "string"
+					},
+					"repoUrl": {
+						"type": "string"
+					},
+					"sshKeyId": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"installationId": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"repoFullName": {
+						"type": "string"
+					}
+				},
+				"required": ["type", "branch"]
+			},
+			"AnalyzeRepositoryDto": {
+				"type": "object",
+				"properties": {
+					"source": {
+						"$ref": "#/components/schemas/RepoSourceDto"
+					}
+				},
+				"required": ["source"]
+			},
+			"PlanReferenceDto": {
+				"type": "object",
+				"properties": {
+					"service": {
+						"type": "string"
+					},
+					"kind": {
+						"type": "string",
+						"enum": ["url", "publicUrl", "connectionUri", "env"]
+					},
+					"key": {
+						"type": "string",
+						"nullable": true,
+						"description": "Env key to copy for kind \"env\"."
+					}
+				},
+				"required": ["service", "kind", "key"]
+			},
+			"PlanEnvVarDto": {
+				"type": "object",
+				"properties": {
+					"key": {
+						"type": "string"
+					},
+					"value": {
+						"type": "string",
+						"nullable": true
+					},
+					"secret": {
+						"type": "boolean"
+					},
+					"generate": {
+						"type": "boolean"
+					},
+					"reference": {
+						"nullable": true,
+						"type": "object",
+						"allOf": [
+							{
+								"$ref": "#/components/schemas/PlanReferenceDto"
+							}
+						]
+					},
+					"note": {
+						"type": "string",
+						"nullable": true
+					}
+				},
+				"required": ["key", "value", "secret", "generate", "reference", "note"]
+			},
+			"PlanServiceDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"rootDirectory": {
+						"type": "string"
+					},
+					"builder": {
+						"type": "string",
+						"enum": ["nixpacks", "dockerfile"]
+					},
+					"dockerfilePath": {
+						"type": "string",
+						"nullable": true
+					},
+					"buildCommand": {
+						"type": "string",
+						"nullable": true
+					},
+					"startCommand": {
+						"type": "string",
+						"nullable": true
+					},
+					"containerPort": {
+						"type": "number",
+						"nullable": true
+					},
+					"watchPaths": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"publicDomain": {
+						"type": "boolean"
+					},
+					"env": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanEnvVarDto"
+						}
+					},
+					"reason": {
+						"type": "string"
+					}
+				},
+				"required": [
+					"name",
+					"rootDirectory",
+					"builder",
+					"dockerfilePath",
+					"buildCommand",
+					"startCommand",
+					"containerPort",
+					"watchPaths",
+					"publicDomain",
+					"env",
+					"reason"
+				]
+			},
+			"PlanVolumeDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"mountPath": {
+						"type": "string"
+					},
+					"size": {
+						"type": "string"
+					}
+				},
+				"required": ["name", "mountPath", "size"]
+			},
+			"PlanImageDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"image": {
+						"type": "string"
+					},
+					"tag": {
+						"type": "string"
+					},
+					"containerPort": {
+						"type": "number",
+						"nullable": true
+					},
+					"args": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"volumes": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanVolumeDto"
+						}
+					},
+					"publicDomain": {
+						"type": "boolean"
+					},
+					"env": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanEnvVarDto"
+						}
+					},
+					"reason": {
+						"type": "string"
+					}
+				},
+				"required": ["name", "image", "tag", "containerPort", "args", "volumes", "publicDomain", "env", "reason"]
+			},
+			"PlanDatabaseDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"engine": {
+						"type": "string",
+						"enum": ["postgres", "mysql", "mariadb", "mongodb"]
+					}
+				},
+				"required": ["name", "engine"]
+			},
+			"PlanQuestionDto": {
+				"type": "object",
+				"properties": {
+					"kind": {
+						"type": "string",
+						"enum": ["domain", "values"]
+					},
+					"title": {
+						"type": "string"
+					},
+					"description": {
+						"type": "string",
+						"nullable": true
+					},
+					"services": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"envKeys": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"required": ["kind", "title", "description", "services", "envKeys"]
+			},
+			"DeploymentPlanDto": {
+				"type": "object",
+				"properties": {
+					"services": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanServiceDto"
+						}
+					},
+					"images": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanImageDto"
+						}
+					},
+					"databases": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanDatabaseDto"
+						}
+					},
+					"questions": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanQuestionDto"
+						}
+					},
+					"warnings": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"defaultDomainBase": {
+						"type": "string",
+						"nullable": true,
+						"description": "Base of generated service domains, or null when default domains are unavailable."
+					}
+				},
+				"required": ["services", "images", "databases", "questions", "warnings", "defaultDomainBase"]
+			},
+			"PlanEnvVarInputDto": {
+				"type": "object",
+				"properties": {
+					"key": {
+						"type": "string"
+					},
+					"value": {
+						"type": "string",
+						"nullable": true
+					},
+					"secret": {
+						"type": "boolean"
+					},
+					"generate": {
+						"type": "boolean"
+					},
+					"reference": {
+						"nullable": true,
+						"type": "object",
+						"allOf": [
+							{
+								"$ref": "#/components/schemas/PlanReferenceDto"
+							}
+						]
+					}
+				},
+				"required": ["key", "value", "secret", "generate", "reference"]
+			},
+			"PlanServiceInputDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"rootDirectory": {
+						"type": "string"
+					},
+					"builder": {
+						"type": "string",
+						"enum": ["nixpacks", "dockerfile"]
+					},
+					"dockerfilePath": {
+						"type": "string",
+						"nullable": true
+					},
+					"buildCommand": {
+						"type": "string",
+						"nullable": true
+					},
+					"startCommand": {
+						"type": "string",
+						"nullable": true
+					},
+					"containerPort": {
+						"type": "number",
+						"nullable": true
+					},
+					"watchPaths": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"publicDomain": {
+						"type": "boolean"
+					},
+					"env": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanEnvVarInputDto"
+						}
+					},
+					"domain": {
+						"type": "string",
+						"nullable": true,
+						"description": "Custom public hostname; null uses the generated default domain."
+					}
+				},
+				"required": [
+					"name",
+					"rootDirectory",
+					"builder",
+					"dockerfilePath",
+					"buildCommand",
+					"startCommand",
+					"containerPort",
+					"watchPaths",
+					"publicDomain",
+					"env"
+				]
+			},
+			"PlanImageInputDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"image": {
+						"type": "string"
+					},
+					"tag": {
+						"type": "string"
+					},
+					"containerPort": {
+						"type": "number",
+						"nullable": true
+					},
+					"args": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"volumes": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanVolumeDto"
+						}
+					},
+					"publicDomain": {
+						"type": "boolean"
+					},
+					"env": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanEnvVarInputDto"
+						}
+					},
+					"domain": {
+						"type": "string",
+						"nullable": true
+					}
+				},
+				"required": ["name", "image", "tag", "containerPort", "args", "volumes", "publicDomain", "env"]
+			},
+			"CreateServicesFromPlanDto": {
+				"type": "object",
+				"properties": {
+					"source": {
+						"$ref": "#/components/schemas/RepoSourceDto"
+					},
+					"autoDeploy": {
+						"type": "boolean",
+						"default": false
+					},
+					"services": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanServiceInputDto"
+						}
+					},
+					"images": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanImageInputDto"
+						}
+					},
+					"databases": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanDatabaseDto"
+						}
+					}
+				},
+				"required": ["source", "services", "databases"]
+			},
 			"ServiceMetricVolumeDto": {
 				"type": "object",
 				"properties": {
@@ -6342,6 +6980,55 @@
 					}
 				},
 				"required": ["enabled", "start", "size", "updateRun"]
+			},
+			"AiSettingsDto": {
+				"type": "object",
+				"properties": {
+					"enabled": {
+						"type": "boolean"
+					},
+					"provider": {
+						"type": "string",
+						"enum": ["anthropic", "openai-compatible"]
+					},
+					"baseUrl": {
+						"type": "string",
+						"nullable": true
+					},
+					"model": {
+						"type": "string",
+						"description": "Model id with an optional \":effort\" suffix, e.g. claude-opus-5:high."
+					},
+					"hasApiKey": {
+						"type": "boolean"
+					}
+				},
+				"required": ["enabled", "provider", "baseUrl", "model", "hasApiKey"]
+			},
+			"UpdateAiSettingsDto": {
+				"type": "object",
+				"properties": {
+					"enabled": {
+						"type": "boolean"
+					},
+					"provider": {
+						"type": "string",
+						"enum": ["anthropic", "openai-compatible"]
+					},
+					"baseUrl": {
+						"type": "string",
+						"nullable": true
+					},
+					"model": {
+						"type": "string"
+					},
+					"apiKey": {
+						"type": "string",
+						"nullable": true,
+						"writeOnly": true
+					}
+				},
+				"required": ["enabled", "provider", "model"]
 			},
 			"TriggerUpdateDto": {
 				"type": "object",

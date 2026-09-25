@@ -3,6 +3,8 @@
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
 import type {
+	AiStatusGetData,
+	AiStatusGetResponses,
 	AuthForgotPasswordData,
 	AuthForgotPasswordResponses,
 	AuthLoginData,
@@ -31,9 +33,13 @@ import type {
 	EnvironmentFlowLayoutNodeUpdateResponses,
 	EnvironmentsDeleteData,
 	EnvironmentsDeleteResponses,
+	EnvironmentServicesAnalyzeRepositoryData,
+	EnvironmentServicesAnalyzeRepositoryResponses,
 	EnvironmentServicesComposeCreateData,
 	EnvironmentServicesComposeCreateResponses,
 	EnvironmentServicesCreateData,
+	EnvironmentServicesCreateFromPlanData,
+	EnvironmentServicesCreateFromPlanResponses,
 	EnvironmentServicesCreateFromTemplateData,
 	EnvironmentServicesCreateFromTemplateResponses,
 	EnvironmentServicesCreateResponses,
@@ -81,6 +87,10 @@ import type {
 	McpConsentCreateResponses,
 	McpInfoGetData,
 	McpInfoGetResponses,
+	PlatformSettingsAiGetData,
+	PlatformSettingsAiGetResponses,
+	PlatformSettingsAiUpdateData,
+	PlatformSettingsAiUpdateResponses,
 	PlatformSettingsDeploymentConcurrencyGetData,
 	PlatformSettingsDeploymentConcurrencyGetResponses,
 	PlatformSettingsDeploymentConcurrencyUpdateData,
@@ -907,6 +917,50 @@ export const environmentServicesComposeCreate = <ThrowOnError extends boolean = 
 	});
 
 /**
+ * Whether the AI assistant is enabled on this instance
+ */
+export const aiStatusGet = <ThrowOnError extends boolean = false>(
+	options?: Options<AiStatusGetData, ThrowOnError>
+): RequestResult<AiStatusGetResponses, unknown, ThrowOnError> =>
+	(options?.client ?? client).get<AiStatusGetResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/ai/status',
+		...options
+	});
+
+/**
+ * Propose services for a repository with the configured AI model
+ */
+export const environmentServicesAnalyzeRepository = <ThrowOnError extends boolean = false>(
+	options: Options<EnvironmentServicesAnalyzeRepositoryData, ThrowOnError>
+): RequestResult<EnvironmentServicesAnalyzeRepositoryResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<EnvironmentServicesAnalyzeRepositoryResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/environments/{environmentId}/services/analyze',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
+
+/**
+ * Create the services of a reviewed deployment plan
+ */
+export const environmentServicesCreateFromPlan = <ThrowOnError extends boolean = false>(
+	options: Options<EnvironmentServicesCreateFromPlanData, ThrowOnError>
+): RequestResult<EnvironmentServicesCreateFromPlanResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<EnvironmentServicesCreateFromPlanResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/environments/{environmentId}/services/from-plan',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
+
+/**
  * Get service CPU, memory, network, and PVC metrics
  */
 export const serviceMetricsGet = <ThrowOnError extends boolean = false>(
@@ -1642,6 +1696,34 @@ export const platformSettingsTcpPortPoolUpdate = <ThrowOnError extends boolean =
 	(options.client ?? client).put<PlatformSettingsTcpPortPoolUpdateResponses, unknown, ThrowOnError>({
 		security: [{ scheme: 'bearer', type: 'http' }],
 		url: '/api/platform/settings/tcp-port-pool',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
+
+/**
+ * Get AI assistant settings
+ */
+export const platformSettingsAiGet = <ThrowOnError extends boolean = false>(
+	options?: Options<PlatformSettingsAiGetData, ThrowOnError>
+): RequestResult<PlatformSettingsAiGetResponses, unknown, ThrowOnError> =>
+	(options?.client ?? client).get<PlatformSettingsAiGetResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/platform/settings/ai',
+		...options
+	});
+
+/**
+ * Update AI assistant settings
+ */
+export const platformSettingsAiUpdate = <ThrowOnError extends boolean = false>(
+	options: Options<PlatformSettingsAiUpdateData, ThrowOnError>
+): RequestResult<PlatformSettingsAiUpdateResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).put<PlatformSettingsAiUpdateResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/platform/settings/ai',
 		...options,
 		headers: {
 			'Content-Type': 'application/json',

@@ -3,6 +3,7 @@
 import { apiResult, type KubwaveApiResult, type NormalizeApiData } from '../runtime/result.js';
 import type * as sdk from './sdk.gen.js';
 import type {
+	AiStatusGetResponses,
 	AuthForgotPasswordData,
 	AuthForgotPasswordResponses,
 	AuthLoginData,
@@ -21,9 +22,13 @@ import type {
 	EnvironmentFlowLayoutNodeUpdateData,
 	EnvironmentFlowLayoutNodeUpdateResponses,
 	EnvironmentServiceStatusListResponses,
+	EnvironmentServicesAnalyzeRepositoryData,
+	EnvironmentServicesAnalyzeRepositoryResponses,
 	EnvironmentServicesComposeCreateData,
 	EnvironmentServicesComposeCreateResponses,
 	EnvironmentServicesCreateData,
+	EnvironmentServicesCreateFromPlanData,
+	EnvironmentServicesCreateFromPlanResponses,
 	EnvironmentServicesCreateFromTemplateData,
 	EnvironmentServicesCreateFromTemplateResponses,
 	EnvironmentServicesCreateResponses,
@@ -58,6 +63,9 @@ import type {
 	McpConsentCreateData,
 	McpConsentCreateResponses,
 	McpInfoGetResponses,
+	PlatformSettingsAiGetResponses,
+	PlatformSettingsAiUpdateData,
+	PlatformSettingsAiUpdateResponses,
 	PlatformSettingsDeploymentConcurrencyGetResponses,
 	PlatformSettingsDeploymentConcurrencyUpdateData,
 	PlatformSettingsDeploymentConcurrencyUpdateResponses,
@@ -189,6 +197,7 @@ type OperationResult<TResponses> = Promise<KubwaveApiResult<ResponseData<TRespon
 
 export type KubwaveResourceClient = {
 	raw: KubwaveRawClient;
+	ai: KubwaveAiResource;
 	auth: KubwaveAuthResource;
 	deployments: KubwaveDeploymentsResource;
 	environments: KubwaveEnvironmentsResource;
@@ -202,6 +211,14 @@ export type KubwaveResourceClient = {
 	setup: KubwaveSetupResource;
 	teams: KubwaveTeamsResource;
 	templates: KubwaveTemplatesResource;
+};
+
+export type KubwaveAiResource = {
+	status: KubwaveAiStatusResource;
+};
+
+export type KubwaveAiStatusResource = {
+	get(): OperationResult<AiStatusGetResponses>;
 };
 
 export type KubwaveAuthResource = {
@@ -296,13 +313,23 @@ export type KubwaveEnvironmentsEnvironmentIdFlowLayoutNodesServiceIdResource = {
 export type KubwaveEnvironmentsEnvironmentIdServicesResource = {
 	get(): OperationResult<EnvironmentServicesListResponses>;
 	post(body: EnvironmentServicesCreateData['body']): OperationResult<EnvironmentServicesCreateResponses>;
+	analyze: KubwaveEnvironmentsEnvironmentIdServicesAnalyzeResource;
 	compose: KubwaveEnvironmentsEnvironmentIdServicesComposeResource;
+	fromPlan: KubwaveEnvironmentsEnvironmentIdServicesFromPlanResource;
 	fromTemplate: KubwaveEnvironmentsEnvironmentIdServicesFromTemplateResource;
 	status: KubwaveEnvironmentsEnvironmentIdServicesStatusResource;
 };
 
+export type KubwaveEnvironmentsEnvironmentIdServicesAnalyzeResource = {
+	post(body: EnvironmentServicesAnalyzeRepositoryData['body']): OperationResult<EnvironmentServicesAnalyzeRepositoryResponses>;
+};
+
 export type KubwaveEnvironmentsEnvironmentIdServicesComposeResource = {
 	post(body: EnvironmentServicesComposeCreateData['body']): OperationResult<EnvironmentServicesComposeCreateResponses>;
+};
+
+export type KubwaveEnvironmentsEnvironmentIdServicesFromPlanResource = {
+	post(body: EnvironmentServicesCreateFromPlanData['body']): OperationResult<EnvironmentServicesCreateFromPlanResponses>;
 };
 
 export type KubwaveEnvironmentsEnvironmentIdServicesFromTemplateResource = {
@@ -400,6 +427,7 @@ export type KubwavePlatformResource = {
 };
 
 export type KubwavePlatformSettingsResource = {
+	ai: KubwavePlatformSettingsAiResource;
 	deploymentConcurrency: KubwavePlatformSettingsDeploymentConcurrencyResource;
 	domain: KubwavePlatformSettingsDomainResource;
 	ha: KubwavePlatformSettingsHaResource;
@@ -410,6 +438,11 @@ export type KubwavePlatformSettingsResource = {
 	smtp: KubwavePlatformSettingsSmtpResource;
 	tcpPortPool: KubwavePlatformSettingsTcpPortPoolResource;
 	volumeAutoscaling: KubwavePlatformSettingsVolumeAutoscalingResource;
+};
+
+export type KubwavePlatformSettingsAiResource = {
+	get(): OperationResult<PlatformSettingsAiGetResponses>;
+	put(body: PlatformSettingsAiUpdateData['body']): OperationResult<PlatformSettingsAiUpdateResponses>;
 };
 
 export type KubwavePlatformSettingsDeploymentConcurrencyResource = {
@@ -704,6 +737,11 @@ export type KubwaveTemplatesTemplateIdLogoResource = {
 export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClient {
 	return {
 		raw: raw,
+		ai: {
+			status: {
+				get: () => apiResult(raw.aiStatusGet({}))
+			}
+		},
 		auth: {
 			forgotPassword: {
 				post: (body: AuthForgotPasswordData['body']) => apiResult(raw.authForgotPassword({ body }))
@@ -764,9 +802,17 @@ export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClie
 					get: () => apiResult(raw.environmentServicesList({ path: { environmentId: environmentId } })),
 					post: (body: EnvironmentServicesCreateData['body']) =>
 						apiResult(raw.environmentServicesCreate({ path: { environmentId: environmentId }, body })),
+					analyze: {
+						post: (body: EnvironmentServicesAnalyzeRepositoryData['body']) =>
+							apiResult(raw.environmentServicesAnalyzeRepository({ path: { environmentId: environmentId }, body }))
+					},
 					compose: {
 						post: (body: EnvironmentServicesComposeCreateData['body']) =>
 							apiResult(raw.environmentServicesComposeCreate({ path: { environmentId: environmentId }, body }))
+					},
+					fromPlan: {
+						post: (body: EnvironmentServicesCreateFromPlanData['body']) =>
+							apiResult(raw.environmentServicesCreateFromPlan({ path: { environmentId: environmentId }, body }))
 					},
 					fromTemplate: {
 						post: (body: EnvironmentServicesCreateFromTemplateData['body']) =>
@@ -836,6 +882,10 @@ export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClie
 		},
 		platform: {
 			settings: {
+				ai: {
+					get: () => apiResult(raw.platformSettingsAiGet({})),
+					put: (body: PlatformSettingsAiUpdateData['body']) => apiResult(raw.platformSettingsAiUpdate({ body }))
+				},
 				deploymentConcurrency: {
 					get: () => apiResult(raw.platformSettingsDeploymentConcurrencyGet({})),
 					put: (body: PlatformSettingsDeploymentConcurrencyUpdateData['body']) => apiResult(raw.platformSettingsDeploymentConcurrencyUpdate({ body }))

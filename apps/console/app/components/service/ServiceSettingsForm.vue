@@ -168,6 +168,20 @@ function removeSecret(index: number) {
 	if (removed) delete shownSecrets[removed._id];
 }
 
+// Pasted keys overwrite same-named rows in the target list and move out of the other list, so a key never ends up as both.
+function importDotenv(entries: Array<{ key: string; value: string }>, asSecrets: boolean) {
+	const keys = new Set(entries.map(entry => entry.key));
+	if (asSecrets) {
+		state.env = state.env.filter(item => !keys.has(item.key));
+		state.secrets = state.secrets.filter(item => !keys.has(item.key));
+		state.secrets.push(...entries.map(({ key, value }) => ({ _id: crypto.randomUUID(), key, value, hasValue: false })));
+	} else {
+		state.secrets = state.secrets.filter(item => !keys.has(item.key));
+		state.env = state.env.filter(item => !keys.has(item.key));
+		state.env.push(...entries.map(({ key, value }) => ({ _id: crypto.randomUUID(), key, value })));
+	}
+}
+
 function addDomain() {
 	state.domains.push({ _id: crypto.randomUUID(), host: '', port: state.containerPort || '' });
 }
@@ -478,6 +492,7 @@ async function onDelete() {
 							:add-secret="addSecret"
 							:remove-secret="removeSecret"
 							:toggle-secret="toggleSecret"
+							:import-dotenv="importDotenv"
 						/>
 					</div>
 
