@@ -6,6 +6,7 @@ import { DATABASE_ENGINES, DATABASE_ENGINE_UI, isDatabaseEngine, type DatabaseEn
 import type { TemplateListItem } from '~/composables/use-templates';
 
 const { data: templates, isPending: templatesPending } = useTemplates();
+const { data: aiStatus } = useAiStatus();
 const selectedTemplate = ref<TemplateListItem | null>(null);
 
 // Service-type picker hosting the create forms. Contract: prop `environmentId`, emit `createdMany`, v-model:open.
@@ -22,6 +23,7 @@ type AvailableServiceType =
 	| 'private-repo'
 	| 'github-repo'
 	| 'gitea-repo'
+	| 'analyze-repo'
 	| DatabaseEngine;
 
 type TypeOption = {
@@ -50,6 +52,13 @@ const TYPE_GROUPS: TypeGroup[] = [
 		id: 'from-source',
 		label: 'From source',
 		options: [
+			{
+				id: 'analyze-repo',
+				name: 'Analyze repository',
+				description: 'Let AI propose every service, env var, and database a repo or monorepo needs — you review before anything is created.',
+				icon: Sparkles,
+				available: true
+			},
 			{
 				id: 'github-repo',
 				name: 'GitHub repository',
@@ -95,8 +104,12 @@ const TYPE_GROUPS: TypeGroup[] = [
 ];
 
 // Split at the option level, not group: a group can mix shipped and upcoming types.
-const ACTIVE_GROUPS = TYPE_GROUPS.map(group => ({ ...group, options: group.options.filter(option => option.available) })).filter(
-	group => group.options.length > 0
+// The AI option only shows once an admin has enabled the assistant.
+const ACTIVE_GROUPS = computed(() =>
+	TYPE_GROUPS.map(group => ({
+		...group,
+		options: group.options.filter(option => option.available && (option.id !== 'analyze-repo' || aiStatus.value?.enabled))
+	})).filter(group => group.options.length > 0)
 );
 const UPCOMING_GROUPS = TYPE_GROUPS.map(group => ({ ...group, options: group.options.filter(option => !option.available) })).filter(
 	group => group.options.length > 0
@@ -126,6 +139,7 @@ const title = computed(() => {
 	if (step.value === 'select') return 'New service';
 	if (reviewingSecrets.value) return 'Generated secrets';
 
+	if (selectedType.value === 'analyze-repo') return 'Analyze repository';
 	return selectedType.value === 'docker-compose' ? 'Import services' : 'Create service';
 });
 
@@ -165,6 +179,7 @@ function selectOption(option: TypeOption) {
 		id === 'private-repo' ||
 		id === 'github-repo' ||
 		id === 'gitea-repo' ||
+		id === 'analyze-repo' ||
 		isDatabaseEngine(id);
 	if (!allowed) return;
 
@@ -299,6 +314,13 @@ function onCreatedMany(services: Service[]) {
 					@reviewing-secrets="reviewingSecrets = true"
 					@back="step = 'select'"
 					@done="onDone"
+				/>
+				<ServiceRepoAnalyzeForm
+					v-else-if="selectedType === 'analyze-repo'"
+					:environment-id="props.environmentId"
+					@created="onCreatedMany"
+					@back="step = 'select'"
+					@done="open = false"
 				/>
 				<ServiceComposeCreateForm
 					v-else-if="selectedType === 'docker-compose'"

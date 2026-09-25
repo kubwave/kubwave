@@ -28,6 +28,8 @@ export const queryKeys = {
 	invitations: ['invitations'] as const,
 	adminUsers: ['admin', 'users'] as const,
 	smtp: ['admin', 'smtp'] as const,
+	aiSettings: ['admin', 'ai'] as const,
+	aiStatus: ['ai-status'] as const,
 	metricsSettings: ['admin', 'metrics'] as const,
 	haSettings: ['admin', 'ha'] as const,
 	tcpPortPoolSettings: ['admin', 'tcp-port-pool'] as const,

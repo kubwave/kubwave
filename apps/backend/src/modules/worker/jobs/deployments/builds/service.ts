@@ -1,7 +1,7 @@
 import { BatchV1Api, CoreV1Api, NetworkingV1Api } from '@kubernetes/client-node';
 import type { KubeConfig, V1Job, V1Pod } from '@kubernetes/client-node';
 import type { DeploymentLogEntry, RuntimeConfig } from '@kubwave/db';
-import { LABEL_MANAGED_BY, LABEL_SERVICE_ID, MANAGED_BY_VALUE } from '@kubwave/kube';
+import { LABEL_MANAGED_BY, LABEL_SERVICE_ID, MANAGED_BY_VALUE, parseMemoryToBytes } from '@kubwave/kube';
 import { deleteIgnoreMissing, notFoundToNull } from '../../../../../shared/cluster/ops.js';
 import { stepEvent } from '../../../../../shared/cluster/networking.js';
 import { reconcileRuntime } from '../deployers/runtime/runtime.service.js';
@@ -185,6 +185,18 @@ export function summarizeBuildLog(raw: string): string {
 	return kept.slice(-12).join('\n').slice(0, 2000);
 }
 
+// The build log just stops on an OOM kill, so name the cause and the levers; the heap hint leaves ~35% of the limit for BuildKit and native memory.
+export function outOfMemoryReason(pod: V1Pod, container: string): string {
+	const spec = [...(pod.spec?.initContainers ?? []), ...(pod.spec?.containers ?? [])].find(c => c.name === container);
+	const limit = spec?.resources?.limits?.memory;
+	const bytes = parseMemoryToBytes(limit);
+	const heapMb = bytes ? Math.floor((bytes * 0.65) / 1024 / 1024) : null;
+	return [
+		`Build ran out of memory${limit ? ` (limit ${limit})` : ''} and was killed.`,
+		`Reduce the build's memory use: cap Node's heap with NODE_OPTIONS=--max-old-space-size=${heapMb ?? '<MB>'} (Dockerfile builds only see it after \`ARG NODE_OPTIONS\`; Bun ignores it), disable production sourcemaps, or ask an admin to raise the build memory limit.`
+	].join('\n');
+}
+
 // Failure detail from whichever container terminated non-zero (the real cause); `containers` are in run order, falls back to the last.
 export async function buildFailureReason(api: CoreV1Api, namespace: string, jobName: string, containers: string[]): Promise<string> {
 	const pod = await readBuildPod(api, namespace, jobName);
@@ -193,6 +205,7 @@ export async function buildFailureReason(api: CoreV1Api, namespace: string, jobN
 
 	const statuses = [...(pod.status?.initContainerStatuses ?? []), ...(pod.status?.containerStatuses ?? [])];
 	const failed = statuses.find(c => containers.includes(c.name) && c.state?.terminated && c.state.terminated.exitCode !== 0);
+	if (failed?.state?.terminated?.reason === 'OOMKilled') return outOfMemoryReason(pod, failed.name);
 	const target = failed?.name ?? containers[containers.length - 1];
 	const podName = pod.metadata?.name;
 

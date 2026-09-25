@@ -1,15 +1,17 @@
 import type { InjectionKey } from 'vue';
+import type { SaveAiSettingsInput } from '~/composables/use-admin-ai-settings';
 import type { SaveDefaultDomainInput } from '~/composables/use-admin-default-domain-settings';
 import type { SaveMetricsSettingsInput } from '~/composables/use-admin-metrics-settings';
 import type { SaveRegistryInput } from '~/composables/use-admin-registry-settings';
 import type { SaveSmtpInput } from '~/composables/use-admin-smtp-settings';
 import { composeSettingsGroups, useSettingsGroup } from '~/composables/use-settings-group';
 
-// Page-scoped store for the Admin "Integrations" tab: one draft + one save per group (domain, registry, SMTP, metrics), writing only changed groups.
+// Page-scoped store for the Admin "Integrations" tab: one draft + one save per group (domain, registry, SMTP, metrics, AI), writing only changed groups.
 
 type DomainMode = 'off' | 'wildcard' | 'sslip';
 type MetricsProvider = 'live' | 'prometheus-external' | 'prometheus-managed';
 type RegistryMode = 'platform' | 'external';
+type AiProvider = 'anthropic' | 'openai-compatible';
 
 interface DomainDraft {
 	mode: DomainMode;
@@ -37,6 +39,13 @@ interface RegistryDraft {
 	username: string;
 	password: string;
 }
+interface AiDraft {
+	enabled: boolean;
+	provider: AiProvider;
+	baseUrl: string;
+	model: string;
+	apiKey: string;
+}
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -50,12 +59,19 @@ const metricsUrlOk = (d: MetricsDraft) => d.provider !== 'prometheus-external' |
 const registryEndpointOk = (d: RegistryDraft) => d.mode === 'platform' || d.endpoint.trim().length > 0;
 const registryUsernameOk = (d: RegistryDraft) => d.mode === 'platform' || d.username.trim().length > 0;
 const registryPasswordOk = (d: RegistryDraft, hasPassword: boolean) => d.mode === 'platform' || hasPassword || d.password.length > 0;
+const aiModelOk = (d: AiDraft) => !d.enabled || d.model.trim().length > 0;
+const aiBaseUrlOk = (d: AiDraft) => {
+	const url = d.baseUrl.trim();
+	if (url) return /^https?:\/\/\S+$/i.test(url);
+	return !d.enabled || d.provider === 'anthropic';
+};
 
 function createIntegrationSettingsStore() {
 	const domain = useDefaultDomainSettings();
 	const smtp = useSmtpSettings();
 	const metrics = useMetricsSettings();
 	const registry = useRegistrySettings();
+	const ai = useAiSettings();
 
 	const domainGroup = useSettingsGroup({
 		source: domain.settings,
@@ -171,11 +187,37 @@ function createIntegrationSettingsStore() {
 		}
 	});
 
+	const aiGroup = useSettingsGroup({
+		source: ai.settings,
+		save: ai.save,
+		initial: { enabled: false, provider: 'anthropic', baseUrl: '', model: '', apiKey: '' } as AiDraft,
+		toDraft: (s): AiDraft => ({ enabled: s.enabled, provider: s.provider, baseUrl: s.baseUrl ?? '', model: s.model, apiKey: '' }),
+		toPayload: (draft): SaveAiSettingsInput => ({
+			enabled: draft.enabled,
+			provider: draft.provider,
+			baseUrl: draft.baseUrl.trim() || null,
+			model: draft.model.trim(),
+			// Blank key is omitted so the stored one is preserved.
+			...(draft.apiKey ? { apiKey: draft.apiKey } : {})
+		}),
+		isDirty: (draft, s) =>
+			draft.enabled !== s.enabled ||
+			draft.provider !== s.provider ||
+			(draft.baseUrl.trim() || null) !== (s.baseUrl ?? null) ||
+			draft.model.trim() !== s.model ||
+			draft.apiKey.length > 0,
+		validate: draft => aiModelOk(draft) && aiBaseUrlOk(draft),
+		afterSave: draft => {
+			draft.apiKey = '';
+		}
+	});
+
 	const draft = reactive({
 		domain: domainGroup.draft,
 		smtp: smtpGroup.draft,
 		metrics: metricsGroup.draft,
-		registry: registryGroup.draft
+		registry: registryGroup.draft,
+		ai: aiGroup.draft
 	});
 
 	// Derived read-only state the cards surface.
@@ -185,6 +227,7 @@ function createIntegrationSettingsStore() {
 	const registryApplyStatus = computed(() => registry.settings.value?.applyStatus ?? 'not_configured');
 	const registryActiveRunId = computed(() => registry.settings.value?.activeRunId ?? null);
 	const registryLastError = computed(() => registry.settings.value?.lastError ?? null);
+	const aiHasApiKey = computed(() => ai.settings.value?.hasApiKey ?? false);
 
 	// Per-field validity flags the cards render inline — same predicates the groups gate saves on.
 	const domainBaseValid = computed(() => domainBaseOk(draft.domain));
@@ -196,8 +239,10 @@ function createIntegrationSettingsStore() {
 	const registryEndpointValid = computed(() => registryEndpointOk(draft.registry));
 	const registryUsernameValid = computed(() => registryUsernameOk(draft.registry));
 	const registryPasswordValid = computed(() => registryPasswordOk(draft.registry, registryHasPassword.value));
+	const aiModelValid = computed(() => aiModelOk(draft.ai));
+	const aiBaseUrlValid = computed(() => aiBaseUrlOk(draft.ai));
 
-	const composed = composeSettingsGroups([domainGroup, registryGroup, smtpGroup, metricsGroup]);
+	const composed = composeSettingsGroups([domainGroup, registryGroup, smtpGroup, metricsGroup, aiGroup]);
 
 	// Test email is an action, not a setting.
 	const testPending = computed(() => smtp.sendTest.isPending.value);
@@ -214,6 +259,7 @@ function createIntegrationSettingsStore() {
 		registryApplyStatus,
 		registryActiveRunId,
 		registryLastError,
+		aiHasApiKey,
 		domainBaseValid,
 		smtpHostValid,
 		smtpPortValid,
@@ -223,6 +269,8 @@ function createIntegrationSettingsStore() {
 		registryEndpointValid,
 		registryUsernameValid,
 		registryPasswordValid,
+		aiModelValid,
+		aiBaseUrlValid,
 		isDirty: composed.isDirty,
 		dirtyCount: composed.dirtyCount,
 		isSaving: composed.isSaving,
