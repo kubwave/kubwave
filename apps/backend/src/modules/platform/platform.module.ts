@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { AdminGuard } from '../../shared/auth/auth.guard.js';
 import { PlatformController } from './platform.controller.js';
+import { PlatformAiSettingsController } from './settings/ai/platform-ai-settings.controller.js';
+import { PlatformAiSettingsService } from './settings/ai/platform-ai-settings.service.js';
 import { PlatformDeploymentConcurrencySettingsController } from './settings/deployment-concurrency/platform-deployment-concurrency-settings.controller.js';
 import { PlatformDeploymentConcurrencySettingsService } from './settings/deployment-concurrency/platform-deployment-concurrency-settings.service.js';
 import { PlatformDomainSettingsController } from './settings/domain/platform-domain-settings.controller.js';
@@ -41,6 +43,7 @@ import { PlatformVersionService } from './version/platform-version.service.js';
 		PlatformVolumeAutoscalingSettingsController,
 		PlatformVolumesController,
 		PlatformTcpPortPoolSettingsController,
+		PlatformAiSettingsController,
 		PlatformUpdatesController
 	],
 	providers: [
@@ -56,6 +59,7 @@ import { PlatformVersionService } from './version/platform-version.service.js';
 		PlatformVolumeAutoscalingSettingsService,
 		PlatformVolumesService,
 		PlatformTcpPortPoolSettingsService,
+		PlatformAiSettingsService,
 		PlatformVersionService,
 		PlatformUpdatesService
 	]

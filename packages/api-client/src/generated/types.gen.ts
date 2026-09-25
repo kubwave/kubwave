@@ -348,6 +348,143 @@ export type CreateComposeServicesDto = {
 	compose: string;
 };
 
+export type AiStatusDto = {
+	enabled: boolean;
+};
+
+export type RepoSourceDto = {
+	type: 'public-repo' | 'private-repo' | 'github-repo' | 'gitea-repo';
+	branch: string;
+	repoUrl?: string;
+	sshKeyId?: string;
+	installationId?: string;
+	repoFullName?: string;
+};
+
+export type AnalyzeRepositoryDto = {
+	source: RepoSourceDto;
+};
+
+export type PlanReferenceDto = {
+	service: string;
+	kind: 'url' | 'publicUrl' | 'connectionUri' | 'env';
+	/**
+	 * Env key to copy for kind "env".
+	 */
+	key: string | null;
+};
+
+export type PlanEnvVarDto = {
+	key: string;
+	value: string | null;
+	secret: boolean;
+	generate: boolean;
+	reference: PlanReferenceDto | null;
+	note: string | null;
+};
+
+export type PlanServiceDto = {
+	name: string;
+	rootDirectory: string;
+	builder: 'nixpacks' | 'dockerfile';
+	dockerfilePath: string | null;
+	buildCommand: string | null;
+	startCommand: string | null;
+	containerPort: number | null;
+	watchPaths: Array<string>;
+	publicDomain: boolean;
+	env: Array<PlanEnvVarDto>;
+	reason: string;
+};
+
+export type PlanVolumeDto = {
+	name: string;
+	mountPath: string;
+	size: string;
+};
+
+export type PlanImageDto = {
+	name: string;
+	image: string;
+	tag: string;
+	containerPort: number | null;
+	args: Array<string>;
+	volumes: Array<PlanVolumeDto>;
+	publicDomain: boolean;
+	env: Array<PlanEnvVarDto>;
+	reason: string;
+};
+
+export type PlanDatabaseDto = {
+	name: string;
+	engine: 'postgres' | 'mysql' | 'mariadb' | 'mongodb';
+};
+
+export type PlanQuestionDto = {
+	kind: 'domain' | 'values';
+	title: string;
+	description: string | null;
+	services: Array<string>;
+	envKeys: Array<string>;
+};
+
+export type DeploymentPlanDto = {
+	services: Array<PlanServiceDto>;
+	images: Array<PlanImageDto>;
+	databases: Array<PlanDatabaseDto>;
+	questions: Array<PlanQuestionDto>;
+	warnings: Array<string>;
+	/**
+	 * Base of generated service domains, or null when default domains are unavailable.
+	 */
+	defaultDomainBase: string | null;
+};
+
+export type PlanEnvVarInputDto = {
+	key: string;
+	value: string | null;
+	secret: boolean;
+	generate: boolean;
+	reference: PlanReferenceDto | null;
+};
+
+export type PlanServiceInputDto = {
+	name: string;
+	rootDirectory: string;
+	builder: 'nixpacks' | 'dockerfile';
+	dockerfilePath: string | null;
+	buildCommand: string | null;
+	startCommand: string | null;
+	containerPort: number | null;
+	watchPaths: Array<string>;
+	publicDomain: boolean;
+	env: Array<PlanEnvVarInputDto>;
+	/**
+	 * Custom public hostname; null uses the generated default domain.
+	 */
+	domain?: string | null;
+};
+
+export type PlanImageInputDto = {
+	name: string;
+	image: string;
+	tag: string;
+	containerPort: number | null;
+	args: Array<string>;
+	volumes: Array<PlanVolumeDto>;
+	publicDomain: boolean;
+	env: Array<PlanEnvVarInputDto>;
+	domain?: string | null;
+};
+
+export type CreateServicesFromPlanDto = {
+	source: RepoSourceDto;
+	autoDeploy?: boolean;
+	services: Array<PlanServiceInputDto>;
+	images?: Array<PlanImageInputDto>;
+	databases: Array<PlanDatabaseDto>;
+};
+
 export type ServiceMetricVolumeDto = {
 	name: string;
 	usedBytes: number;
@@ -773,6 +910,24 @@ export type TcpPortPoolSettingsUpdateDto = {
 	updateRun: UpdateRunDto;
 };
 
+export type AiSettingsDto = {
+	enabled: boolean;
+	provider: 'anthropic' | 'openai-compatible';
+	baseUrl: string | null;
+	/**
+	 * Model id with an optional ":effort" suffix, e.g. claude-opus-5:high.
+	 */
+	model: string;
+	hasApiKey: boolean;
+};
+
+export type UpdateAiSettingsDto = {
+	enabled: boolean;
+	provider: 'anthropic' | 'openai-compatible';
+	baseUrl?: string | null;
+	model: string;
+};
+
 export type TriggerUpdateDto = {
 	targetVersion: string;
 };
@@ -837,6 +992,14 @@ export type ExternalRegistrySettingsDtoWritable = {
 	insecure: boolean;
 	username: string;
 	password?: string;
+};
+
+export type UpdateAiSettingsDtoWritable = {
+	enabled: boolean;
+	provider: 'anthropic' | 'openai-compatible';
+	baseUrl?: string | null;
+	model: string;
+	apiKey?: string | null;
 };
 
 export type HealthGetData = {
@@ -1469,6 +1632,50 @@ export type EnvironmentServicesComposeCreateResponses = {
 };
 
 export type EnvironmentServicesComposeCreateResponse = EnvironmentServicesComposeCreateResponses[keyof EnvironmentServicesComposeCreateResponses];
+
+export type AiStatusGetData = {
+	body?: never;
+	path?: never;
+	query?: never;
+	url: '/api/ai/status';
+};
+
+export type AiStatusGetResponses = {
+	200: AiStatusDto;
+};
+
+export type AiStatusGetResponse = AiStatusGetResponses[keyof AiStatusGetResponses];
+
+export type EnvironmentServicesAnalyzeRepositoryData = {
+	body: AnalyzeRepositoryDto;
+	path: {
+		environmentId: string;
+	};
+	query?: never;
+	url: '/api/environments/{environmentId}/services/analyze';
+};
+
+export type EnvironmentServicesAnalyzeRepositoryResponses = {
+	200: DeploymentPlanDto;
+};
+
+export type EnvironmentServicesAnalyzeRepositoryResponse =
+	EnvironmentServicesAnalyzeRepositoryResponses[keyof EnvironmentServicesAnalyzeRepositoryResponses];
+
+export type EnvironmentServicesCreateFromPlanData = {
+	body: CreateServicesFromPlanDto;
+	path: {
+		environmentId: string;
+	};
+	query?: never;
+	url: '/api/environments/{environmentId}/services/from-plan';
+};
+
+export type EnvironmentServicesCreateFromPlanResponses = {
+	201: Array<ServiceViewDto>;
+};
+
+export type EnvironmentServicesCreateFromPlanResponse = EnvironmentServicesCreateFromPlanResponses[keyof EnvironmentServicesCreateFromPlanResponses];
 
 export type ServiceMetricsGetData = {
 	body?: never;
@@ -2283,6 +2490,32 @@ export type PlatformSettingsTcpPortPoolUpdateResponses = {
 };
 
 export type PlatformSettingsTcpPortPoolUpdateResponse = PlatformSettingsTcpPortPoolUpdateResponses[keyof PlatformSettingsTcpPortPoolUpdateResponses];
+
+export type PlatformSettingsAiGetData = {
+	body?: never;
+	path?: never;
+	query?: never;
+	url: '/api/platform/settings/ai';
+};
+
+export type PlatformSettingsAiGetResponses = {
+	200: AiSettingsDto;
+};
+
+export type PlatformSettingsAiGetResponse = PlatformSettingsAiGetResponses[keyof PlatformSettingsAiGetResponses];
+
+export type PlatformSettingsAiUpdateData = {
+	body: UpdateAiSettingsDtoWritable;
+	path?: never;
+	query?: never;
+	url: '/api/platform/settings/ai';
+};
+
+export type PlatformSettingsAiUpdateResponses = {
+	200: AiSettingsDto;
+};
+
+export type PlatformSettingsAiUpdateResponse = PlatformSettingsAiUpdateResponses[keyof PlatformSettingsAiUpdateResponses];
 
 export type PlatformUpdatesListData = {
 	body?: never;

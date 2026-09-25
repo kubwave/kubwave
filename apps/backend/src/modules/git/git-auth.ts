@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
 import { db, sshKeys } from '@kubwave/db';
 import { decryptSecret } from '@kubwave/crypto';
-import { gitHeaderAuthEnv } from '../../../git/git-clone-auth.js';
+import { gitHeaderAuthEnv } from './git-clone-auth.js';
 
 export type GitAuthOptions = {
 	repoUrl: string;
@@ -45,7 +45,7 @@ export async function prepareGitAuthEnv(opts: GitAuthOptions): Promise<{
 			await writeFile(keyPath, await decryptDeployKey(opts.sshKeyId), { mode: 0o600 });
 			env.GIT_SSH_COMMAND = sshCommand(keyPath);
 		} else if (opts.installationId) {
-			const { getCloneAuthHeader } = await import('../../../git/clone-token.js');
+			const { getCloneAuthHeader } = await import('./clone-token.js');
 			Object.assign(env, gitHeaderAuthEnv(opts.repoUrl, await getCloneAuthHeader(opts.installationId)));
 		}
 		return { env, cleanup };
