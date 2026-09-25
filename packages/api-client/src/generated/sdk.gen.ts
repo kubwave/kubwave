@@ -75,6 +75,18 @@ import type {
 	InvitationsResendResponses,
 	InvitationsValidityData,
 	InvitationsValidityResponses,
+	McpAccessCreateData,
+	McpAccessCreateResponses,
+	McpAccessListData,
+	McpAccessListResponses,
+	McpAccessRevokeData,
+	McpAccessRevokeResponses,
+	McpAuthorizationGetData,
+	McpAuthorizationGetResponses,
+	McpConsentCreateData,
+	McpConsentCreateResponses,
+	McpInfoGetData,
+	McpInfoGetResponses,
 	PlatformSettingsAiGetData,
 	PlatformSettingsAiGetResponses,
 	PlatformSettingsAiUpdateData,
@@ -248,6 +260,90 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
 	 */
 	meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta;
 };
+
+/**
+ * Get MCP connection details and available scopes
+ */
+export const mcpInfoGet = <ThrowOnError extends boolean = false>(
+	options?: Options<McpInfoGetData, ThrowOnError>
+): RequestResult<McpInfoGetResponses, unknown, ThrowOnError> =>
+	(options?.client ?? client).get<McpInfoGetResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/mcp/info',
+		...options
+	});
+
+/**
+ * List your MCP tokens and OAuth connections
+ */
+export const mcpAccessList = <ThrowOnError extends boolean = false>(
+	options?: Options<McpAccessListData, ThrowOnError>
+): RequestResult<McpAccessListResponses, unknown, ThrowOnError> =>
+	(options?.client ?? client).get<McpAccessListResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/mcp/access',
+		...options
+	});
+
+/**
+ * Create a personal MCP token; shown once
+ */
+export const mcpAccessCreate = <ThrowOnError extends boolean = false>(
+	options: Options<McpAccessCreateData, ThrowOnError>
+): RequestResult<McpAccessCreateResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<McpAccessCreateResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/mcp/access',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
+
+/**
+ * Revoke a personal token or OAuth connection immediately
+ */
+export const mcpAccessRevoke = <ThrowOnError extends boolean = false>(
+	options: Options<McpAccessRevokeData, ThrowOnError>
+): RequestResult<McpAccessRevokeResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).delete<McpAccessRevokeResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/mcp/access/{accessId}',
+		...options
+	});
+
+/**
+ * Validate an OAuth request before displaying consent
+ */
+export const mcpAuthorizationGet = <ThrowOnError extends boolean = false>(
+	options: Options<McpAuthorizationGetData, ThrowOnError>
+): RequestResult<McpAuthorizationGetResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<McpAuthorizationGetResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/mcp/authorization',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
+
+/**
+ * Approve or deny an MCP OAuth connection
+ */
+export const mcpConsentCreate = <ThrowOnError extends boolean = false>(
+	options: Options<McpConsentCreateData, ThrowOnError>
+): RequestResult<McpConsentCreateResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<McpConsentCreateResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/mcp/consent',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
 
 /**
  * Health check

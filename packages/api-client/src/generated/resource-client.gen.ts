@@ -54,6 +54,15 @@ import type {
 	InvitationsListResponses,
 	InvitationsResendResponses,
 	InvitationsValidityResponses,
+	McpAccessCreateData,
+	McpAccessCreateResponses,
+	McpAccessListResponses,
+	McpAccessRevokeResponses,
+	McpAuthorizationGetData,
+	McpAuthorizationGetResponses,
+	McpConsentCreateData,
+	McpConsentCreateResponses,
+	McpInfoGetResponses,
 	PlatformSettingsAiGetResponses,
 	PlatformSettingsAiUpdateData,
 	PlatformSettingsAiUpdateResponses,
@@ -195,6 +204,7 @@ export type KubwaveResourceClient = {
 	git: KubwaveGitResource;
 	health: KubwaveHealthResource;
 	invitations: KubwaveInvitationsResource;
+	mcp: KubwaveMcpResource;
 	platform: KubwavePlatformResource;
 	projects: KubwaveProjectsResource;
 	services: KubwaveServicesResource;
@@ -378,6 +388,35 @@ export type KubwaveInvitationsIdResendResource = {
 
 export type KubwaveInvitationsIdValidityResource = {
 	get(): OperationResult<InvitationsValidityResponses>;
+};
+
+export type KubwaveMcpResource = {
+	access: KubwaveMcpAccessResource;
+	authorization: KubwaveMcpAuthorizationResource;
+	consent: KubwaveMcpConsentResource;
+	info: KubwaveMcpInfoResource;
+};
+
+export type KubwaveMcpAccessResource = {
+	(accessId: string): KubwaveMcpAccessAccessIdResource;
+	get(): OperationResult<McpAccessListResponses>;
+	post(body: McpAccessCreateData['body']): OperationResult<McpAccessCreateResponses>;
+};
+
+export type KubwaveMcpAccessAccessIdResource = {
+	delete(): OperationResult<McpAccessRevokeResponses>;
+};
+
+export type KubwaveMcpAuthorizationResource = {
+	post(body: McpAuthorizationGetData['body']): OperationResult<McpAuthorizationGetResponses>;
+};
+
+export type KubwaveMcpConsentResource = {
+	post(body: McpConsentCreateData['body']): OperationResult<McpConsentCreateResponses>;
+};
+
+export type KubwaveMcpInfoResource = {
+	get(): OperationResult<McpInfoGetResponses>;
 };
 
 export type KubwavePlatformResource = {
@@ -821,6 +860,26 @@ export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClie
 				post: (body: InvitationsCreateData['body']) => apiResult(raw.invitationsCreate({ body }))
 			}
 		),
+		mcp: {
+			access: Object.assign(
+				(accessId: string) => ({
+					delete: () => apiResult(raw.mcpAccessRevoke({ path: { accessId: accessId } }))
+				}),
+				{
+					get: () => apiResult(raw.mcpAccessList({})),
+					post: (body: McpAccessCreateData['body']) => apiResult(raw.mcpAccessCreate({ body }))
+				}
+			),
+			authorization: {
+				post: (body: McpAuthorizationGetData['body']) => apiResult(raw.mcpAuthorizationGet({ body }))
+			},
+			consent: {
+				post: (body: McpConsentCreateData['body']) => apiResult(raw.mcpConsentCreate({ body }))
+			},
+			info: {
+				get: () => apiResult(raw.mcpInfoGet({}))
+			}
+		},
 		platform: {
 			settings: {
 				ai: {

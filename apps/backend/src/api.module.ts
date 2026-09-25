@@ -12,10 +12,12 @@ import { SetupModule } from './modules/setup/setup.module.js';
 import { TeamsModule } from './modules/teams/teams.module.js';
 import { SharedModule } from './shared/shared.module.js';
 import { TemplatesModule } from './modules/templates/templates.module.js';
+import { McpModule } from './modules/mcp/mcp.module.js';
 
 @Module({
 	imports: [
 		SharedModule,
+		McpModule,
 		HealthModule,
 		AuthModule,
 		SetupModule,

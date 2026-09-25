@@ -35,6 +35,8 @@
 		"@kubwave/db": "workspace:*",
 		"@kubwave/kube": "workspace:*",
 		"@kubwave/templates": "workspace:*",
+		"@modelcontextprotocol/node": "2.1.0",
+		"@modelcontextprotocol/server": "2.1.0",
 		"@nestjs/common": "^11.1.27",
 		"@nestjs/core": "^11.1.27",
 		"@nestjs/platform-fastify": "^11.1.27",

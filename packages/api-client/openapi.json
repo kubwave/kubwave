@@ -1,6 +1,196 @@
 {
 	"openapi": "3.0.0",
 	"paths": {
+		"/api/mcp/info": {
+			"get": {
+				"operationId": "mcpInfoGet",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/McpInfoDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get MCP connection details and available scopes",
+				"tags": ["mcp"]
+			}
+		},
+		"/api/mcp/access": {
+			"get": {
+				"operationId": "mcpAccessList",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/McpAccessDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "List your MCP tokens and OAuth connections",
+				"tags": ["mcp"]
+			},
+			"post": {
+				"operationId": "mcpAccessCreate",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/McpAccessInputDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/McpCreatedAccessDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Create a personal MCP token; shown once",
+				"tags": ["mcp"]
+			}
+		},
+		"/api/mcp/access/{accessId}": {
+			"delete": {
+				"operationId": "mcpAccessRevoke",
+				"parameters": [
+					{
+						"name": "accessId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/McpOkDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Revoke a personal token or OAuth connection immediately",
+				"tags": ["mcp"]
+			}
+		},
+		"/api/mcp/authorization": {
+			"post": {
+				"operationId": "mcpAuthorizationGet",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/McpAuthorizationDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/McpAuthorizationDetailsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Validate an OAuth request before displaying consent",
+				"tags": ["mcp"]
+			}
+		},
+		"/api/mcp/consent": {
+			"post": {
+				"operationId": "mcpConsentCreate",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/McpConsentDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/McpRedirectDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Approve or deny an MCP OAuth connection",
+				"tags": ["mcp"]
+			}
+		},
 		"/api/health": {
 			"get": {
 				"operationId": "healthGet",
@@ -3845,6 +4035,231 @@
 			}
 		},
 		"schemas": {
+			"McpInfoDto": {
+				"type": "object",
+				"properties": {
+					"endpoint": {
+						"type": "string"
+					},
+					"scopes": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"required": ["endpoint", "scopes"]
+			},
+			"McpAccessDto": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					},
+					"kind": {
+						"type": "string",
+						"enum": ["personal", "oauth"]
+					},
+					"scopes": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"teamId": {
+						"type": "string",
+						"nullable": true
+					},
+					"projectIds": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"expiresAt": {
+						"type": "string"
+					},
+					"revokedAt": {
+						"type": "string",
+						"nullable": true
+					},
+					"createdAt": {
+						"type": "string"
+					}
+				},
+				"required": ["id", "name", "kind", "scopes", "teamId", "projectIds", "expiresAt", "revokedAt", "createdAt"]
+			},
+			"McpAccessInputDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"scopes": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"enum": ["read", "write", "deploy", "delete", "team:manage"]
+						}
+					},
+					"teamId": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"projectIds": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"expiresInDays": {
+						"type": "number",
+						"default": 30,
+						"minimum": 1,
+						"maximum": 365
+					}
+				},
+				"required": ["name", "scopes"]
+			},
+			"McpCreatedAccessDto": {
+				"type": "object",
+				"properties": {
+					"token": {
+						"type": "string"
+					},
+					"access": {
+						"$ref": "#/components/schemas/McpAccessDto"
+					},
+					"endpoint": {
+						"type": "string"
+					}
+				},
+				"required": ["token", "access", "endpoint"]
+			},
+			"McpOkDto": {
+				"type": "object",
+				"properties": {
+					"ok": {
+						"type": "boolean"
+					}
+				},
+				"required": ["ok"]
+			},
+			"McpAuthorizationDto": {
+				"type": "object",
+				"properties": {
+					"client_id": {
+						"type": "string"
+					},
+					"redirect_uri": {
+						"type": "string"
+					},
+					"response_type": {
+						"type": "string",
+						"enum": ["code"]
+					},
+					"code_challenge": {
+						"type": "string"
+					},
+					"code_challenge_method": {
+						"type": "string",
+						"enum": ["S256"]
+					},
+					"resource": {
+						"type": "string"
+					},
+					"scope": {
+						"type": "string",
+						"default": "read"
+					},
+					"state": {
+						"type": "string"
+					}
+				},
+				"required": ["client_id", "redirect_uri", "response_type", "code_challenge", "code_challenge_method", "resource"]
+			},
+			"McpAuthorizationDetailsDto": {
+				"type": "object",
+				"properties": {
+					"clientName": {
+						"type": "string"
+					},
+					"redirectUri": {
+						"type": "string"
+					},
+					"scopes": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"required": ["clientName", "redirectUri", "scopes"]
+			},
+			"McpConsentDto": {
+				"type": "object",
+				"properties": {
+					"client_id": {
+						"type": "string"
+					},
+					"redirect_uri": {
+						"type": "string"
+					},
+					"response_type": {
+						"type": "string",
+						"enum": ["code"]
+					},
+					"code_challenge": {
+						"type": "string"
+					},
+					"code_challenge_method": {
+						"type": "string",
+						"enum": ["S256"]
+					},
+					"resource": {
+						"type": "string"
+					},
+					"scope": {
+						"type": "string",
+						"default": "read"
+					},
+					"state": {
+						"type": "string"
+					},
+					"approve": {
+						"type": "boolean"
+					},
+					"teamId": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"projectIds": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"expiresInDays": {
+						"type": "number",
+						"default": 30,
+						"minimum": 1,
+						"maximum": 365
+					}
+				},
+				"required": ["client_id", "redirect_uri", "response_type", "code_challenge", "code_challenge_method", "resource", "approve"]
+			},
+			"McpRedirectDto": {
+				"type": "object",
+				"properties": {
+					"redirectUrl": {
+						"type": "string"
+					}
+				},
+				"required": ["redirectUrl"]
+			},
 			"HealthResponseDto": {
 				"type": "object",
 				"properties": {

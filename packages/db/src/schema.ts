@@ -561,6 +561,56 @@ export const refreshTokens = pgTable('refresh_tokens', {
 
 export type RefreshToken = typeof refreshTokens.$inferSelect;
 
+export const mcpClients = pgTable('mcp_clients', {
+	id: text('id').primaryKey(),
+	name: text('name').notNull(),
+	redirectUris: jsonb('redirect_uris').$type<string[]>().notNull(),
+	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+});
+
+export const mcpGrants = pgTable('mcp_grants', {
+	id: uuid('id').primaryKey().defaultRandom(),
+	userId: uuid('user_id')
+		.notNull()
+		.references(() => users.id, { onDelete: 'cascade' }),
+	name: text('name').notNull(),
+	clientId: text('client_id').references(() => mcpClients.id, { onDelete: 'cascade' }),
+	resource: text('resource').notNull(),
+	scopes: jsonb('scopes').$type<string[]>().notNull(),
+	teamId: uuid('team_id').references(() => teams.id, { onDelete: 'cascade' }),
+	projectIds: jsonb('project_ids').$type<string[]>().notNull().default([]),
+	expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+	revokedAt: timestamp('revoked_at', { withTimezone: true }),
+	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+});
+
+export const mcpCredentials = pgTable('mcp_credentials', {
+	hash: text('hash').primaryKey(),
+	grantId: uuid('grant_id')
+		.notNull()
+		.references(() => mcpGrants.id, { onDelete: 'cascade' }),
+	kind: text('kind').$type<'personal' | 'access' | 'refresh' | 'code'>().notNull(),
+	scopes: jsonb('scopes').$type<string[]>(),
+	redirectUri: text('redirect_uri'),
+	codeChallenge: text('code_challenge'),
+	expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+	consumedAt: timestamp('consumed_at', { withTimezone: true })
+});
+
+export const mcpRequests = pgTable(
+	'mcp_requests',
+	{
+		grantId: uuid('grant_id')
+			.notNull()
+			.references(() => mcpGrants.id, { onDelete: 'cascade' }),
+		requestId: uuid('request_id').notNull(),
+		requestHash: text('request_hash').notNull(),
+		result: jsonb('result').$type<Record<string, unknown>>(),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+	},
+	table => [primaryKey({ columns: [table.grantId, table.requestId] })]
+);
+
 export const invitations = pgTable('invitations', {
 	id: uuid('id').primaryKey().defaultRandom(),
 	email: text('email').notNull(),
