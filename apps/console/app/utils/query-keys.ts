@@ -45,5 +45,8 @@ export const queryKeys = {
 	version: ['admin', 'version'] as const,
 	updates: ['admin', 'updates'] as const,
 	updateRun: (runId: string) => ['admin', 'updates', runId] as const,
-	updateRunLogs: (runId: string) => ['admin', 'updates', runId, 'logs'] as const
+	updateRunLogs: (runId: string) => ['admin', 'updates', runId, 'logs'] as const,
+	mcpInfo: ['mcp', 'info'] as const,
+	mcpAccess: ['mcp', 'access'] as const,
+	mcpAuthorization: (query: string) => ['mcp', 'authorization', query] as const
 };

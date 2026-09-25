@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { ApiModule } from './api.module.js';
 import { registerFlowLayoutWebSocketRoute } from './modules/environments/flow-layout/flow-layout.websocket.js';
+import { registerMcpRoutes } from './modules/mcp/mcp.http.js';
 import { configureOpenApi } from './shared/openapi/openapi.js';
 import { ApiExceptionFilter } from './shared/errors/api-exception.filter.js';
 
@@ -17,6 +18,7 @@ export async function createApiApp(): Promise<NestFastifyApplication> {
 	await app.register(cookie);
 	await app.register(websocket);
 	registerFlowLayoutWebSocketRoute(app);
+	registerMcpRoutes(app);
 
 	app.setGlobalPrefix('api');
 	app.useGlobalFilters(new ApiExceptionFilter());

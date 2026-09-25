@@ -1,6 +1,6 @@
 import { appendResponseHeader, defineEventHandler, getCookie, sendRedirect } from 'h3';
 import { refreshSession, fetchSetupStatus } from '#server/utils/auth';
-import { isPublicPath } from '#shared/auth-paths';
+import { isPublicPath, loginPath } from '#shared/auth-paths';
 
 // Skip non-HTML requests: Nuxt internals/assets, the API path (ingress-routed), and the health probe.
 function isExemptPath(pathname: string): boolean {
@@ -41,7 +41,7 @@ export default defineEventHandler(async event => {
 		// Set up: /auth/setup is dead → login; other public pages render, protected fall to login.
 		if (isSetupPath) return sendRedirect(event, '/auth/login', 302);
 		if (isPublicPath(pathname)) return;
-		return sendRedirect(event, '/auth/login', 302);
+		return sendRedirect(event, loginPath(event.path), 302);
 	}
 
 	const setupStatus = await fetchSetupStatus();

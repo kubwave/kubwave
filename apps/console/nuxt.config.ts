@@ -26,7 +26,8 @@ export default defineNuxtConfig({
 	nitro: {
 		// Local dev: forward same-origin /api (incl. flow-layout WebSocket via ws:true) to the backend; in prod/k3d the ingress routes /api first.
 		devProxy: {
-			'/api': { target: `${process.env.INTERNAL_API_URL ?? 'http://localhost:3001'}/api`, changeOrigin: true, ws: true }
+			'/api': { target: `${process.env.INTERNAL_API_URL ?? 'http://localhost:3001'}/api`, changeOrigin: true, ws: true },
+			'/.well-known/oauth-': { target: `${process.env.INTERNAL_API_URL ?? 'http://localhost:3001'}/.well-known/oauth-`, changeOrigin: true }
 		}
 	},
 	vite: {

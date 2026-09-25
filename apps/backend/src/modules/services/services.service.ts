@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, inArray, ne } from 'drizzle-orm';
+import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
 import {
 	DATABASE_ENGINE_CATALOG,
 	DEFAULT_DATABASE_NAME,
@@ -23,7 +23,8 @@ import {
 	teamMembers
 } from '@kubwave/db';
 import type { DatabaseServiceConfig, ServiceConfig, ServiceType } from '@kubwave/db';
-import { decryptSecret } from '@kubwave/crypto';
+import { decryptSecret, encryptSecret } from '@kubwave/crypto';
+import { ApiError } from '../../shared/errors/api-error.js';
 import { internalServiceName, parseMemoryToBytes } from '@kubwave/kube';
 import { EnvironmentsService } from '../environments/environments.service.js';
 import { GiteaInstallationsService } from '../git/gitea-installations.service.js';
@@ -42,6 +43,7 @@ import {
 	toConfigView
 } from './services.config.js';
 import type { AutoDeployInput, CreateComposeServicesInput, CreateServiceInput, ImageWatchInput, UpdateServiceInput } from './services.dto.js';
+import { updateServiceSchema } from './services.dto.js';
 import { ComposeParseError } from './compose/compose.errors.js';
 import { parseComposeServices } from './compose/compose.parser.js';
 import { composeReferenceIssues, rewriteComposeServiceReferences } from './compose/compose.references.js';
@@ -322,7 +324,51 @@ export class ServicesService {
 		};
 	}
 
-	async updateService(actingUserId: string, serviceId: string, input: UpdateServiceInput): Promise<ServiceView> {
+	async patchService(actingUserId: string, serviceId: string, patch: Record<string, unknown>): Promise<ServiceView> {
+		const current = await this.loadServiceForUser(actingUserId, serviceId);
+		const input = { ...patch };
+		if (patch.config !== undefined) {
+			if (!patch.config || typeof patch.config !== 'object' || Array.isArray(patch.config)) throw new ApiError(400, 'invalid_config');
+			const view = toConfigView(current.config);
+			const config = {
+				...view,
+				secrets: (current.config.secrets ?? []).map(secret => ({ key: secret.key, value: null })),
+				...(view.basicAuth ? { basicAuth: { enabled: true, username: view.basicAuth.username, password: null } } : {}),
+				...('registryAuth' in view && view.registryAuth ? { registryAuth: { ...view.registryAuth, password: null } } : {}),
+				...patch.config
+			};
+			input.config = config;
+		}
+		return this.updateService(actingUserId, serviceId, updateServiceSchema.parse(input), current.updatedAt);
+	}
+
+	async connectDatabase(
+		actingUserId: string,
+		databaseServiceId: string,
+		applicationServiceId: string,
+		envKey: string
+	): Promise<{ serviceId: string; secretKey: string }> {
+		if (!/^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(envKey)) throw new ApiError(400, 'invalid_env_key');
+		const source = await this.loadServiceForUser(actingUserId, databaseServiceId);
+		const target = await this.loadServiceForUser(actingUserId, applicationServiceId);
+		if (source.environmentId !== target.environmentId) throw new ApiError(400, 'database_environment_mismatch');
+		if (isDatabaseEngine(target.type)) throw new ApiError(400, 'expected_application_service');
+		const connection = await this.getServiceConnection(actingUserId, databaseServiceId);
+		const encrypted = encryptSecret(connection.uri);
+		await db.transaction(async tx => {
+			const [current] = await tx.select().from(services).where(eq(services.id, applicationServiceId)).for('update');
+			if (!current) throw new ServiceNotFoundError();
+			const config = {
+				...current.config,
+				env: current.config.env.filter(entry => entry.key !== envKey),
+				secrets: [...(current.config.secrets ?? []).filter(entry => entry.key !== envKey), { key: envKey, value: encrypted }]
+			};
+			await tx.update(services).set({ config, updatedAt: new Date() }).where(eq(services.id, applicationServiceId));
+		});
+		return { serviceId: applicationServiceId, secretKey: envKey };
+	}
+
+	async updateService(actingUserId: string, serviceId: string, input: UpdateServiceInput, expectedUpdatedAt?: Date): Promise<ServiceView> {
 		const service = await this.loadServiceForUser(actingUserId, serviceId);
 		const now = new Date();
 		// Absent key = keep the stored exposures (older clients); explicit [] = clear them.
@@ -422,8 +468,15 @@ export class ServicesService {
 			const [row] = await tx
 				.update(services)
 				.set({ ...values, ...(config !== undefined ? { config } : {}) })
-				.where(eq(services.id, service.id))
+				// JS Dates hold milliseconds; defaultNow() stores microseconds.
+				.where(
+					and(
+						eq(services.id, service.id),
+						expectedUpdatedAt ? sql`date_trunc('milliseconds', ${services.updatedAt}) = ${expectedUpdatedAt.toISOString()}::timestamptz` : undefined
+					)
+				)
 				.returning();
+			if (!row && expectedUpdatedAt) throw new ApiError(409, 'service_changed');
 			return row;
 		});
 		if (!updated) throw new ServiceNotFoundError();

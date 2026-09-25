@@ -4,6 +4,77 @@ export type ClientOptions = {
 	baseUrl: string;
 };
 
+export type McpInfoDto = {
+	endpoint: string;
+	scopes: Array<string>;
+};
+
+export type McpAccessDto = {
+	id: string;
+	name: string;
+	kind: 'personal' | 'oauth';
+	scopes: Array<string>;
+	teamId: string | null;
+	projectIds: Array<string>;
+	expiresAt: string;
+	revokedAt: string | null;
+	createdAt: string;
+};
+
+export type McpAccessInputDto = {
+	name: string;
+	scopes: Array<'read' | 'write' | 'deploy' | 'delete' | 'team:manage'>;
+	teamId?: string;
+	projectIds?: Array<string>;
+	expiresInDays?: number;
+};
+
+export type McpCreatedAccessDto = {
+	token: string;
+	access: McpAccessDto;
+	endpoint: string;
+};
+
+export type McpOkDto = {
+	ok: boolean;
+};
+
+export type McpAuthorizationDto = {
+	client_id: string;
+	redirect_uri: string;
+	response_type: 'code';
+	code_challenge: string;
+	code_challenge_method: 'S256';
+	resource: string;
+	scope?: string;
+	state?: string;
+};
+
+export type McpAuthorizationDetailsDto = {
+	clientName: string;
+	redirectUri: string;
+	scopes: Array<string>;
+};
+
+export type McpConsentDto = {
+	client_id: string;
+	redirect_uri: string;
+	response_type: 'code';
+	code_challenge: string;
+	code_challenge_method: 'S256';
+	resource: string;
+	scope?: string;
+	state?: string;
+	approve: boolean;
+	teamId?: string;
+	projectIds?: Array<string>;
+	expiresInDays?: number;
+};
+
+export type McpRedirectDto = {
+	redirectUrl: string;
+};
+
 export type HealthResponseDto = {
 	status: 'ok';
 	uptime: number;
@@ -838,6 +909,86 @@ export type ExternalRegistrySettingsDtoWritable = {
 	username: string;
 	password?: string;
 };
+
+export type McpInfoGetData = {
+	body?: never;
+	path?: never;
+	query?: never;
+	url: '/api/mcp/info';
+};
+
+export type McpInfoGetResponses = {
+	200: McpInfoDto;
+};
+
+export type McpInfoGetResponse = McpInfoGetResponses[keyof McpInfoGetResponses];
+
+export type McpAccessListData = {
+	body?: never;
+	path?: never;
+	query?: never;
+	url: '/api/mcp/access';
+};
+
+export type McpAccessListResponses = {
+	200: Array<McpAccessDto>;
+};
+
+export type McpAccessListResponse = McpAccessListResponses[keyof McpAccessListResponses];
+
+export type McpAccessCreateData = {
+	body: McpAccessInputDto;
+	path?: never;
+	query?: never;
+	url: '/api/mcp/access';
+};
+
+export type McpAccessCreateResponses = {
+	201: McpCreatedAccessDto;
+};
+
+export type McpAccessCreateResponse = McpAccessCreateResponses[keyof McpAccessCreateResponses];
+
+export type McpAccessRevokeData = {
+	body?: never;
+	path: {
+		accessId: string;
+	};
+	query?: never;
+	url: '/api/mcp/access/{accessId}';
+};
+
+export type McpAccessRevokeResponses = {
+	200: McpOkDto;
+};
+
+export type McpAccessRevokeResponse = McpAccessRevokeResponses[keyof McpAccessRevokeResponses];
+
+export type McpAuthorizationGetData = {
+	body: McpAuthorizationDto;
+	path?: never;
+	query?: never;
+	url: '/api/mcp/authorization';
+};
+
+export type McpAuthorizationGetResponses = {
+	200: McpAuthorizationDetailsDto;
+};
+
+export type McpAuthorizationGetResponse = McpAuthorizationGetResponses[keyof McpAuthorizationGetResponses];
+
+export type McpConsentCreateData = {
+	body: McpConsentDto;
+	path?: never;
+	query?: never;
+	url: '/api/mcp/consent';
+};
+
+export type McpConsentCreateResponses = {
+	200: McpRedirectDto;
+};
+
+export type McpConsentCreateResponse = McpConsentCreateResponses[keyof McpConsentCreateResponses];
 
 export type HealthGetData = {
 	body?: never;
