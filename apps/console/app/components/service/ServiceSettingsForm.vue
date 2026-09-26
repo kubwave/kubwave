@@ -313,7 +313,18 @@ function buildConfig(values: ServiceSettingsValues) {
 			? {
 					enabled: true,
 					username: values.basicAuth.username.trim(),
-					password: values.basicAuth.password || null
+					password: values.basicAuth.password || null,
+					...(values.basicAuth.publicPaths
+						.split('\n')
+						.map(p => p.trim())
+						.filter(Boolean).length > 0
+						? {
+								publicPaths: values.basicAuth.publicPaths
+									.split('\n')
+									.map(p => p.trim())
+									.filter(Boolean)
+							}
+						: {})
 				}
 			: { enabled: false }
 	};

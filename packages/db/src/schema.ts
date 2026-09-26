@@ -96,6 +96,8 @@ export interface BasicAuthConfig {
 	username: string;
 	// Ciphertext (AES-256-GCM); worker decrypts into an htpasswd Secret for the ingress controller.
 	password: string;
+	// Path prefixes served without basic auth (e.g. /health, /api/*); absent = every route is protected.
+	publicPaths?: string[];
 }
 
 // Credentials for pulling a service's image from a private registry; the worker renders them into a per-service dockerconfigjson Secret.

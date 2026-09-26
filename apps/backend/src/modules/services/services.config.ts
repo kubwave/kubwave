@@ -31,7 +31,7 @@ import type { BasicAuthView, RegistryAuthView, ServiceConfigView } from './servi
 
 function toBasicAuthView(stored: BasicAuthConfig | undefined): BasicAuthView | undefined {
 	if (!stored) return undefined;
-	return { enabled: true, username: stored.username, hasPassword: true };
+	return { enabled: true, username: stored.username, hasPassword: true, ...(stored.publicPaths?.length ? { publicPaths: stored.publicPaths } : {}) };
 }
 
 function toRegistryAuthView(stored: RegistryAuthConfig | undefined): RegistryAuthView | undefined {
@@ -117,7 +117,15 @@ function normalizeRuntime(config: RuntimeConfig): RuntimeConfig {
 		...(configFiles.length > 0 ? { configFiles } : {}),
 		...(config.command && config.command.length > 0 ? { command: config.command } : {}),
 		...(config.args && config.args.length > 0 ? { args: config.args } : {}),
-		...(config.basicAuth?.username != null ? { basicAuth: { username: config.basicAuth.username.trim(), password: config.basicAuth.password } } : {}),
+		...(config.basicAuth?.username != null
+			? {
+					basicAuth: {
+						username: config.basicAuth.username.trim(),
+						password: config.basicAuth.password,
+						...(config.basicAuth.publicPaths?.length ? { publicPaths: config.basicAuth.publicPaths } : {})
+					}
+				}
+			: {}),
 		...(healthCheck?.enabled
 			? {
 					healthCheck: {
@@ -228,7 +236,7 @@ export function resolveConfigFiles(incoming: DockerImageConfigInput['configFiles
 }
 
 export function resolveBasicAuth(
-	incoming: { enabled: boolean; username?: string; password?: string | null } | undefined,
+	incoming: { enabled: boolean; username?: string; password?: string | null; publicPaths?: string[] } | undefined,
 	existing: BasicAuthConfig | undefined
 ): BasicAuthConfig | undefined {
 	if (!incoming?.enabled) return undefined;
@@ -236,9 +244,10 @@ export function resolveBasicAuth(
 	if (!username) {
 		throw new ApiError(400, 'A username is required when enabling basic auth.');
 	}
+	const publicPaths = [...new Set(incoming.publicPaths ?? [])];
 
-	if (incoming.password != null) return { username, password: encryptSecret(incoming.password) };
-	if (existing) return { username, password: existing.password };
+	if (incoming.password != null) return { username, password: encryptSecret(incoming.password), ...(publicPaths.length > 0 ? { publicPaths } : {}) };
+	if (existing) return { username, password: existing.password, ...(publicPaths.length > 0 ? { publicPaths } : {}) };
 	throw new ApiError(400, 'A password is required when enabling basic auth.');
 }
 

@@ -8,6 +8,8 @@ import { deleteIgnoreMissing, isNotFound, notFoundToNull, readIngressOrNull, rea
 export interface BasicAuthSpec {
 	username: string;
 	password: string;
+	// Path entries served without basic auth: bare path = exact match, trailing /* = prefix (includes everything below).
+	publicPaths?: string[];
 }
 
 // Per-cluster Ingress knobs from worker env, threaded through the deploy context so deployers stay free of process.env reads.
@@ -52,15 +54,15 @@ function pushIngressEvent(
 	namespace: string,
 	serviceId: string,
 	domains: ServiceDomain[],
-	action: ResourceAction
+	action: ResourceAction,
+	name: string = resourceName(serviceId)
 ): void {
 	const hosts = domains.map(domain => domain.host).sort();
-	const name = resourceName(serviceId);
 	const hostList = hosts.join(', ') || 'none';
 	const messages: Partial<Record<ResourceAction, string>> = {
 		created: `Created Ingress ${name} in ${namespace} (hosts: ${hostList})`,
 		replaced: `Updated Ingress ${name} in ${namespace} (hosts: ${hostList})`,
-		deleted: `Removed Ingress ${name} in ${namespace} (no domains)`
+		deleted: `Removed Ingress ${name} in ${namespace} (hosts: ${hostList})`
 	};
 	const message = messages[action];
 	if (message) events.push(stepEvent('ingress-converged', message));
@@ -184,6 +186,10 @@ const MIDDLEWARE_PLURAL = 'middlewares';
 
 export function basicAuthResourceName(serviceId: string): string {
 	return `${resourceName(serviceId)}-basic-auth`;
+}
+
+export function publicIngressName(serviceId: string): string {
+	return `${resourceName(serviceId)}-public`;
 }
 
 function middlewareRequest(namespace: string) {
@@ -352,12 +358,115 @@ async function convergeService(coreApi: CoreV1Api, namespace: string, serviceId:
 	return 'unchanged';
 }
 
+// Path entries served without basic auth: bare path = exact match, trailing /* = everything below it.
+// "/foo/*" becomes Exact "/foo" + Prefix "/foo/": Traefik's PathPrefix is a raw string match, so Prefix("/foo")
+// would also exempt siblings like "/apikeys". Derived "/" and "" entries are dropped; the API rejects them, but this runs on stored config.
+function publicPathRules(publicPaths: string[]): Array<{ path: string; pathType: 'Exact' | 'Prefix' }> {
+	return publicPaths
+		.flatMap(entry =>
+			entry.endsWith('/*')
+				? [
+						{ path: `${entry.slice(0, -2)}/`, pathType: 'Prefix' as const },
+						{ path: entry.slice(0, -2), pathType: 'Exact' as const }
+					]
+				: [{ path: entry, pathType: 'Exact' as const }]
+		)
+		.filter(rule => rule.path !== '/' && rule.path !== '');
+}
+
+// Sibling Ingress without the basic-auth middleware annotation; an explicit Traefik router priority lets these paths bypass auth.
+function buildPublicIngress(
+	serviceId: string,
+	namespace: string,
+	domains: ServiceDomain[],
+	ingress: IngressOptions,
+	pathRules: Array<{ path: string; pathType: 'Exact' | 'Prefix' }>
+): V1Ingress {
+	const name = publicIngressName(serviceId);
+	const serviceName = internalServiceName(serviceId);
+	const annotations = { ...ingress.annotations };
+	if (ingress.clusterIssuer) annotations['cert-manager.io/cluster-issuer'] = ingress.clusterIssuer;
+	// Traefik ranks routers by rule length; a short exact path would tie with or lose to the main `PathPrefix("/")` rule and stay behind basic auth.
+	annotations['traefik.ingress.kubernetes.io/router.priority'] = '1000';
+	const hosts = domains.map(domain => domain.host);
+	return {
+		apiVersion: 'networking.k8s.io/v1',
+		kind: 'Ingress',
+		metadata: {
+			name,
+			namespace,
+			labels: commonLabels(serviceId),
+			...(Object.keys(annotations).length > 0 ? { annotations } : {})
+		},
+		spec: {
+			...(ingress.className ? { ingressClassName: ingress.className } : {}),
+			...(ingress.clusterIssuer ? { tls: [{ hosts, secretName: `${name}-tls` }] } : {}),
+			rules: domains.map(domain => ({
+				host: domain.host,
+				http: { paths: pathRules.map(p => ({ ...p, backend: { service: { name: serviceName, port: { number: domain.port } } } })) }
+			}))
+		}
+	};
+}
+
+// Converge the auth-exempt Ingress; exists only while basic auth is enabled with public paths configured.
+async function convergePublicIngress(
+	netApi: NetworkingV1Api,
+	namespace: string,
+	serviceId: string,
+	domains: ServiceDomain[],
+	ingress: IngressOptions,
+	basicAuth?: BasicAuthSpec
+): Promise<ResourceAction> {
+	const name = publicIngressName(serviceId);
+	// Gate on the derived rules: entries that collapse away ("/"-targets) must not produce a path-less Ingress the API would reject.
+	const pathRules = publicPathRules(basicAuth?.publicPaths ?? []);
+	const existing = await readIngressOrNull(netApi, namespace, name);
+
+	if (pathRules.length === 0 || domains.length === 0) {
+		if (!existing) return 'unchanged';
+		await deleteIgnoreMissing(() => netApi.deleteNamespacedIngress({ name, namespace }));
+		return 'deleted';
+	}
+
+	const desired = buildPublicIngress(serviceId, namespace, domains, ingress, pathRules);
+	if (!existing) {
+		await netApi.createNamespacedIngress({ namespace, body: desired });
+		return 'created';
+	}
+	if (!ingressMatches(existing, desired)) {
+		await replaceWithRetry({
+			label: `Ingress ${name}`,
+			read: () => readIngressOrNull(netApi, namespace, name),
+			build: () => buildPublicIngress(serviceId, namespace, domains, ingress, pathRules),
+			carryOver: (fresh, desiredBody) => {
+				const merged = { ...fresh.metadata?.annotations, ...desiredBody.metadata?.annotations };
+				if (desiredBody.metadata?.annotations?.[MIDDLEWARE_ANNOTATION] == null) delete merged[MIDDLEWARE_ANNOTATION];
+				desiredBody.metadata = {
+					...desiredBody.metadata,
+					resourceVersion: fresh.metadata?.resourceVersion ?? undefined,
+					annotations: merged
+				};
+				return desiredBody;
+			},
+			replace: body => netApi.replaceNamespacedIngress({ name, namespace, body })
+		});
+		return 'replaced';
+	}
+	return 'unchanged';
+}
+
 function ingressFingerprint(ing: V1Ingress): string {
 	const className = ing.spec?.ingressClassName ?? '';
 	const rules = (ing.spec?.rules ?? [])
 		.map(r => {
-			const backend = r.http?.paths?.[0]?.backend?.service;
-			return `${r.host ?? ''}=${backend?.name ?? ''}:${backend?.port?.number ?? ''}`;
+			const paths = (r.http?.paths ?? [])
+				.map(p => {
+					const backend = p.backend?.service;
+					return `${p.path ?? ''}!${p.pathType ?? ''}=${backend?.name ?? ''}:${backend?.port?.number ?? ''}`;
+				})
+				.sort();
+			return `${r.host ?? ''}#${paths.join('|')}`;
 		})
 		.sort();
 	const tls = (ing.spec?.tls ?? []).map(t => `${(t.hosts ?? []).slice().sort().join(',')}|${t.secretName ?? ''}`).sort();
@@ -445,6 +554,14 @@ export async function convergeNetworking(args: {
 	const servicePorts = [...ports, ...domains.map(domain => domain.port), ...exposedPorts.map(exposure => exposure.containerPort)];
 	pushServiceEvent(events, namespace, serviceId, servicePorts, await convergeService(coreApi, namespace, serviceId, servicePorts));
 	pushIngressEvent(events, namespace, serviceId, domains, await convergeIngress(netApi, namespace, serviceId, domains, ingress, basicAuth));
+	pushIngressEvent(
+		events,
+		namespace,
+		serviceId,
+		domains,
+		await convergePublicIngress(netApi, namespace, serviceId, domains, ingress, basicAuth),
+		publicIngressName(serviceId)
+	);
 	if (tcpRoutesEnabled) {
 		await convergeTcpRoutes({ customApi, namespace, serviceId, exposedPorts, events });
 	}
@@ -462,6 +579,7 @@ export async function teardownNetworking(args: {
 	const ingressName = resourceName(serviceId);
 	await deleteIgnoreMissing(() => coreApi.deleteNamespacedService({ name: serviceName, namespace }));
 	await deleteIgnoreMissing(() => netApi.deleteNamespacedIngress({ name: ingressName, namespace }));
+	await deleteIgnoreMissing(() => netApi.deleteNamespacedIngress({ name: publicIngressName(serviceId), namespace }));
 	await deleteIgnoreMissing(() =>
 		customApi.deleteNamespacedCustomObject({ ...middlewareRequest(namespace), name: basicAuthResourceName(serviceId) })
 	);
