@@ -359,10 +359,11 @@ async function convergeService(coreApi: CoreV1Api, namespace: string, serviceId:
 }
 
 // Path entries served without basic auth: bare path = exact match, trailing /* = prefix including everything below.
+// Derived "/" entries are dropped defensively; the API rejects them, but this runs on stored config.
 function publicPathRules(publicPaths: string[]): Array<{ path: string; pathType: 'Exact' | 'Prefix' }> {
-	return publicPaths.map(entry =>
-		entry.endsWith('/*') ? { path: entry.slice(0, -2), pathType: 'Prefix' as const } : { path: entry, pathType: 'Exact' as const }
-	);
+	return publicPaths
+		.map(entry => (entry.endsWith('/*') ? { path: entry.slice(0, -2), pathType: 'Prefix' as const } : { path: entry, pathType: 'Exact' as const }))
+		.filter(rule => rule.path !== '/' && rule.path !== '');
 }
 
 // Sibling Ingress without the basic-auth middleware annotation; Traefik's longer-rule router priority lets these paths bypass auth.

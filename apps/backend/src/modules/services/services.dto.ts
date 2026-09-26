@@ -122,19 +122,21 @@ const publicPathRefinements = (val: { enabled: boolean; publicPaths?: string[] }
 		ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Public paths require basic auth to be enabled.', path: ['basicAuth', 'publicPaths'] });
 		return;
 	}
-	if (val.publicPaths.includes('/')) {
-		ctx.addIssue({
-			code: z.ZodIssueCode.custom,
-			message: '"/" makes every route public — disable basic auth instead.',
-			path: ['basicAuth', 'publicPaths']
-		});
-	}
 	const seen = new Set<string>();
-	val.publicPaths.forEach((path, i) => {
-		if (seen.has(path)) {
+	val.publicPaths.forEach((entry, i) => {
+		// Judge the derived path: "//*" strips to "/" and would make every route public.
+		const target = entry.endsWith('/*') ? entry.slice(0, -2) : entry;
+		if (target === '/' || target === '') {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: '"/" makes every route public — disable basic auth instead.',
+				path: ['basicAuth', 'publicPaths', i]
+			});
+		}
+		if (seen.has(entry)) {
 			ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Each public path must be unique.', path: ['basicAuth', 'publicPaths', i] });
 		}
-		seen.add(path);
+		seen.add(entry);
 	});
 };
 

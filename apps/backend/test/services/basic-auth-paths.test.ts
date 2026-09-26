@@ -33,6 +33,17 @@ describe('basicAuthInputSchema publicPaths', () => {
 		}
 	});
 
+	test('rejects entries whose derived path is "/" (e.g. "//*") — catch-all would disable auth', () => {
+		for (const path of ['/', '//*', '/*', '/.*']) {
+			const result = parseBasicAuth({ enabled: true, username: 'u', password: 'p', publicPaths: [path] });
+			expect(result.success).toBe(false);
+		}
+		// "//*" passes the shape checks and must die on the derived-path guard, not earlier.
+		const doubleSlash = parseBasicAuth({ enabled: true, username: 'u', password: 'p', publicPaths: ['//*'] });
+		expect(doubleSlash.success).toBe(false);
+		expect(!doubleSlash.success && doubleSlash.error.issues[0]?.message).toContain('makes every route public');
+	});
+
 	test('rejects duplicate entries and paths while basic auth is disabled', () => {
 		const dupes = parseBasicAuth({ enabled: true, username: 'u', password: 'p', publicPaths: ['/x', '/x'] });
 		expect(dupes.success).toBe(false);

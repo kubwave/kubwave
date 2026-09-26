@@ -149,6 +149,8 @@ export const serviceSettingsSchema = z
 			val.basicAuth.publicPaths.split('\n').forEach(raw => {
 				const path = raw.trim();
 				if (!path) return;
+				// Judge the derived path: "//*" strips to "/" and would make every route public.
+				const target = path.endsWith('/*') ? path.slice(0, -2) : path;
 				if (!path.startsWith('/')) {
 					ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Each public path must start with "/".', path: ['basicAuth', 'publicPaths'] });
 				} else if (path.split('/').includes('..')) {
@@ -159,7 +161,7 @@ export const serviceSettingsSchema = z
 						message: 'Use absolute paths like /health or /api/* (a wildcard is only allowed at the end as "/*").',
 						path: ['basicAuth', 'publicPaths']
 					});
-				} else if (path === '/') {
+				} else if (target === '/' || target === '') {
 					ctx.addIssue({
 						code: z.ZodIssueCode.custom,
 						message: '"/" makes every route public — disable basic auth instead.',
