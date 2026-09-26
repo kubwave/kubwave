@@ -7,7 +7,8 @@ import { claimDueEnvironments } from './claim.js';
 import { clonePreview } from './clone.js';
 import { teardownPreview } from './teardown.js';
 import { diffPreviews } from './diff.js';
-import { listOpenPullRequests, type OpenPr } from './providers.js';
+import { getInstallationAccessToken } from '../../../git/clone-token.js';
+import { listOpenPullRequests, type ForgeTokens, type OpenPr } from './providers.js';
 import { getMaxPreviewsPerProject } from './cap.js';
 
 // One discovery sweep tick: claim due envs and process them concurrently.
@@ -18,17 +19,26 @@ export async function runPrDiscovery(): Promise<void> {
 	await Promise.all(due.map(e => pollEnvironment(e, now)));
 }
 
-// Distinct repo URLs to discover PRs for = the PUBLIC repo-backed services in this env (a monorepo is one URL).
-// Private repos are excluded: listing open PRs needs forge-API auth we no longer provision (the global PAT is gone).
-// They still get cloned INTO previews triggered by a public repo's PR (clone-plan uses their SSH key).
-async function repoTargets(environmentId: string): Promise<string[]> {
+// Distinct repos to discover PRs for (a monorepo is one URL): public repos need no auth; github-repo/gitea-repo list via their installation token.
+// private-repo (SSH key only) is excluded — no forge-API credential — but still gets cloned INTO previews triggered by another repo's PR.
+async function repoTargets(environmentId: string): Promise<Map<string, string | null>> {
 	const rows = await db.select({ type: services.type, config: services.config }).from(services).where(eq(services.environmentId, environmentId));
-	const urls = new Set<string>();
+	const targets = new Map<string, string | null>();
 	for (const r of rows) {
-		if (r.type !== 'public-repo') continue;
-		urls.add((r.config as { repoUrl: string }).repoUrl);
+		const config = r.config as { repoUrl: string; installationId?: string };
+		if (r.type === 'public-repo') {
+			if (!targets.has(config.repoUrl)) targets.set(config.repoUrl, null);
+		} else if (r.type === 'github-repo' || r.type === 'gitea-repo') {
+			if (!targets.get(config.repoUrl)) targets.set(config.repoUrl, config.installationId ?? null);
+		}
 	}
-	return [...urls];
+	return targets;
+}
+
+async function forgeTokens(installationId: string | null): Promise<ForgeTokens> {
+	if (!installationId) return {};
+	const { provider, token } = await getInstallationAccessToken(installationId);
+	return { [provider]: token };
 }
 
 async function existingPreviews(baseEnvironmentId: string, repoUrl: string): Promise<{ id: string; prNumber: number }[]> {
@@ -54,11 +64,10 @@ export async function pollEnvironment(baseEnv: Environment, now: Date): Promise<
 	const cap = await getMaxPreviewsPerProject();
 	let pollError: string | null = null;
 
-	for (const repoUrl of targets) {
+	for (const [repoUrl, installationId] of targets) {
 		let open: OpenPr[];
 		try {
-			// Public repos only (see repoTargets) — no forge token needed.
-			open = await listOpenPullRequests(repoUrl, {}, { timeoutMs: env.gitLsRemoteTimeoutMs });
+			open = await listOpenPullRequests(repoUrl, await forgeTokens(installationId), { timeoutMs: env.gitLsRemoteTimeoutMs });
 		} catch (err) {
 			pollError = errorMessage(err);
 			console.warn(`[pr-discovery] env ${baseEnv.id} repo ${repoUrl} open-PR lookup failed:`, pollError);

@@ -10,15 +10,20 @@ let selectIdx = 0;
 let updatedSet: Record<string, unknown> | null = null;
 const teardownCalls: string[] = [];
 const cloneCalls: number[] = [];
+const listTokens: Record<string, string>[] = [];
 
 mock.module('~/shared/config/worker-env', () => ({
 	env: { gitLsRemoteTimeoutMs: 20_000, gitPollErrorBackoffSeconds: 300, prDiscoveryEnvIntervalSeconds: 60, prDiscoveryBatch: 10 }
 }));
 mock.module('~/modules/worker/jobs/pr-preview/providers', () => ({
-	listOpenPullRequests: async () => {
+	listOpenPullRequests: async (_url: string, tokens: Record<string, string>) => {
+		listTokens.push(tokens);
 		if ('error' in listResult) throw new Error(listResult.error);
 		return listResult.prs;
 	}
+}));
+mock.module('~/modules/git/clone-token', () => ({
+	getInstallationAccessToken: async (id: string) => ({ provider: 'gitea', token: `tok-${id}` })
 }));
 mock.module('~/modules/worker/jobs/pr-preview/cap', () => ({ getMaxPreviewsPerProject: async () => cap }));
 mock.module('~/modules/worker/jobs/pr-preview/clone', () => ({
@@ -57,6 +62,7 @@ afterEach(() => {
 	updatedSet = null;
 	teardownCalls.length = 0;
 	cloneCalls.length = 0;
+	listTokens.length = 0;
 	cap = 5;
 });
 
@@ -105,5 +111,13 @@ describe('pollEnvironment', () => {
 		await pollEnvironment(baseEnv, now);
 		expect(cloneCalls).toEqual([]);
 		expect(teardownCalls).toEqual([]);
+	});
+
+	test('gitea-repo services are discovered with their installation token', async () => {
+		listResult = { prs: [{ prNumber: 3, prRef: 'refs/pull/3/head', headSha: 'b'.repeat(40) }] };
+		selectResults = [[{ type: 'gitea-repo', config: { repoUrl: 'https://gitea.example/o/r.git', installationId: 'inst-1' } }], [], [{ value: 0 }]];
+		await pollEnvironment(baseEnv, now);
+		expect(listTokens).toEqual([{ gitea: 'tok-inst-1' }]);
+		expect(cloneCalls).toEqual([3]);
 	});
 });
