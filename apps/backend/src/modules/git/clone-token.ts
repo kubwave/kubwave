@@ -5,6 +5,11 @@ import { getGiteaAccessToken } from './gitea-token.js';
 import { getInstallationToken } from './installation-token.js';
 
 export async function getCloneAuthHeader(installationRowId: string): Promise<string> {
+	const { provider, token } = await getInstallationAccessToken(installationRowId);
+	return provider === 'gitea' ? giteaTokenAuthHeader(token) : basicAuthHeader(token);
+}
+
+export async function getInstallationAccessToken(installationRowId: string): Promise<{ provider: 'github' | 'gitea'; token: string }> {
 	const [row] = await db
 		.select({ provider: gitAppConnections.provider })
 		.from(gitInstallations)
@@ -12,6 +17,6 @@ export async function getCloneAuthHeader(installationRowId: string): Promise<str
 		.where(eq(gitInstallations.id, installationRowId))
 		.limit(1);
 	if (!row) throw new Error('Git installation not found — the connection may have been removed. Reconnect it in platform settings.');
-	if (row.provider === 'gitea') return giteaTokenAuthHeader(await getGiteaAccessToken(installationRowId));
-	return basicAuthHeader(await getInstallationToken(installationRowId));
+	if (row.provider === 'gitea') return { provider: 'gitea', token: await getGiteaAccessToken(installationRowId) };
+	return { provider: 'github', token: await getInstallationToken(installationRowId) };
 }
