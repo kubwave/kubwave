@@ -378,6 +378,8 @@ function buildPublicIngress(
 	const serviceName = internalServiceName(serviceId);
 	const annotations = { ...ingress.annotations };
 	if (ingress.clusterIssuer) annotations['cert-manager.io/cluster-issuer'] = ingress.clusterIssuer;
+	// Traefik ranks routers by rule length; a short exact path would tie with or lose to the main `PathPrefix("/")` rule and stay behind basic auth.
+	annotations['traefik.ingress.kubernetes.io/router.priority'] = '1000';
 	const hosts = domains.map(domain => domain.host);
 	const paths = publicPathRules(publicPaths);
 	return {

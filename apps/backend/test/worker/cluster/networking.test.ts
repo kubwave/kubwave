@@ -361,7 +361,8 @@ describe('convergeNetworking — auth-exempt public paths', () => {
 		expect(net.calls.create).toBe(2);
 		const body = net.getCreated()!;
 		expect(body.metadata?.name).toBe(`${NAME}-public`);
-		expect(body.metadata?.annotations).toBeUndefined();
+		// Explicit priority so the exempt routers always outrank the main PathPrefix("/") router; middleware annotation stays absent.
+		expect(body.metadata?.annotations).toEqual({ 'traefik.ingress.kubernetes.io/router.priority': '1000' });
 		expect(body.spec?.rules?.[0]?.host).toBe('a.test');
 		expect(body.spec?.rules?.[0]?.http?.paths).toEqual([
 			{ path: '/health', pathType: 'Exact', backend: { service: { name: NAME, port: { number: 80 } } } },
