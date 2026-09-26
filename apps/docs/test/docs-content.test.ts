@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { buildInstallCommand } from '../app/utils/install-command';
 import { flatDocsNav } from '../app/utils/navigation';
+import { buildLlms, collectPages, PAGE_DELIMITER } from '../scripts/gen-llms';
 
 const expectedRoutes = [
 	'/',
@@ -62,6 +63,23 @@ describe('docs content conversion', () => {
 			const text = await Bun.file((await resolveContentFile(route))!).text();
 			expect(text).not.toMatch(/get\.kubwave\.com/);
 		}
+	});
+});
+
+describe('llms build', () => {
+	test('covers every route in nav order with title and description', async () => {
+		const pages = await collectPages();
+		expect(pages.map(page => page.path)).toEqual(expectedRoutes);
+		for (const page of pages) {
+			expect(page.title).not.toBe(page.path);
+			expect(page.description).not.toBe('');
+		}
+		const { index, full } = buildLlms(pages);
+		for (const route of expectedRoutes) {
+			expect(full).toContain(`path: ${route}`);
+		}
+		expect(index).toContain('Quickstart');
+		expect(full).toContain(PAGE_DELIMITER.trim());
 	});
 });
 

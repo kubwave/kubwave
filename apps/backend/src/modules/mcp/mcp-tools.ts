@@ -22,6 +22,8 @@ import { TemplatesService } from '../templates/templates.service.js';
 import { createFromTemplateSchema, toTemplateDto } from '../templates/templates.dto.js';
 import { GitInstallationsService } from '../git/git-installations.service.js';
 import { GiteaInstallationsService } from '../git/gitea-installations.service.js';
+import { BackendConfigService } from '../../shared/config/backend-config.service.js';
+import { loadDocs, searchDocs } from './mcp-docs.js';
 import { defineMcpTool, type McpTarget, type McpTool } from './mcp-execution.js';
 
 const id = z.string().uuid();
@@ -429,6 +431,35 @@ export function createMcpTools(app: NestFastifyApplication): McpTool[] {
 				content: container.content.split('\n').slice(-a.tailLines).join('\n').slice(-64_000)
 			}))
 		})
+	});
+	add({
+		name: 'search_docs',
+		description: 'Search the kubwave documentation. Without a query, lists all documentation pages.',
+		schema: z.object({ query: z.string().trim().min(1).max(200).optional(), limit: z.number().int().min(1).max(25).default(10) }),
+		scopes: ['read'],
+		readOnly: true,
+		run: async (_u, a) => {
+			const pages = await loadDocs(app.get(BackendConfigService).api.docsBaseUrl);
+			if (!a.query)
+				return mcpPage(
+					pages.map(({ path, title, description }) => ({ path, title, description })),
+					0,
+					a.limit
+				);
+			return { items: searchDocs(pages, a.query, a.limit) };
+		}
+	});
+	add({
+		name: 'get_doc_page',
+		description: 'Get a kubwave documentation page as Markdown. Paths come from search_docs.',
+		schema: z.object({ path: z.string().trim().min(1).max(200) }),
+		scopes: ['read'],
+		readOnly: true,
+		run: async (_u, a) => {
+			const normalized = `/${a.path.replace(/^\/+|\/+$/g, '')}`;
+			const page = (await loadDocs(app.get(BackendConfigService).api.docsBaseUrl)).find(candidate => candidate.path === normalized);
+			return page ?? { error: 'doc_not_found' };
+		}
 	});
 	add({
 		name: 'list_ssh_keys',

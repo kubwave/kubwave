@@ -30,6 +30,7 @@ It also needs `SECRETS_KEY` whenever it encrypts per-service secrets.
 | `POD_NAMESPACE`              | No       | `kubwave`                  | The Kubernetes namespace the API pod runs in.                                            |
 | `APP_VERSION`                | No       | `dev`                      | Platform version string (set by the Helm chart from `Chart.yaml`).                       |
 | `APP_BASE_URL`               | No       | `http://console.localhost` | The Console origin, used to build invite-accept links in emails.                         |
+| `DOCS_BASE_URL`              | No       | `https://docs.kubwave.com` | Public docs site the MCP `search_docs` / `get_doc_page` tools fetch content from.        |
 | `SMTP_HOST`                  | No       | —                          | SMTP server hostname (disabled if empty).                                                |
 | `SMTP_PORT`                  | No       | `1025`                     | SMTP server port.                                                                        |
 | `SMTP_SECURE`                | No       | `false`                    | Use TLS for SMTP (`true` / `false`).                                                     |

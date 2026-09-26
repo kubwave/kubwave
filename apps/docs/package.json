@@ -17,8 +17,8 @@
 		"node": ">=24"
 	},
 	"scripts": {
-		"dev": "nuxt dev",
-		"build": "nuxt generate",
+		"dev": "bun scripts/gen-llms.ts && nuxt dev",
+		"build": "bun scripts/gen-llms.ts && nuxt generate",
 		"preview": "nuxt preview",
 		"check-types": "nuxt typecheck",
 		"deploy": "wrangler deploy",
