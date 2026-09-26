@@ -17,6 +17,7 @@ describe('buildUpcloudTraefikValues', () => {
 		const values = buildUpcloudTraefikValues();
 		const service = values.service as Record<string, unknown>;
 		expect(service.type).toBe('LoadBalancer');
+		expect(service.spec).toEqual({ externalTrafficPolicy: 'Local' });
 		const annotations = service.annotations as Record<string, string>;
 		expect(annotations).toBeDefined();
 		const lbConfig = annotations['service.beta.kubernetes.io/upcloud-load-balancer-config'];
@@ -74,6 +75,7 @@ describe('buildUpcloudTraefikValues', () => {
 			unknown
 		>;
 		const traefikConfig = updateDependencies.values as Record<string, unknown>;
+		expect((traefikConfig.service as Record<string, unknown>).spec).toEqual({ externalTrafficPolicy: 'Local' });
 		const annotations = (traefikConfig.service as Record<string, unknown>).annotations as Record<string, string>;
 		const lbConfig = annotations['service.beta.kubernetes.io/upcloud-load-balancer-config'];
 		expect(lbConfig).toBeDefined();

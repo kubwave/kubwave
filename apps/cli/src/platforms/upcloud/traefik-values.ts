@@ -15,9 +15,15 @@ export function buildUpcloudTraefikValues(pool: TcpPortPoolSettings = TCP_PORT_P
 				})
 			: [])
 	];
-	return buildSharedTraefikValues({
+	const values = buildSharedTraefikValues({
 		serviceAnnotations: {
 			'service.beta.kubernetes.io/upcloud-load-balancer-config': JSON.stringify({ frontends })
 		}
 	});
+	// Local makes the LB health-check healthCheckNodePort, so nodes without a ready Traefik pod (drained by the
+	// autoscaler) leave the backend pool before deletion instead of blackholing traffic.
+	return {
+		...values,
+		service: { ...(values.service as Record<string, unknown>), spec: { externalTrafficPolicy: 'Local' } }
+	};
 }
