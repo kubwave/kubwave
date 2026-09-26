@@ -25,7 +25,11 @@ import { buildPVC } from './storage.js';
 
 function resolveBasicAuthSpec(config: RuntimeConfig): BasicAuthSpec | undefined {
 	if (!config.basicAuth) return undefined;
-	return { username: config.basicAuth.username, password: decryptSecret(config.basicAuth.password) };
+	return {
+		username: config.basicAuth.username,
+		password: decryptSecret(config.basicAuth.password),
+		...(config.basicAuth.publicPaths?.length ? { publicPaths: config.basicAuth.publicPaths } : {})
+	};
 }
 
 async function convergePersistentVolumes(

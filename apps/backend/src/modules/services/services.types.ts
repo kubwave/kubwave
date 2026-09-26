@@ -18,6 +18,8 @@ export interface BasicAuthView {
 	enabled: boolean;
 	username: string;
 	hasPassword: boolean;
+	// Path prefixes served without basic auth; absent = every route is protected.
+	publicPaths?: string[];
 }
 
 export interface RegistryAuthView {

@@ -152,6 +152,13 @@ const healthTypeModel = computed<string>({
 						</ServiceSettingsField>
 					</div>
 					<p v-if="state.basicAuth.hasPassword" class="text-xs text-muted-foreground">Leave the password field empty to keep the current password.</p>
+					<ServiceSettingsField
+						name="basicAuth.publicPaths"
+						label="Public paths (no basic auth)"
+						description="One path per line. Everything else stays protected — /api/* includes all sub-paths."
+					>
+						<Textarea v-model="state.basicAuth.publicPaths" placeholder="/health&#10;/api/*" class="min-h-20 font-mono text-xs" :disabled="saving" />
+					</ServiceSettingsField>
 				</div>
 				<p v-else class="text-sm text-muted-foreground">Disabled.</p>
 			</section>

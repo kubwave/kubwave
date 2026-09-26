@@ -116,6 +116,8 @@ export const serviceSettingsSchema = z
 			enabled: z.boolean(),
 			username: z.string(),
 			password: z.string(),
+			// One path entry per line (e.g. /health or /api/*); validated like the API in superRefine below.
+			publicPaths: z.string(),
 			hasPassword: z.boolean()
 		}),
 		// docker-image only: optional private-registry login; blank password with hasPassword keeps the stored one.
@@ -141,6 +143,30 @@ export const serviceSettingsSchema = z
 		}
 		if (val.basicAuth.enabled && !val.basicAuth.hasPassword && !val.basicAuth.password) {
 			ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'A password is required when basic auth is enabled.', path: ['basicAuth', 'password'] });
+		}
+		// Mirror the API's public-path rules: absolute, no "..", wildcard only as a trailing "/*". Only checked while enabled — the payload drops them otherwise.
+		if (val.basicAuth.enabled) {
+			val.basicAuth.publicPaths.split('\n').forEach(raw => {
+				const path = raw.trim();
+				if (!path) return;
+				if (!path.startsWith('/')) {
+					ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Each public path must start with "/".', path: ['basicAuth', 'publicPaths'] });
+				} else if (path.split('/').includes('..')) {
+					ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Public paths cannot contain "..".', path: ['basicAuth', 'publicPaths'] });
+				} else if (!/^\/[^*]*(\/\*)?$/.test(path)) {
+					ctx.addIssue({
+						code: z.ZodIssueCode.custom,
+						message: 'Use absolute paths like /health or /api/* (a wildcard is only allowed at the end as "/*").',
+						path: ['basicAuth', 'publicPaths']
+					});
+				} else if (path === '/') {
+					ctx.addIssue({
+						code: z.ZodIssueCode.custom,
+						message: '"/" makes every route public — disable basic auth instead.',
+						path: ['basicAuth', 'publicPaths']
+					});
+				}
+			});
 		}
 		if (val.registryAuth.enabled && !val.registryAuth.server.trim()) {
 			ctx.addIssue({
@@ -344,7 +370,7 @@ export function snapshot(service: Service): ServiceSettingsValues {
 	const hc = service.config.healthCheck;
 	const res = service.config.resources;
 	const as = service.config.autoscaling;
-	const ba = (service.config as { basicAuth?: { enabled?: boolean; username?: string; hasPassword?: boolean } }).basicAuth;
+	const ba = (service.config as { basicAuth?: { enabled?: boolean; username?: string; hasPassword?: boolean; publicPaths?: string[] } }).basicAuth;
 
 	return {
 		name: service.name,
@@ -422,6 +448,7 @@ export function snapshot(service: Service): ServiceSettingsValues {
 			enabled: ba?.enabled ?? false,
 			username: ba?.username ?? '',
 			password: '',
+			publicPaths: (ba?.publicPaths ?? []).join('\n'),
 			hasPassword: ba?.hasPassword ?? false
 		},
 		registryAuth: (() => {
