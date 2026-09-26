@@ -364,11 +364,51 @@ describe('convergeNetworking — auth-exempt public paths', () => {
 		// Explicit priority so the exempt routers always outrank the main PathPrefix("/") router; middleware annotation stays absent.
 		expect(body.metadata?.annotations).toEqual({ 'traefik.ingress.kubernetes.io/router.priority': '1000' });
 		expect(body.spec?.rules?.[0]?.host).toBe('a.test');
+		// "/api/*" must not exempt string-prefix siblings like "/apikeys": Prefix is pinned to "/api/" plus an exact "/api".
 		expect(body.spec?.rules?.[0]?.http?.paths).toEqual([
 			{ path: '/health', pathType: 'Exact', backend: { service: { name: NAME, port: { number: 80 } } } },
-			{ path: '/api', pathType: 'Prefix', backend: { service: { name: NAME, port: { number: 80 } } } }
+			{ path: '/api/', pathType: 'Prefix', backend: { service: { name: NAME, port: { number: 80 } } } },
+			{ path: '/api', pathType: 'Exact', backend: { service: { name: NAME, port: { number: 80 } } } }
 		]);
 		expect(stepMessages(events, 'ingress-converged')).toContain(`Created Ingress ${NAME}-public in ns (hosts: a.test)`);
+	});
+
+	test('skips the public Ingress entirely when every path entry collapses away', async () => {
+		const core = fakeCore({ existing: { metadata: { name: NAME }, spec: { ports: [{ port: 80 }] } } as V1Service });
+		const net = fakeNet({ existing: null });
+		const events = await run({
+			core,
+			net,
+			ports: [],
+			domains: [domain('a.test', 80)],
+			basicAuth: { username: 'u', password: 'p', publicPaths: ['/*'] }
+		});
+
+		// Only the protected main Ingress is created; nothing path-less ever reaches the API.
+		expect(net.calls.create).toBe(1);
+		expect(net.getCreated()?.metadata?.name).toBe(NAME);
+		expect(stepMessages(events, 'ingress-converged')).toEqual([`Created Ingress ${NAME} in ns (hosts: a.test)`]);
+
+		// A live public Ingress from an earlier config is torn down instead of updated.
+		const matchingMain = {
+			metadata: {
+				name: NAME,
+				annotations: { 'traefik.ingress.kubernetes.io/router.middlewares': `ns-${NAME}-basic-auth@kubernetescrd` }
+			},
+			spec: {
+				rules: [{ host: 'a.test', http: { paths: [{ path: '/', pathType: 'Prefix', backend: { service: { name: NAME, port: { number: 80 } } } }] } }]
+			}
+		} as V1Ingress;
+		const stale = fakeNet({
+			existing: matchingMain,
+			public: {
+				metadata: { name: `${NAME}-public` },
+				spec: { rules: [{ host: 'a.test', http: { paths: [{ path: '/api', pathType: 'Prefix' }] } }] }
+			} as V1Ingress
+		});
+		await run({ core, net: stale, ports: [], domains: [domain('a.test', 80)], basicAuth: { username: 'u', password: 'p', publicPaths: ['/*'] } });
+		// Main Ingress already matches (unchanged); the stale public one is torn down, never updated.
+		expect(stale.calls).toEqual({ create: 0, replace: 0, delete: 1 });
 	});
 
 	test('replaces the public Ingress when the path list changes', async () => {

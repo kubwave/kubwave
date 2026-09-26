@@ -358,21 +358,29 @@ async function convergeService(coreApi: CoreV1Api, namespace: string, serviceId:
 	return 'unchanged';
 }
 
-// Path entries served without basic auth: bare path = exact match, trailing /* = prefix including everything below.
-// Derived "/" entries are dropped defensively; the API rejects them, but this runs on stored config.
+// Path entries served without basic auth: bare path = exact match, trailing /* = everything below it.
+// "/foo/*" becomes Exact "/foo" + Prefix "/foo/": Traefik's PathPrefix is a raw string match, so Prefix("/foo")
+// would also exempt siblings like "/apikeys". Derived "/" and "" entries are dropped; the API rejects them, but this runs on stored config.
 function publicPathRules(publicPaths: string[]): Array<{ path: string; pathType: 'Exact' | 'Prefix' }> {
 	return publicPaths
-		.map(entry => (entry.endsWith('/*') ? { path: entry.slice(0, -2), pathType: 'Prefix' as const } : { path: entry, pathType: 'Exact' as const }))
+		.flatMap(entry =>
+			entry.endsWith('/*')
+				? [
+						{ path: `${entry.slice(0, -2)}/`, pathType: 'Prefix' as const },
+						{ path: entry.slice(0, -2), pathType: 'Exact' as const }
+					]
+				: [{ path: entry, pathType: 'Exact' as const }]
+		)
 		.filter(rule => rule.path !== '/' && rule.path !== '');
 }
 
-// Sibling Ingress without the basic-auth middleware annotation; Traefik's longer-rule router priority lets these paths bypass auth.
+// Sibling Ingress without the basic-auth middleware annotation; an explicit Traefik router priority lets these paths bypass auth.
 function buildPublicIngress(
 	serviceId: string,
 	namespace: string,
 	domains: ServiceDomain[],
 	ingress: IngressOptions,
-	publicPaths: string[]
+	pathRules: Array<{ path: string; pathType: 'Exact' | 'Prefix' }>
 ): V1Ingress {
 	const name = publicIngressName(serviceId);
 	const serviceName = internalServiceName(serviceId);
@@ -381,7 +389,6 @@ function buildPublicIngress(
 	// Traefik ranks routers by rule length; a short exact path would tie with or lose to the main `PathPrefix("/")` rule and stay behind basic auth.
 	annotations['traefik.ingress.kubernetes.io/router.priority'] = '1000';
 	const hosts = domains.map(domain => domain.host);
-	const paths = publicPathRules(publicPaths);
 	return {
 		apiVersion: 'networking.k8s.io/v1',
 		kind: 'Ingress',
@@ -396,7 +403,7 @@ function buildPublicIngress(
 			...(ingress.clusterIssuer ? { tls: [{ hosts, secretName: `${name}-tls` }] } : {}),
 			rules: domains.map(domain => ({
 				host: domain.host,
-				http: { paths: paths.map(p => ({ ...p, backend: { service: { name: serviceName, port: { number: domain.port } } } })) }
+				http: { paths: pathRules.map(p => ({ ...p, backend: { service: { name: serviceName, port: { number: domain.port } } } })) }
 			}))
 		}
 	};
@@ -412,16 +419,17 @@ async function convergePublicIngress(
 	basicAuth?: BasicAuthSpec
 ): Promise<ResourceAction> {
 	const name = publicIngressName(serviceId);
-	const publicPaths = basicAuth?.publicPaths ?? [];
+	// Gate on the derived rules: entries that collapse away ("/"-targets) must not produce a path-less Ingress the API would reject.
+	const pathRules = publicPathRules(basicAuth?.publicPaths ?? []);
 	const existing = await readIngressOrNull(netApi, namespace, name);
 
-	if (publicPaths.length === 0 || domains.length === 0) {
+	if (pathRules.length === 0 || domains.length === 0) {
 		if (!existing) return 'unchanged';
 		await deleteIgnoreMissing(() => netApi.deleteNamespacedIngress({ name, namespace }));
 		return 'deleted';
 	}
 
-	const desired = buildPublicIngress(serviceId, namespace, domains, ingress, publicPaths);
+	const desired = buildPublicIngress(serviceId, namespace, domains, ingress, pathRules);
 	if (!existing) {
 		await netApi.createNamespacedIngress({ namespace, body: desired });
 		return 'created';
@@ -430,7 +438,7 @@ async function convergePublicIngress(
 		await replaceWithRetry({
 			label: `Ingress ${name}`,
 			read: () => readIngressOrNull(netApi, namespace, name),
-			build: () => buildPublicIngress(serviceId, namespace, domains, ingress, publicPaths),
+			build: () => buildPublicIngress(serviceId, namespace, domains, ingress, pathRules),
 			carryOver: (fresh, desiredBody) => {
 				const merged = { ...fresh.metadata?.annotations, ...desiredBody.metadata?.annotations };
 				if (desiredBody.metadata?.annotations?.[MIDDLEWARE_ANNOTATION] == null) delete merged[MIDDLEWARE_ANNOTATION];
