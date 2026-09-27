@@ -22,6 +22,7 @@ export const UPCLOUD_AUTOSCALER_NAMESPACE = 'kube-system';
 export const UPCLOUD_AUTOSCALER_SECRET = 'upcloud-autoscaler';
 export const UPCLOUD_AUTOSCALER_DEPLOYMENT = 'cluster-autoscaler';
 export const UPCLOUD_AUTOSCALER_INSTANCE = 'upcloud-autoscaler';
+export const UPCLOUD_AUTOSCALER_DEFAULT_IMAGE_TAG = 'v1.29.5';
 export const UPCLOUD_CLUSTER_ID_PLACEHOLDER = '${UPCLOUD_CLUSTER_ID}';
 export const UPCLOUD_AUTOSCALER_IMAGE_TAG_PLACEHOLDER = '${UPCLOUD_AUTOSCALER_IMAGE_TAG}';
 export const UPCLOUD_AUTOSCALER_NODES_FLAGS_PLACEHOLDER = '            # ${UPCLOUD_AUTOSCALER_NODES_FLAGS}';
@@ -200,7 +201,7 @@ export async function teardownUpcloudAutoscaler(kc: KubeConfig, installed = fals
 	const spinner = p.spinner();
 	spinner.start('Removing UpCloud Cluster Autoscaler...');
 	try {
-		await deleteManifest(kc, renderAutoscalerDeployment({ clusterUuid: 'placeholder', imageTag: 'v1.29.5' }));
+		await deleteManifest(kc, renderAutoscalerDeployment({ clusterUuid: 'placeholder', imageTag: UPCLOUD_AUTOSCALER_DEFAULT_IMAGE_TAG }));
 		await deleteManifest(kc, clusterAutoscalerRbac);
 		try {
 			const secret = await core.readNamespacedSecret({ namespace: UPCLOUD_AUTOSCALER_NAMESPACE, name: UPCLOUD_AUTOSCALER_SECRET });
@@ -383,8 +384,9 @@ async function readClusterKubernetesVersion(kc: KubeConfig): Promise<string | un
 export function resolveAutoscalerImageTag(clusterVersion: string | undefined, override: string | undefined): { tag: string; warning?: string } {
 	if (override) return { tag: override };
 	const match = clusterVersion?.match(/^v?(\d+)\.(\d+)/);
+	const fallback = UPCLOUD_AUTOSCALER_DEFAULT_IMAGE_TAG;
 	if (!match) {
-		return { tag: 'v1.29.5', warning: 'Could not determine the cluster Kubernetes version; defaulting the UpCloud autoscaler image to v1.29.5.' };
+		return { tag: fallback, warning: `Could not determine the cluster Kubernetes version; defaulting the UpCloud autoscaler image to ${fallback}.` };
 	}
 	const major = Number(match[1]);
 	const minor = Number(match[2]);
@@ -393,13 +395,13 @@ export function resolveAutoscalerImageTag(clusterVersion: string | undefined, ov
 	if (major === 1 && minor === 29) return { tag: 'v1.29.5' };
 	if (major === 1 && minor > 29) {
 		return {
-			tag: 'v1.29.5',
-			warning: `Cluster runs Kubernetes 1.${minor}; the newest mapped UpCloud autoscaler tag is v1.29.5 (override with --upcloud-autoscaler-image-tag if needed).`
+			tag: fallback,
+			warning: `Cluster runs Kubernetes 1.${minor}; the newest mapped UpCloud autoscaler tag is ${fallback} (override with --upcloud-autoscaler-image-tag if needed).`
 		};
 	}
 	return {
-		tag: 'v1.29.5',
-		warning: `Cluster Kubernetes version "${clusterVersion}" predates the supported autoscaler range; defaulting to v1.29.5.`
+		tag: fallback,
+		warning: `Cluster Kubernetes version "${clusterVersion}" predates the supported autoscaler range; defaulting to ${fallback}.`
 	};
 }
 
