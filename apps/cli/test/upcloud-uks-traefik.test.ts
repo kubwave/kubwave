@@ -2,7 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { buildUpcloudTraefikValues } from '../src/platforms/upcloud/traefik-values.js';
 import { buildUpgradeValues } from '../src/lib/upgrade-plan.js';
 import { resolveDependencyState } from '../src/lib/dependencies.js';
-import { TCP_PORT_POOL } from '../src/lib/traefik.js';
+
+const TCP_PORT_POOL = { enabled: true, start: 30100, size: 20 };
 
 function expectTcpPoolFrontends(frontends: Array<{ name: string; mode: string; port: number }>): void {
 	const tcpFrontends = frontends.filter(frontend => frontend.name.startsWith('tcp-'));
@@ -14,7 +15,7 @@ function expectTcpPoolFrontends(frontends: Array<{ name: string; mode: string; p
 
 describe('buildUpcloudTraefikValues', () => {
 	test('service is a LoadBalancer with UpCloud TCP passthrough config', () => {
-		const values = buildUpcloudTraefikValues();
+		const values = buildUpcloudTraefikValues(TCP_PORT_POOL);
 		const service = values.service as Record<string, unknown>;
 		expect(service.type).toBe('LoadBalancer');
 		const annotations = service.annotations as Record<string, string>;
@@ -66,6 +67,7 @@ describe('buildUpcloudTraefikValues', () => {
 			ingressControllerNamespace: 'traefik',
 			traefikValues: {},
 			dependencies: resolveDependencyState({}),
+			tcpPortPool: TCP_PORT_POOL,
 			ha: false
 		};
 		const values = buildUpgradeValues(state, '0.3.0') as Record<string, unknown>;

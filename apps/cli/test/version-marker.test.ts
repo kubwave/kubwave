@@ -201,8 +201,8 @@ describe('version marker', () => {
 			certManager: {},
 			cnpg: {}
 		});
-		// The default TCP pool rides along so updates keep re-applying it to the Traefik release.
-		expect(Object.keys(dependencies.traefik.helmValues.ports)).toHaveLength(20);
+		// The pool is disabled by default, so the marker pins an empty ports map for updates to re-apply.
+		expect(dependencies.traefik.helmValues.ports).toEqual({});
 		expect(writtenData['ingress_class_name']).toBeUndefined();
 		expect(writtenData['ingress_controller_namespace']).toBeUndefined();
 		expect(writtenData['traefik_values_json']).toBeUndefined();

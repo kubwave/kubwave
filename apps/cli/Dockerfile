@@ -86,4 +86,7 @@ COPY --from=builder /app/apps/cli/dist/kubwave /usr/local/bin/kubwave
 # extracting the embedded copy onto /tmp. helm is a static binary, so it runs here.
 COPY --chmod=0755 --from=builder /app/apps/cli/build/embedded/helm /usr/local/bin/helm
 USER 1000
+# distroless:nonroot defaults to /home/nonroot (uid 65532, 0700). As uid 1000 the CLI can't
+# chdir there, so every Bun.spawn (helm included) failed with EACCES from posix_spawn.
+WORKDIR /
 ENTRYPOINT ["kubwave"]

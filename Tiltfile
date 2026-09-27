@@ -84,7 +84,7 @@ k8s_yaml(helm(
     name='kubwave',
     namespace='kubwave',
     values=['./infra/helm/kubwave/values.yaml'],
-    set=['workloadIngress.loadBalancerIp=127.0.0.1', 'builds.buildToolsImage=' + _build_tools_cluster_image] + (['api.secret.data.GITEA_TOKEN=' + gitea_token] if gitea_token else []),
+    set=['workloadIngress.loadBalancerIp=127.0.0.1', 'workloadIngress.tcpPortPool.enabled=true', 'builds.buildToolsImage=' + _build_tools_cluster_image] + (['api.secret.data.GITEA_TOKEN=' + gitea_token] if gitea_token else []),
 ))
 
 # ---- Resource grouping & port-forwards ----

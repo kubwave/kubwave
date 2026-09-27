@@ -78,18 +78,38 @@ mock.module('drizzle-orm', () => ({
 const { PlatformTcpPortPoolSettingsService } = await import('~/modules/platform/settings/tcp-port-pool/platform-tcp-port-pool-settings.service');
 const { UpdateConcurrentError } = await import('~/modules/platform/updates/platform-updates.errors');
 
+let runtimePool = { enabled: false, start: 30100, size: 0 };
+
 function service() {
-	return new PlatformTcpPortPoolSettingsService({ getInstalledVersion: () => '1.2.3' } as never);
+	return new PlatformTcpPortPoolSettingsService({ getInstalledVersion: () => '1.2.3' } as never, { tcpPortPool: runtimePool } as never);
 }
 
 beforeEach(() => {
 	activeRun = false;
 	exposedPorts = [];
 	savedSetting = null;
+	runtimePool = { enabled: false, start: 30100, size: 0 };
 	createdRuns.length = 0;
 });
 
 describe('PlatformTcpPortPoolSettingsService', () => {
+	test('reports the stored pool when one is saved', async () => {
+		savedSetting = { enabled: true, start: 31000, size: 5 };
+		runtimePool = { enabled: false, start: 30100, size: 0 };
+
+		expect(await service().getSettings()).toEqual({ enabled: true, start: 31000, size: 5 });
+	});
+
+	test('without a stored pool, reports the pool the install runs instead of the disabled default', async () => {
+		runtimePool = { enabled: true, start: 30100, size: 20 };
+
+		expect(await service().getSettings()).toEqual({ enabled: true, start: 30100, size: 20 });
+	});
+
+	test('without a stored pool or a runtime pool, reports the disabled default', async () => {
+		expect(await service().getSettings()).toEqual({ enabled: false, start: 30100, size: 20 });
+	});
+
 	test('persists the pool and creates an atomic same-version reconcile run', async () => {
 		const result = await service().updateSettings({ enabled: true, start: 31000, size: 5 }, '00000000-0000-4000-8000-000000000002');
 

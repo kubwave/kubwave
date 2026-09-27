@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DEFAULT_TCP_PORT_POOL, TCP_PORT_POOL_SETTINGS_KEY, resolveTcpPortPoolSettings, type TcpPortPoolSettings } from '@kubwave/kube';
 import { db, servicePortExposures, settings, updateRuns } from '@kubwave/db';
 import { asc, eq, gt, inArray, lt, or } from 'drizzle-orm';
+import { BackendConfigService } from '../../../../shared/config/backend-config.service.js';
 import { ApiError } from '../../../../shared/errors/api-error.js';
 import { UpdateConcurrentError } from '../../updates/platform-updates.errors.js';
 import { serializeUpdateRun } from '../../updates/platform-updates.service.js';
@@ -11,11 +12,15 @@ import { tcpPortPoolConflicts } from './tcp-port-pool.rules.js';
 
 @Injectable()
 export class PlatformTcpPortPoolSettingsService {
-	constructor(private readonly version: PlatformVersionService) {}
+	constructor(
+		private readonly version: PlatformVersionService,
+		private readonly config: BackendConfigService
+	) {}
 
 	async getSettings(): Promise<TcpPortPoolSettingsDto> {
 		const [row] = await db.select({ value: settings.value }).from(settings).where(eq(settings.key, TCP_PORT_POOL_SETTINGS_KEY)).limit(1);
-		return resolveTcpPortPoolSettings(row?.value as Partial<TcpPortPoolSettings> | null, DEFAULT_TCP_PORT_POOL);
+		// Without a stored row, report the pool the install actually runs (Helm values → env), not the new-install default.
+		return resolveTcpPortPoolSettings(row?.value ?? this.config.tcpPortPool, DEFAULT_TCP_PORT_POOL);
 	}
 
 	async updateSettings(input: TcpPortPoolSettingsInput, userId: string): Promise<TcpPortPoolSettingsUpdateDto> {

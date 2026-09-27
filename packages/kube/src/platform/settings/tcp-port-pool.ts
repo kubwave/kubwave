@@ -8,7 +8,7 @@ export interface TcpPortPoolSettings {
 	size: number;
 }
 
-export const DEFAULT_TCP_PORT_POOL: TcpPortPoolSettings = { enabled: true, start: 30100, size: 20 };
+export const DEFAULT_TCP_PORT_POOL: TcpPortPoolSettings = { enabled: false, start: 30100, size: 20 };
 
 export function resolveTcpPortPoolSettings(value: unknown, fallback: TcpPortPoolSettings = DEFAULT_TCP_PORT_POOL): TcpPortPoolSettings {
 	const v = value && typeof value === 'object' && !Array.isArray(value) ? (value as Partial<TcpPortPoolSettings>) : {};

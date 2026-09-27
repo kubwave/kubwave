@@ -4,10 +4,11 @@ import { parse } from 'yaml';
 import { ApiextensionsV1Api, AppsV1Api, CoreV1Api, CustomObjectsApi, NetworkingV1Api } from '@kubernetes/client-node';
 import * as realHelm from '../src/lib/helm.js';
 import { buildTraefikHelmValues } from '../src/lib/traefik.js';
-import { mergeDependencyState } from '../src/lib/dependency-state.js';
+import { mergeDependencyState, withTcpPortPool } from '../src/lib/dependency-state.js';
 import { APP_NAMESPACE } from '../src/lib/constants.js';
 import { clackStub } from './support/clack-stub.js';
 
+const ENABLED_POOL = { enabled: true, start: 30100, size: 20 };
 const execHelmCalls: string[][] = [];
 let execHelmResults = [{ stdout: '', stderr: '', exitCode: 0 }];
 // null = release not readable (exitCode 1); a JSON string = the live user-supplied values.
@@ -254,7 +255,7 @@ describe('dependency checks and installation orchestration', () => {
 			deployments: certManagerDeployments()
 		});
 
-		const results = await ensureDependenciesSilent(kc, reporter, createDependencyStateStub());
+		const results = await ensureDependenciesSilent(kc, reporter, withTcpPortPool(createDependencyStateStub(), ENABLED_POOL));
 		expect(results[0]).toEqual({ name: 'Traefik', alreadyInstalled: false, installed: true, message: 'Traefik successfully installed' });
 		const upgradeCall = execHelmCalls.find(args => args[0] === 'upgrade')!;
 		expect(upgradeCall).toContain('traefik/traefik');
@@ -287,7 +288,7 @@ describe('dependency checks and installation orchestration', () => {
 			deployments: certManagerDeployments()
 		});
 
-		await ensureDependenciesSilent(kc, reporter, createDependencyStateStub());
+		await ensureDependenciesSilent(kc, reporter, withTcpPortPool(createDependencyStateStub(), ENABLED_POOL));
 
 		const upgradeCall = execHelmCalls.find(args => args[0] === 'upgrade')!;
 		const valuesFile = upgradeCall[upgradeCall.indexOf('-f') + 1]!;
@@ -295,6 +296,32 @@ describe('dependency checks and installation orchestration', () => {
 		expect(values.additionalArguments).toEqual(['--providers.kubernetesingress.allowemptyservices=true']);
 		expect(values.ports.stale).toBeUndefined();
 		expect(Object.keys(values.ports)).toHaveLength(20);
+	});
+
+	test('re-applies traefik values when the TCP pool was disabled but the release still has pool ports', async () => {
+		execHelmCalls.length = 0;
+		const enabled = buildTraefikHelmValues(mergeDependencyState(withTcpPortPool(createDependencyStateStub(), ENABLED_POOL)).traefik);
+		helmGetValuesStdout = JSON.stringify(enabled);
+		execHelmResults = [
+			{ stdout: '', stderr: '', exitCode: 0 },
+			{ stdout: '', stderr: '', exitCode: 0 },
+			{ stdout: '', stderr: '', exitCode: 0 }
+		];
+		const reporter = recordingReporter();
+		const kc = createKubeConfigStub({
+			ingressClasses: [{ metadata: { name: 'traefik' } }],
+			deployment: readyDeployment(),
+			ingressClass: {},
+			service: { spec: { type: 'LoadBalancer' }, status: { loadBalancer: { ingress: [] } } },
+			crd: establishedCrd(),
+			deployments: certManagerDeployments()
+		});
+
+		const results = await ensureDependenciesSilent(kc, reporter, withTcpPortPool(createDependencyStateStub(), { ...ENABLED_POOL, enabled: false }));
+		expect(results[0]).toEqual({ name: 'Traefik', alreadyInstalled: false, installed: true, message: 'Traefik successfully installed' });
+		const upgradeCall = execHelmCalls.find(args => args[0] === 'upgrade')!;
+		const values = parse(readFileSync(upgradeCall[upgradeCall.indexOf('-f') + 1]!, 'utf8'));
+		expect(values.ports).toEqual({});
 	});
 
 	test('treats live values that are a superset of the desired ones as installed (no drift)', async () => {

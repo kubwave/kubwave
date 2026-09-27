@@ -183,10 +183,10 @@ data:
                   mountPath: /tmp/work
             {{- end }}
             # Bun (CLI) phase: resolves the install state via the k8s API + DB and
-            # writes /tmp/work/upgrade-values.yaml. It must NOT run helm — Bun.spawn(helm)
-            # EACCESes under this Job's securityContext (runAsNonRoot + seccomp +
-            # no_new_privs) even though helm is a 0755 static binary. The actual upgrade
-            # runs in the helm-upgrade container below, with helm as PID 1.
+            # writes /tmp/work/upgrade-values.yaml. The kubwave upgrade itself runs in the
+            # helm-upgrade container below, with helm as PID 1. (CLI images before the
+            # `WORKDIR /` fix EACCES on every Bun.spawn: the distroless home dir isn't
+            # traversable by uid 1000.)
             - name: helm-plan
               image: "{{`{{TARGET_IMAGE}}`}}"
               args:
@@ -227,8 +227,7 @@ data:
                   mountPath: /tmp
                 - name: work
                   mountPath: /tmp/work
-            # helm runs as PID 1 here (entrypoint overridden), never Bun.spawn'd, which
-            # is what sidesteps the EACCES. The chart was staged at /tmp/work/chart.tgz by
+            # helm runs as PID 1 here (entrypoint overridden), never Bun.spawn'd. The chart was staged at /tmp/work/chart.tgz by
             # prepare and the values at /tmp/work/upgrade-values.yaml by helm-plan, so every
             # dynamic input is in the values file and these args are fully static. helm uses
             # the in-cluster service-account config; HOME is the writable work volume.

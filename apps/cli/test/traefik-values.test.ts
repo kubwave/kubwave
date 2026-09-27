@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { buildTraefikHelmValues } from '../src/lib/traefik.js';
+import { buildTcpPoolPorts, buildTraefikHelmValues } from '../src/lib/traefik.js';
 import { buildSharedTraefikValues } from '../src/platforms/cloudfleet/traefik-values.js';
+
+const ENABLED_POOL = { enabled: true, start: 30100, size: 20 };
 
 function traefikConfig(helmValues: Record<string, unknown>) {
 	return { kind: 'traefik' as const, namespace: 'traefik', releaseName: 'traefik', ingressClassName: 'traefik', helmValues };
@@ -21,15 +23,20 @@ describe('buildTraefikHelmValues', () => {
 		expect(values.resources?.requests).toEqual({ cpu: '100m', memory: '128Mi' });
 	});
 
-	test('exposes the public TCP pool as Traefik entrypoints (tcp-30100…tcp-30119)', () => {
+	test('exposes no TCP entrypoints by default (pool disabled)', () => {
 		const values = buildTraefikHelmValues() as { ports?: Record<string, unknown> };
+		expect(values.ports).toEqual({});
+	});
+
+	test('exposes an enabled TCP pool as Traefik entrypoints (tcp-30100…tcp-30119)', () => {
+		const values = buildTraefikHelmValues(traefikConfig({ ports: buildTcpPoolPorts(ENABLED_POOL) })) as { ports?: Record<string, unknown> };
 		expect(Object.keys(values.ports ?? {})).toHaveLength(20);
 		expect(values.ports?.['tcp-30100']).toEqual({ port: 30100, expose: { default: true }, exposedPort: 30100, protocol: 'TCP' });
 		expect(values.ports?.['tcp-30119']).toEqual({ port: 30119, expose: { default: true }, exposedPort: 30119, protocol: 'TCP' });
 	});
 
 	test('platform helmValues merge on top without dropping the TCP pool', () => {
-		const values = buildTraefikHelmValues(traefikConfig(buildSharedTraefikValues({}))) as {
+		const values = buildTraefikHelmValues(traefikConfig({ ...buildSharedTraefikValues({}), ports: buildTcpPoolPorts(ENABLED_POOL) })) as {
 			ports?: Record<string, unknown>;
 			service?: Record<string, unknown>;
 		};

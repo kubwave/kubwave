@@ -2,7 +2,7 @@
 import { Loader2, Network, ShieldAlert } from 'lucide-vue-next';
 
 const { settings, save } = useTcpPortPoolSettings();
-const draft = reactive({ enabled: true, start: 30100, size: 20 });
+const draft = reactive({ enabled: false, start: 30100, size: 20 });
 const updateRunId = ref<string | null>(null);
 const progressOpen = ref(false);
 const retryAvailable = ref(false);

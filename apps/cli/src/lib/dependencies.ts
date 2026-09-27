@@ -347,12 +347,16 @@ export function getDependencies(): ClusterDependency[] {
 	return DEPENDENCIES;
 }
 
-// Drift = a desired key missing/different in the live user-supplied values; extra live keys and unreadable releases don't count.
+// Drift = a desired key missing/different in the live user-supplied values, or a live port the desired values dropped
+// (disabling/shrinking the TCP pool); other extra live keys and unreadable releases don't count.
 async function traefikReleaseValuesDrifted(config: TraefikDependencyState): Promise<boolean> {
 	const values = await tryReadTraefikReleaseValues(config);
 	if (!values) return false;
 	try {
-		return !valuesSubsetOf(values, buildTraefikHelmValues(config));
+		const desired = buildTraefikHelmValues(config);
+		const desiredPorts = isRecord(desired.ports) ? desired.ports : {};
+		const livePorts = isRecord(values.ports) ? Object.keys(values.ports) : [];
+		return !valuesSubsetOf(values, desired) || livePorts.some(key => !(key in desiredPorts));
 	} catch {
 		return false;
 	}

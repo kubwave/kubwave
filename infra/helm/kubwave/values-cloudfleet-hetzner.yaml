@@ -142,7 +142,7 @@ workloadIngress:
   loadBalancerIp: ''
   # Must match the TCP entrypoints on the CLI-managed Traefik release (default pool 30100-30119).
   tcpPortPool:
-    enabled: true
+    enabled: false
     start: 30100
     size: 20
 
