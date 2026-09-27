@@ -19,18 +19,20 @@ spec:
       secretName: {{ .Values.ingress.tls.secretName }}
   {{- end }}
   rules:
-    # Same-origin routing on one host: /api → api, everything else → console.
-    # The /api rule MUST come first so it wins over the catch-all / prefix.
+    # Same-origin routing on one host: /api and MCP OAuth discovery → api, everything else → console.
+    # The api rules MUST come first so they win over the catch-all / prefix.
     - host: {{ required "ingress.host is required" .Values.ingress.host | quote }}
       http:
         paths:
-          - path: /api
+          {{- range list "/api" "/.well-known/oauth-protected-resource" "/.well-known/oauth-authorization-server" }}
+          - path: {{ . }}
             pathType: Prefix
             backend:
               service:
                 name: api
                 port:
-                  number: {{ .Values.api.port }}
+                  number: {{ $.Values.api.port }}
+          {{- end }}
           - path: /
             pathType: Prefix
             backend:

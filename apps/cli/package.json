@@ -41,10 +41,13 @@
 		"test:coverage": "bun test --isolate --coverage --coverage-reporter=text --coverage-reporter=lcov test"
 	},
 	"dependencies": {
-		"@kubwave/crypto": "workspace:*",
-		"@kubwave/kube": "workspace:*",
 		"@clack/prompts": "^1.6.0",
 		"@kubernetes/client-node": "^1.2.0",
+		"@kubwave/crypto": "workspace:*",
+		"@kubwave/kube": "workspace:*",
+		"@modelcontextprotocol/client": "2.1.0",
+		"@modelcontextprotocol/core": "2.1.0",
+		"@modelcontextprotocol/server": "2.1.0",
 		"commander": "^15.0.0",
 		"postgres": "^3.4.9",
 		"yaml": "^2.9.0"

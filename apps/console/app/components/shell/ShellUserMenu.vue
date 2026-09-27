@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, ChevronsUpDown, LogOut, Monitor, Moon, Sun } from 'lucide-vue-next';
+import { Bot, Check, ChevronsUpDown, LogOut, Monitor, Moon, Sun } from 'lucide-vue-next';
 import type { SessionUser } from '~/composables/use-auth';
 
 defineProps<{ user: SessionUser; collapsed?: boolean }>();
@@ -53,6 +53,13 @@ function selectTheme(event: Event, value: (typeof themes)[number]['value']) {
 					<p class="truncate text-xs font-normal text-muted-foreground">{{ user.email }}</p>
 				</div>
 			</DropdownMenuLabel>
+			<DropdownMenuSeparator />
+			<DropdownMenuItem as-child>
+				<NuxtLink to="/account/mcp">
+					<Bot />
+					AI access (MCP)
+				</NuxtLink>
+			</DropdownMenuItem>
 			<DropdownMenuSeparator />
 			<DropdownMenuLabel class="text-xs font-normal text-muted-foreground">Theme</DropdownMenuLabel>
 			<DropdownMenuItem v-for="theme in themes" :key="theme.value" @select="(event: Event) => selectTheme(event, theme.value)">

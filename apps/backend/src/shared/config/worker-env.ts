@@ -100,6 +100,11 @@ export interface WorkerRuntimeConfig {
 	gitLsRemoteTimeoutMs: number;
 	gitDiffTimeoutMs: number;
 	gitPollErrorBackoffSeconds: number;
+	registryTagWatchIntervalMs: number;
+	registryTagWatchBatch: number;
+	registryTagWatchServiceIntervalSeconds: number;
+	registryTagWatchErrorBackoffSeconds: number;
+	registryTagWatchTimeoutMs: number;
 	templateCatalogUrl: string;
 	templateCatalogPollIntervalMs: number;
 	templateCatalogPollEnabled: boolean;
@@ -175,6 +180,11 @@ export function resolveWorkerRuntimeConfig(): WorkerRuntimeConfig {
 		gitLsRemoteTimeoutMs: num('GIT_LS_REMOTE_TIMEOUT_MS', 20_000),
 		gitDiffTimeoutMs: num('GIT_DIFF_TIMEOUT_MS', 30_000),
 		gitPollErrorBackoffSeconds: num('GIT_POLL_ERROR_BACKOFF_SECONDS', 300),
+		registryTagWatchIntervalMs: num('REGISTRY_TAG_WATCH_INTERVAL_MS', 15_000),
+		registryTagWatchBatch: num('REGISTRY_TAG_WATCH_BATCH', 20),
+		registryTagWatchServiceIntervalSeconds: num('REGISTRY_TAG_WATCH_SERVICE_INTERVAL_SECONDS', 120),
+		registryTagWatchErrorBackoffSeconds: num('REGISTRY_TAG_WATCH_ERROR_BACKOFF_SECONDS', 300),
+		registryTagWatchTimeoutMs: num('REGISTRY_TAG_WATCH_TIMEOUT_MS', 5000),
 		templateCatalogUrl: process.env.TEMPLATE_CATALOG_URL ?? 'https://raw.githubusercontent.com/kubwave/kubwave/main/packages/templates/catalog.json',
 		templateCatalogPollIntervalMs: num('TEMPLATE_CATALOG_POLL_INTERVAL_MS', 1_800_000),
 		// Default on (prod pulls catalog updates without redeploy); dev sets false so the API serves

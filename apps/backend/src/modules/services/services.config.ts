@@ -5,8 +5,10 @@ import type {
 	DockerfileServiceConfig,
 	DockerImageServiceConfig,
 	GithubRepoServiceConfig,
+	GiteaRepoServiceConfig,
 	PrivateRepoServiceConfig,
 	PublicRepoServiceConfig,
+	RegistryAuthConfig,
 	RuntimeConfig,
 	ServiceConfig,
 	ServiceConfigFile
@@ -15,31 +17,42 @@ import { DATABASE_ENGINE_CATALOG } from '@kubwave/db/database-engines';
 import { decryptSecret, encryptSecret, generatePassword } from '@kubwave/crypto';
 import { ApiError } from '../../shared/errors/api-error';
 import { normalizeRepoRelativePath, normalizeWatchPaths } from '../../shared/git/repo-relative-path.js';
+import { giteaCloneUrl } from '../git/gitea-api.js';
 import type {
 	DatabaseUpdateConfigInput,
 	DockerfileConfigInput,
 	DockerImageConfigInput,
 	GithubRepoConfigInput,
+	GiteaRepoConfigInput,
 	PrivateRepoConfigInput,
 	PublicRepoConfigInput
 } from './services.dto.js';
-import type { BasicAuthView, ServiceConfigView } from './services.types.js';
+import type { BasicAuthView, RegistryAuthView, ServiceConfigView } from './services.types.js';
 
 function toBasicAuthView(stored: BasicAuthConfig | undefined): BasicAuthView | undefined {
 	if (!stored) return undefined;
-	return { enabled: true, username: stored.username, hasPassword: true };
+	return { enabled: true, username: stored.username, hasPassword: true, ...(stored.publicPaths?.length ? { publicPaths: stored.publicPaths } : {}) };
+}
+
+function toRegistryAuthView(stored: RegistryAuthConfig | undefined): RegistryAuthView | undefined {
+	if (!stored) return undefined;
+	return { enabled: true, server: stored.server, username: stored.username, hasPassword: true };
 }
 
 export function toConfigView(stored: ServiceConfig): ServiceConfigView {
 	const { secrets, configFiles, basicAuth, ...rest } = stored;
+	// registryAuth exists on docker-image configs only, so a union-safe read beats a conditional destructure.
+	const registryAuth = 'registryAuth' in stored ? stored.registryAuth : undefined;
 	const basicAuthView = toBasicAuthView(basicAuth);
+	const registryAuthView = toRegistryAuthView(registryAuth);
 	const view = {
 		...rest,
 		domains: stored.domains ?? [],
 		secrets: (secrets ?? []).map(secret => ({ key: secret.key, hasValue: true })),
 		// Config files are decrypted for display so users can read/author their own configs.
 		...(configFiles ? { configFiles: configFiles.map(file => ({ path: file.path, content: decryptSecret(file.content) })) } : {}),
-		...(basicAuthView ? { basicAuth: basicAuthView } : {})
+		...(basicAuthView ? { basicAuth: basicAuthView } : {}),
+		...(registryAuthView ? { registryAuth: registryAuthView } : {})
 	};
 
 	delete (view as { password?: string }).password;
@@ -104,7 +117,15 @@ function normalizeRuntime(config: RuntimeConfig): RuntimeConfig {
 		...(configFiles.length > 0 ? { configFiles } : {}),
 		...(config.command && config.command.length > 0 ? { command: config.command } : {}),
 		...(config.args && config.args.length > 0 ? { args: config.args } : {}),
-		...(config.basicAuth?.username != null ? { basicAuth: { username: config.basicAuth.username.trim(), password: config.basicAuth.password } } : {}),
+		...(config.basicAuth?.username != null
+			? {
+					basicAuth: {
+						username: config.basicAuth.username.trim(),
+						password: config.basicAuth.password,
+						...(config.basicAuth.publicPaths?.length ? { publicPaths: config.basicAuth.publicPaths } : {})
+					}
+				}
+			: {}),
 		...(healthCheck?.enabled
 			? {
 					healthCheck: {
@@ -126,7 +147,15 @@ function normalizeRuntime(config: RuntimeConfig): RuntimeConfig {
 }
 
 export function normalizeDockerConfig(config: DockerImageServiceConfig): DockerImageServiceConfig {
-	return { image: config.image.trim(), tag: config.tag.trim(), ...normalizeRuntime(config) };
+	const registryAuth = config.registryAuth;
+	return {
+		image: config.image.trim(),
+		tag: config.tag.trim(),
+		...(registryAuth?.username != null
+			? { registryAuth: { server: registryAuth.server.trim(), username: registryAuth.username.trim(), password: registryAuth.password } }
+			: {}),
+		...normalizeRuntime(config)
+	};
 }
 
 export function normalizeDockerfileConfig(config: DockerfileServiceConfig): DockerfileServiceConfig {
@@ -168,6 +197,11 @@ export function normalizeGithubRepoConfig(config: GithubRepoServiceConfig): Gith
 	return { ...normalizePublicRepoConfig(rest as PublicRepoServiceConfig), installationId: installationId.trim(), repoFullName: repoFullName.trim() };
 }
 
+export function normalizeGiteaRepoConfig(config: GiteaRepoServiceConfig): GiteaRepoServiceConfig {
+	const { installationId, repoFullName, ...rest } = config;
+	return { ...normalizePublicRepoConfig(rest as PublicRepoServiceConfig), installationId: installationId.trim(), repoFullName: repoFullName.trim() };
+}
+
 export function resolveSecrets(
 	incoming: DockerImageConfigInput['secrets'],
 	existing: RuntimeConfig['secrets']
@@ -202,7 +236,7 @@ export function resolveConfigFiles(incoming: DockerImageConfigInput['configFiles
 }
 
 export function resolveBasicAuth(
-	incoming: { enabled: boolean; username?: string; password?: string | null } | undefined,
+	incoming: { enabled: boolean; username?: string; password?: string | null; publicPaths?: string[] } | undefined,
 	existing: BasicAuthConfig | undefined
 ): BasicAuthConfig | undefined {
 	if (!incoming?.enabled) return undefined;
@@ -210,10 +244,30 @@ export function resolveBasicAuth(
 	if (!username) {
 		throw new ApiError(400, 'A username is required when enabling basic auth.');
 	}
+	const publicPaths = [...new Set(incoming.publicPaths ?? [])];
 
-	if (incoming.password != null) return { username, password: encryptSecret(incoming.password) };
-	if (existing) return { username, password: existing.password };
+	if (incoming.password != null) return { username, password: encryptSecret(incoming.password), ...(publicPaths.length > 0 ? { publicPaths } : {}) };
+	if (existing) return { username, password: existing.password, ...(publicPaths.length > 0 ? { publicPaths } : {}) };
 	throw new ApiError(400, 'A password is required when enabling basic auth.');
+}
+
+export function resolveRegistryAuth(
+	incoming: { enabled: boolean; server?: string; username?: string; password?: string | null } | undefined,
+	existing: RegistryAuthConfig | undefined
+): RegistryAuthConfig | undefined {
+	if (!incoming?.enabled) return undefined;
+	const server = incoming.server?.trim();
+	const username = incoming.username?.trim();
+	if (!server) {
+		throw new ApiError(400, 'A registry server is required when enabling registry auth.');
+	}
+	if (!username) {
+		throw new ApiError(400, 'A username is required when enabling registry auth.');
+	}
+
+	if (incoming.password != null) return { server, username, password: encryptSecret(incoming.password) };
+	if (existing) return { server, username, password: existing.password };
+	throw new ApiError(400, 'A password is required when enabling registry auth.');
 }
 
 function withResolvedSensitive<
@@ -231,11 +285,13 @@ function withResolvedSensitive<
 export function buildStoredConfig(
 	input: Omit<DockerImageConfigInput, 'exposedPorts'>,
 	existingSecrets: RuntimeConfig['secrets'],
-	existingBasicAuth?: BasicAuthConfig
+	existingBasicAuth?: BasicAuthConfig,
+	existingRegistryAuth?: RegistryAuthConfig
 ): DockerImageServiceConfig {
 	return normalizeDockerConfig({
 		...withResolvedSensitive(input, existingSecrets, existingBasicAuth),
-		configFiles: resolveConfigFiles(input.configFiles)
+		configFiles: resolveConfigFiles(input.configFiles),
+		registryAuth: resolveRegistryAuth(input.registryAuth, existingRegistryAuth)
 	});
 }
 
@@ -275,6 +331,20 @@ export function buildStoredGithubRepoConfig(
 		...withResolvedSensitive(input, existingSecrets, existingBasicAuth),
 		repoUrl
 	} as unknown as GithubRepoServiceConfig);
+}
+
+export function buildStoredGiteaRepoConfig(
+	input: Omit<GiteaRepoConfigInput, 'exposedPorts'>,
+	existingSecrets: RuntimeConfig['secrets'],
+	existingBasicAuth: BasicAuthConfig | undefined,
+	instanceUrl: string
+): GiteaRepoServiceConfig {
+	const repoFullName = input.repoFullName.trim();
+	const repoUrl = giteaCloneUrl(instanceUrl, repoFullName);
+	return normalizeGiteaRepoConfig({
+		...withResolvedSensitive(input, existingSecrets, existingBasicAuth),
+		repoUrl
+	} as unknown as GiteaRepoServiceConfig);
 }
 
 function normalizeDatabaseConfig(

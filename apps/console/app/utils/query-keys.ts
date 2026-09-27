@@ -28,6 +28,8 @@ export const queryKeys = {
 	invitations: ['invitations'] as const,
 	adminUsers: ['admin', 'users'] as const,
 	smtp: ['admin', 'smtp'] as const,
+	aiSettings: ['admin', 'ai'] as const,
+	aiStatus: ['ai-status'] as const,
 	metricsSettings: ['admin', 'metrics'] as const,
 	haSettings: ['admin', 'ha'] as const,
 	tcpPortPoolSettings: ['admin', 'tcp-port-pool'] as const,
@@ -43,8 +45,15 @@ export const queryKeys = {
 	clusterUsage: (range: string) => ['admin', 'cluster', 'usage', range] as const,
 	clusterNode: (name: string) => ['admin', 'cluster', 'node', name] as const,
 	clusterNodeUsage: (name: string, range: string) => ['admin', 'cluster', 'node', name, 'usage', range] as const,
+	giteaConnection: ['admin', 'gitea'] as const,
+	giteaTeamConnection: (teamId: string) => ['teams', teamId, 'gitea-connection'] as const,
+	giteaInstallations: (teamId: string) => ['teams', teamId, 'gitea-installations'] as const,
+	giteaRepos: (teamId: string, installationId: string) => ['teams', teamId, 'gitea-installations', installationId, 'repos'] as const,
 	version: ['admin', 'version'] as const,
 	updates: ['admin', 'updates'] as const,
 	updateRun: (runId: string) => ['admin', 'updates', runId] as const,
-	updateRunLogs: (runId: string) => ['admin', 'updates', runId, 'logs'] as const
+	updateRunLogs: (runId: string) => ['admin', 'updates', runId, 'logs'] as const,
+	mcpInfo: ['mcp', 'info'] as const,
+	mcpAccess: ['mcp', 'access'] as const,
+	mcpAuthorization: (query: string) => ['mcp', 'authorization', query] as const
 };

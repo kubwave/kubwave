@@ -29,7 +29,8 @@ export function hasBuildStep(deployment: Deployment | null | undefined): boolean
 		deployment?.type === 'dockerfile' ||
 		deployment?.type === 'public-repo' ||
 		deployment?.type === 'private-repo' ||
-		deployment?.type === 'github-repo'
+		deployment?.type === 'github-repo' ||
+		deployment?.type === 'gitea-repo'
 	);
 }
 

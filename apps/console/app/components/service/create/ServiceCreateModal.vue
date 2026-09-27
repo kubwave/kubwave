@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import type { Component } from 'vue';
-import { ChevronDown, ChevronRight, Container, FileCode2, FileStack, Github, GitBranch, Lock, Sparkles } from 'lucide-vue-next';
+import { ChevronDown, ChevronRight, Container, FileCode2, FileStack, Github, GitBranch, GitFork, Lock, Sparkles } from 'lucide-vue-next';
 import type { Service } from '~/utils/types';
 import { DATABASE_ENGINES, DATABASE_ENGINE_UI, isDatabaseEngine, type DatabaseEngine } from '~/utils/database-engines';
 import type { TemplateListItem } from '~/composables/use-templates';
 
 const { data: templates, isPending: templatesPending } = useTemplates();
+const { data: aiStatus } = useAiStatus();
 const selectedTemplate = ref<TemplateListItem | null>(null);
 
 // Service-type picker hosting the create forms. Contract: prop `environmentId`, emit `createdMany`, v-model:open.
@@ -14,7 +15,16 @@ const emit = defineEmits<{ createdMany: [Service[]] }>();
 
 const open = defineModel<boolean>('open', { default: false });
 
-type AvailableServiceType = 'docker-image' | 'docker-compose' | 'dockerfile' | 'public-repo' | 'private-repo' | 'github-repo' | DatabaseEngine;
+type AvailableServiceType =
+	| 'docker-image'
+	| 'docker-compose'
+	| 'dockerfile'
+	| 'public-repo'
+	| 'private-repo'
+	| 'github-repo'
+	| 'gitea-repo'
+	| 'analyze-repo'
+	| DatabaseEngine;
 
 type TypeOption = {
 	id: string;
@@ -43,10 +53,24 @@ const TYPE_GROUPS: TypeGroup[] = [
 		label: 'From source',
 		options: [
 			{
+				id: 'analyze-repo',
+				name: 'Analyze repository',
+				description: 'Let AI propose every service, env var, and database a repo or monorepo needs — you review before anything is created.',
+				icon: Sparkles,
+				available: true
+			},
+			{
 				id: 'github-repo',
 				name: 'GitHub repository',
 				description: 'Build & deploy a repo from a connected GitHub App — private repos without a deploy key.',
 				icon: Github,
+				available: true
+			},
+			{
+				id: 'gitea-repo',
+				name: 'Gitea repository',
+				description: 'Build & deploy a repo from a connected Gitea account — private repos without a deploy key.',
+				icon: GitFork,
 				available: true
 			},
 			{
@@ -80,8 +104,12 @@ const TYPE_GROUPS: TypeGroup[] = [
 ];
 
 // Split at the option level, not group: a group can mix shipped and upcoming types.
-const ACTIVE_GROUPS = TYPE_GROUPS.map(group => ({ ...group, options: group.options.filter(option => option.available) })).filter(
-	group => group.options.length > 0
+// The AI option only shows once an admin has enabled the assistant.
+const ACTIVE_GROUPS = computed(() =>
+	TYPE_GROUPS.map(group => ({
+		...group,
+		options: group.options.filter(option => option.available && (option.id !== 'analyze-repo' || aiStatus.value?.enabled))
+	})).filter(group => group.options.length > 0)
 );
 const UPCOMING_GROUPS = TYPE_GROUPS.map(group => ({ ...group, options: group.options.filter(option => !option.available) })).filter(
 	group => group.options.length > 0
@@ -91,6 +119,7 @@ const UPCOMING_COUNT = UPCOMING_GROUPS.reduce((sum, group) => sum + group.option
 const step = ref<'select' | 'configure'>('select');
 const selectedType = ref<AvailableServiceType | null>(null);
 const upcomingExpanded = ref(false);
+const reviewingSecrets = ref(false);
 
 // Reset the flow whenever the modal opens.
 watch(open, isOpen => {
@@ -99,6 +128,7 @@ watch(open, isOpen => {
 		selectedType.value = null;
 		selectedTemplate.value = null;
 		upcomingExpanded.value = false;
+		reviewingSecrets.value = false;
 	}
 });
 
@@ -107,9 +137,29 @@ const selectedIcon = computed(() => selectedOption.value?.icon ?? Container);
 
 const title = computed(() => {
 	if (step.value === 'select') return 'New service';
+	if (reviewingSecrets.value) return 'Generated secrets';
 
+	if (selectedType.value === 'analyze-repo') return 'Analyze repository';
 	return selectedType.value === 'docker-compose' ? 'Import services' : 'Create service';
 });
+
+function handleOpen(next: boolean) {
+	if (!next && reviewingSecrets.value) return;
+	open.value = next;
+}
+
+function preventDismiss(event: Event) {
+	if (reviewingSecrets.value) event.preventDefault();
+}
+
+function onDone() {
+	reviewingSecrets.value = false;
+	open.value = false;
+	selectedTemplate.value = null;
+	selectedType.value = null;
+	step.value = 'select';
+	upcomingExpanded.value = false;
+}
 
 function selectTemplate(template: TemplateListItem) {
 	selectedTemplate.value = template;
@@ -128,6 +178,8 @@ function selectOption(option: TypeOption) {
 		id === 'public-repo' ||
 		id === 'private-repo' ||
 		id === 'github-repo' ||
+		id === 'gitea-repo' ||
+		id === 'analyze-repo' ||
 		isDatabaseEngine(id);
 	if (!allowed) return;
 
@@ -141,11 +193,19 @@ function onCreatedMany(services: Service[]) {
 </script>
 
 <template>
-	<Dialog v-model:open="open">
-		<DialogContent class="sm:max-w-3xl">
+	<Dialog :open="open" @update:open="handleOpen">
+		<DialogContent
+			class="sm:max-w-3xl"
+			:show-close-button="!reviewingSecrets"
+			@escape-key-down="preventDismiss"
+			@pointer-down-outside="preventDismiss"
+			@focus-outside="preventDismiss"
+			@interact-outside="preventDismiss"
+		>
 			<DialogHeader>
 				<DialogTitle>{{ title }}</DialogTitle>
 				<DialogDescription v-if="step === 'select'">Pick how you want to deploy.</DialogDescription>
+				<DialogDescription v-else-if="reviewingSecrets">Copy these now — they will not be shown again.</DialogDescription>
 				<DialogDescription v-else>{{ selectedTemplate?.description ?? selectedOption?.description ?? 'Configure your service.' }}</DialogDescription>
 			</DialogHeader>
 
@@ -241,7 +301,7 @@ function onCreatedMany(services: Service[]) {
 			</template>
 
 			<template v-else>
-				<div class="mb-1 flex items-center gap-2 text-sm font-medium">
+				<div v-if="!reviewingSecrets" class="mb-1 flex items-center gap-2 text-sm font-medium">
 					<component :is="selectedIcon" class="size-5 text-primary" />
 					<Badge variant="secondary">{{ selectedTemplate?.name ?? selectedOption?.name ?? 'Service' }}</Badge>
 				</div>
@@ -250,6 +310,14 @@ function onCreatedMany(services: Service[]) {
 					v-if="selectedTemplate"
 					:environment-id="props.environmentId"
 					:template="selectedTemplate"
+					@created="onCreatedMany"
+					@reviewing-secrets="reviewingSecrets = true"
+					@back="step = 'select'"
+					@done="onDone"
+				/>
+				<ServiceRepoAnalyzeForm
+					v-else-if="selectedType === 'analyze-repo'"
+					:environment-id="props.environmentId"
 					@created="onCreatedMany"
 					@back="step = 'select'"
 					@done="open = false"
@@ -284,6 +352,13 @@ function onCreatedMany(services: Service[]) {
 				/>
 				<ServiceGithubRepoCreateForm
 					v-else-if="selectedType === 'github-repo'"
+					:environment-id="props.environmentId"
+					@created="service => onCreatedMany([service])"
+					@back="step = 'select'"
+					@done="open = false"
+				/>
+				<ServiceGiteaRepoCreateForm
+					v-else-if="selectedType === 'gitea-repo'"
 					:environment-id="props.environmentId"
 					@created="service => onCreatedMany([service])"
 					@back="step = 'select'"

@@ -10,6 +10,7 @@ export type ServiceUpdateInput = {
 	description: string;
 	config: unknown;
 	autoDeploy?: { enabled: boolean };
+	imageWatch?: { enabled: boolean };
 };
 
 export function useServiceSettings(service: MaybeRefOrGetter<Service>) {

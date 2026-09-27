@@ -22,6 +22,7 @@ const service: ServiceView = {
 		resources: { cpuLimit: '1', memoryLimit: '512Mi' }
 	},
 	autoDeploy: { enabled: false, lastPolledCommit: null, lastPolledAt: null, nextPollAt: null, lastPollError: null },
+	imageWatch: { enabled: false, lastDigest: null, lastCheckedAt: null, nextCheckAt: null, lastError: null },
 	internalDomain: null,
 	defaultUrl: null,
 	exposedEndpoints: [],

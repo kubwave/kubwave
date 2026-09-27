@@ -1,5 +1,5 @@
 import type { V1Deployment, V1EnvVar, V1PodSecurityContext, V1SecurityContext } from '@kubernetes/client-node';
-import type { Deployment, ResourceConfig, RuntimeConfig, ServiceDomain } from '@kubwave/db';
+import type { Deployment, DockerImageServiceConfig, ResourceConfig, RuntimeConfig, ServiceDomain } from '@kubwave/db';
 import {
 	fileKey,
 	pvcName,
@@ -13,11 +13,12 @@ import { commonLabels } from '../../../../../../shared/cluster/networking.js';
 import { autoscalingEnabled } from './autoscaling.js';
 import { buildProbes, probesMatch } from './probes.js';
 import { buildResources, resourcesMatch } from './resources.js';
-import { secretList, secretsChecksum } from './secrets.js';
+import { registryChecksum, secretList, secretsChecksum } from './secrets.js';
 import { filesChecksum, filesList, filesSecretName } from './config-files.js';
 import { hasVolume } from './storage.js';
 import {
 	ANNOTATION_CONFIG_FILES_CHECKSUM,
+	ANNOTATION_REGISTRY_CHECKSUM,
 	ANNOTATION_SECRETS_CHECKSUM,
 	CONFIG_FILES_VOLUME_NAME,
 	CONTAINER_NAME,
@@ -48,6 +49,12 @@ function tenantPodSecurityContext(podSecurityEnforce?: string): V1PodSecurityCon
 	};
 }
 
+// The kubelet defaults to IfNotPresent for every tag but `latest`, so a republished tag boots whatever layer the node
+// cached first - silently, since the tag string never changes. Only the caller knows whether its ref can move.
+function imagePullPolicyFor(mutableTag?: boolean): string {
+	return mutableTag ? 'Always' : 'IfNotPresent';
+}
+
 export function buildEnv(deployment: Deployment, config: RuntimeConfig): V1EnvVar[] {
 	const plain: V1EnvVar[] = config.env.map(e => ({ name: e.key, value: e.value }));
 	const secrets: V1EnvVar[] = secretList(config).map(s => ({
@@ -62,7 +69,13 @@ export function buildDeployment(
 	namespace: string,
 	config: RuntimeConfig,
 	imageRef: string,
-	opts?: { imagePullSecretName?: string; podSecurityEnforce?: string; runtimeClass?: string; defaultResources?: ResourceConfig }
+	opts?: {
+		imagePullSecretNames?: string[];
+		podSecurityEnforce?: string;
+		runtimeClass?: string;
+		defaultResources?: ResourceConfig;
+		mutableTag?: boolean;
+	}
 ): V1Deployment {
 	const name = resourceName(deployment.serviceId);
 	const labels = commonLabels(deployment.serviceId);
@@ -73,9 +86,12 @@ export function buildDeployment(
 	const checksum = secretsChecksum(config);
 	const filesCk = filesChecksum(config);
 	const files = filesList(config);
+	// Per-service registry credentials are docker-image-only; the pull Secret is referenced by name, so a change rolls via the checksum annotation.
+	const registryCk = registryChecksum((config as DockerImageServiceConfig).registryAuth);
 	const annotations: Record<string, string> = {
 		...(checksum ? { [ANNOTATION_SECRETS_CHECKSUM]: checksum } : {}),
-		...(filesCk ? { [ANNOTATION_CONFIG_FILES_CHECKSUM]: filesCk } : {})
+		...(filesCk ? { [ANNOTATION_CONFIG_FILES_CHECKSUM]: filesCk } : {}),
+		...(registryCk ? { [ANNOTATION_REGISTRY_CHECKSUM]: registryCk } : {})
 	};
 	// Volumes mount whole dirs; config files mount one file each via subPath. A volume's own subPath mounts a PVC subdir (e.g. so initdb sees an empty dir, not lost+found).
 	const volumeMounts = [
@@ -107,12 +123,15 @@ export function buildDeployment(
 				spec: {
 					securityContext: tenantPodSecurityContext(opts?.podSecurityEnforce),
 					...(opts?.runtimeClass ? { runtimeClassName: opts.runtimeClass } : {}),
-					// Only when the platform registry needs auth (prod); dev's registry is anonymous, so pods pull without a secret.
-					...(opts?.imagePullSecretName ? { imagePullSecrets: [{ name: opts.imagePullSecretName }] } : {}),
+					// Platform pull secret (prod registry) and/or a per-service private-registry secret; absent list = anonymous pull.
+					...(opts?.imagePullSecretNames && opts.imagePullSecretNames.length > 0
+						? { imagePullSecrets: opts.imagePullSecretNames.map(name => ({ name })) }
+						: {}),
 					containers: [
 						{
 							name: CONTAINER_NAME,
 							image: imageRef,
+							imagePullPolicy: imagePullPolicyFor(opts?.mutableTag),
 							securityContext: tenantContainerSecurityContext(opts?.podSecurityEnforce),
 							...(config.containerPort != null ? { ports: [{ containerPort: config.containerPort }] } : {}),
 							...(config.command && config.command.length > 0 ? { command: config.command } : {}),
@@ -137,11 +156,14 @@ export function deploymentMatchesConfig(
 	serviceId: string,
 	podSecurityEnforce?: string,
 	runtimeClass?: string,
-	defaultResources?: ResourceConfig
+	defaultResources?: ResourceConfig,
+	mutableTag?: boolean
 ): boolean {
 	const container = existing.spec?.template?.spec?.containers?.find(c => c.name === CONTAINER_NAME);
 	if (!container) return false;
 	if (container.image !== imageRef) return false;
+	// A pre-feature Deployment has the kubelet default (absent here) and must roll once to pick the explicit policy up.
+	if ((container.imagePullPolicy ?? null) !== imagePullPolicyFor(mutableTag)) return false;
 	// When an HPA owns replicas, accept whatever it set; otherwise pin to 1.
 	if (!autoscalingEnabled(config) && (existing.spec?.replicas ?? 1) !== 1) return false;
 	// Volume-backed -> Recreate, else RollingUpdate; the API reports an explicit type, so compare against the default we omit on write.
@@ -180,6 +202,10 @@ export function deploymentMatchesConfig(
 	// A secret value change is invisible in the env (secretKeyRef, not a value), so compare the checksum annotation. Absent <-> null.
 	const existingChecksum = existing.spec?.template?.metadata?.annotations?.[ANNOTATION_SECRETS_CHECKSUM] ?? null;
 	if (existingChecksum !== secretsChecksum(config)) return false;
+
+	// Registry credentials live in a referenced pull Secret; a change (or add/remove) must roll the pod too.
+	const existingRegistryChecksum = existing.spec?.template?.metadata?.annotations?.[ANNOTATION_REGISTRY_CHECKSUM] ?? null;
+	if (existingRegistryChecksum !== registryChecksum((config as DockerImageServiceConfig).registryAuth)) return false;
 
 	// Config-file content lives in a subPath-mounted Secret (no in-place update), so a change must flip this hash too.
 	const existingFilesChecksum = existing.spec?.template?.metadata?.annotations?.[ANNOTATION_CONFIG_FILES_CHECKSUM] ?? null;

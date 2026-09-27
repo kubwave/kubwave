@@ -1,6 +1,196 @@
 {
 	"openapi": "3.0.0",
 	"paths": {
+		"/api/mcp/info": {
+			"get": {
+				"operationId": "mcpInfoGet",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/McpInfoDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get MCP connection details and available scopes",
+				"tags": ["mcp"]
+			}
+		},
+		"/api/mcp/access": {
+			"get": {
+				"operationId": "mcpAccessList",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/McpAccessDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "List your MCP tokens and OAuth connections",
+				"tags": ["mcp"]
+			},
+			"post": {
+				"operationId": "mcpAccessCreate",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/McpAccessInputDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/McpCreatedAccessDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Create a personal MCP token; shown once",
+				"tags": ["mcp"]
+			}
+		},
+		"/api/mcp/access/{accessId}": {
+			"delete": {
+				"operationId": "mcpAccessRevoke",
+				"parameters": [
+					{
+						"name": "accessId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/McpOkDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Revoke a personal token or OAuth connection immediately",
+				"tags": ["mcp"]
+			}
+		},
+		"/api/mcp/authorization": {
+			"post": {
+				"operationId": "mcpAuthorizationGet",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/McpAuthorizationDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/McpAuthorizationDetailsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Validate an OAuth request before displaying consent",
+				"tags": ["mcp"]
+			}
+		},
+		"/api/mcp/consent": {
+			"post": {
+				"operationId": "mcpConsentCreate",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/McpConsentDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/McpRedirectDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Approve or deny an MCP OAuth connection",
+				"tags": ["mcp"]
+			}
+		},
 		"/api/health": {
 			"get": {
 				"operationId": "healthGet",
@@ -1545,6 +1735,122 @@
 				"tags": ["environments"]
 			}
 		},
+		"/api/ai/status": {
+			"get": {
+				"operationId": "aiStatusGet",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AiStatusDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Whether the AI assistant is enabled on this instance",
+				"tags": ["environments"]
+			}
+		},
+		"/api/environments/{environmentId}/services/analyze": {
+			"post": {
+				"operationId": "environmentServicesAnalyzeRepository",
+				"parameters": [
+					{
+						"name": "environmentId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/AnalyzeRepositoryDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DeploymentPlanDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Propose services for a repository with the configured AI model",
+				"tags": ["environments"]
+			}
+		},
+		"/api/environments/{environmentId}/services/from-plan": {
+			"post": {
+				"operationId": "environmentServicesCreateFromPlan",
+				"parameters": [
+					{
+						"name": "environmentId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateServicesFromPlanDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/ServiceViewDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Create the services of a reviewed deployment plan",
+				"tags": ["environments"]
+			}
+		},
 		"/api/services/{serviceId}/metrics": {
 			"get": {
 				"operationId": "serviceMetricsGet",
@@ -1586,6 +1892,635 @@
 				],
 				"summary": "Get service CPU, memory, network, and PVC metrics",
 				"tags": ["services"]
+			}
+		},
+		"/api/git/github/manifest": {
+			"post": {
+				"operationId": "gitGithubCreateManifest",
+				"parameters": [
+					{
+						"name": "organization",
+						"required": false,
+						"in": "query",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/GithubManifestDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Build a GitHub App manifest and signed state",
+				"tags": ["git"]
+			}
+		},
+		"/api/git/github": {
+			"get": {
+				"operationId": "gitGithubConnectionGet",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/GithubConnectionDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get the connected GitHub App",
+				"tags": ["git"]
+			},
+			"delete": {
+				"operationId": "gitGithubDisconnect",
+				"parameters": [],
+				"responses": {
+					"204": {
+						"description": ""
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Disconnect the GitHub App",
+				"tags": ["git"]
+			}
+		},
+		"/api/teams/{teamId}/git/installations/claim": {
+			"post": {
+				"operationId": "teamGitInstallationsClaim",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ClaimInstallationDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/GitInstallationDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Redeem an ownership-verified install grant to bind it to the team",
+				"tags": ["git"]
+			}
+		},
+		"/api/teams/{teamId}/git/connection": {
+			"get": {
+				"operationId": "teamGitConnectionGet",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/TeamGitConnectionDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Whether a GitHub App is connected, plus the install URL",
+				"tags": ["git"]
+			}
+		},
+		"/api/teams/{teamId}/git/installations": {
+			"get": {
+				"operationId": "teamGitInstallationsList",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/GitInstallationDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "List the team’s GitHub installations",
+				"tags": ["git"]
+			}
+		},
+		"/api/teams/{teamId}/git/installations/{installationId}/repos": {
+			"get": {
+				"operationId": "teamGitInstallationReposList",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "installationId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/GitRepositoryDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "List repositories available to an installation",
+				"tags": ["git"]
+			}
+		},
+		"/api/teams/{teamId}/git/installations/{installationId}/repos/sync": {
+			"post": {
+				"operationId": "teamGitInstallationReposSync",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "installationId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/GitRepositoryDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Re-sync an installation’s repositories from GitHub",
+				"tags": ["git"]
+			}
+		},
+		"/api/teams/{teamId}/git/installations/{installationId}": {
+			"delete": {
+				"operationId": "teamGitInstallationsUnbind",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "installationId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"204": {
+						"description": ""
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Unbind a GitHub installation from the team",
+				"tags": ["git"]
+			}
+		},
+		"/api/git/gitea": {
+			"post": {
+				"operationId": "gitGiteaConnect",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ConnectGiteaDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/GiteaConnectionDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Connect a Gitea OAuth application",
+				"tags": ["git"]
+			},
+			"get": {
+				"operationId": "gitGiteaConnectionGet",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/GiteaConnectionDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get the connected Gitea OAuth application",
+				"tags": ["git"]
+			},
+			"delete": {
+				"operationId": "gitGiteaDisconnect",
+				"parameters": [],
+				"responses": {
+					"204": {
+						"description": ""
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Disconnect the Gitea OAuth application",
+				"tags": ["git"]
+			}
+		},
+		"/api/teams/{teamId}/git/gitea/installations/claim": {
+			"post": {
+				"operationId": "teamGiteaInstallationsClaim",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ClaimInstallationDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/GiteaAccountDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Redeem a Gitea OAuth grant to bind the account to the team",
+				"tags": ["git"]
+			}
+		},
+		"/api/teams/{teamId}/git/gitea/connection": {
+			"get": {
+				"operationId": "teamGiteaConnectionGet",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/TeamGiteaConnectionDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Whether Gitea is connected, plus the authorize URL",
+				"tags": ["git"]
+			}
+		},
+		"/api/teams/{teamId}/git/gitea/installations": {
+			"get": {
+				"operationId": "teamGiteaInstallationsList",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/GiteaAccountDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "List the team’s connected Gitea accounts",
+				"tags": ["git"]
+			}
+		},
+		"/api/teams/{teamId}/git/gitea/installations/{installationId}/repos": {
+			"get": {
+				"operationId": "teamGiteaInstallationReposList",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "installationId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/GitRepositoryDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "List repositories available to a Gitea account",
+				"tags": ["git"]
+			}
+		},
+		"/api/teams/{teamId}/git/gitea/installations/{installationId}/repos/sync": {
+			"post": {
+				"operationId": "teamGiteaInstallationReposSync",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "installationId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/GitRepositoryDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Re-sync repositories from Gitea",
+				"tags": ["git"]
+			}
+		},
+		"/api/teams/{teamId}/git/gitea/installations/{installationId}": {
+			"delete": {
+				"operationId": "teamGiteaInstallationsUnbind",
+				"parameters": [
+					{
+						"name": "teamId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "installationId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"204": {
+						"description": ""
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Unbind a Gitea account from the team",
+				"tags": ["git"]
 			}
 		},
 		"/api/teams/{teamId}/deployments": {
@@ -2777,6 +3712,64 @@
 				"tags": ["platform-settings"]
 			}
 		},
+		"/api/platform/settings/ai": {
+			"get": {
+				"operationId": "platformSettingsAiGet",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AiSettingsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get AI assistant settings",
+				"tags": ["platform-settings"]
+			},
+			"put": {
+				"operationId": "platformSettingsAiUpdate",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateAiSettingsDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AiSettingsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Update AI assistant settings",
+				"tags": ["platform-settings"]
+			}
+		},
 		"/api/platform/updates": {
 			"get": {
 				"operationId": "platformUpdatesList",
@@ -3171,10 +4164,7 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"type": "array",
-									"items": {
-										"$ref": "#/components/schemas/ServiceViewDto"
-									}
+									"$ref": "#/components/schemas/CreateFromTemplateResponseDto"
 								}
 							}
 						}
@@ -3187,321 +4177,6 @@
 				],
 				"summary": "Create services from a template",
 				"tags": ["templates"]
-			}
-		},
-		"/api/git/github/manifest": {
-			"post": {
-				"operationId": "gitGithubCreateManifest",
-				"parameters": [
-					{
-						"name": "organization",
-						"required": false,
-						"in": "query",
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/GithubManifestDto"
-								}
-							}
-						}
-					}
-				},
-				"security": [
-					{
-						"bearerAuth": []
-					}
-				],
-				"summary": "Build a GitHub App manifest and signed state",
-				"tags": ["git"]
-			}
-		},
-		"/api/git/github": {
-			"get": {
-				"operationId": "gitGithubConnectionGet",
-				"parameters": [],
-				"responses": {
-					"200": {
-						"description": "",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/GithubConnectionDto"
-								}
-							}
-						}
-					}
-				},
-				"security": [
-					{
-						"bearerAuth": []
-					}
-				],
-				"summary": "Get the connected GitHub App",
-				"tags": ["git"]
-			},
-			"delete": {
-				"operationId": "gitGithubDisconnect",
-				"parameters": [],
-				"responses": {
-					"204": {
-						"description": ""
-					}
-				},
-				"security": [
-					{
-						"bearerAuth": []
-					}
-				],
-				"summary": "Disconnect the GitHub App",
-				"tags": ["git"]
-			}
-		},
-		"/api/teams/{teamId}/git/installations/claim": {
-			"post": {
-				"operationId": "teamGitInstallationsClaim",
-				"parameters": [
-					{
-						"name": "teamId",
-						"in": "path",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"requestBody": {
-					"required": true,
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/ClaimInstallationDto"
-							}
-						}
-					}
-				},
-				"responses": {
-					"200": {
-						"description": "",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/GitInstallationDto"
-								}
-							}
-						}
-					}
-				},
-				"security": [
-					{
-						"bearerAuth": []
-					}
-				],
-				"summary": "Redeem an ownership-verified install grant to bind it to the team",
-				"tags": ["git"]
-			}
-		},
-		"/api/teams/{teamId}/git/connection": {
-			"get": {
-				"operationId": "teamGitConnectionGet",
-				"parameters": [
-					{
-						"name": "teamId",
-						"in": "path",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/TeamGitConnectionDto"
-								}
-							}
-						}
-					}
-				},
-				"security": [
-					{
-						"bearerAuth": []
-					}
-				],
-				"summary": "Whether a GitHub App is connected, plus the install URL",
-				"tags": ["git"]
-			}
-		},
-		"/api/teams/{teamId}/git/installations": {
-			"get": {
-				"operationId": "teamGitInstallationsList",
-				"parameters": [
-					{
-						"name": "teamId",
-						"in": "path",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "",
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "array",
-									"items": {
-										"$ref": "#/components/schemas/GitInstallationDto"
-									}
-								}
-							}
-						}
-					}
-				},
-				"security": [
-					{
-						"bearerAuth": []
-					}
-				],
-				"summary": "List the team’s GitHub installations",
-				"tags": ["git"]
-			}
-		},
-		"/api/teams/{teamId}/git/installations/{installationId}/repos": {
-			"get": {
-				"operationId": "teamGitInstallationReposList",
-				"parameters": [
-					{
-						"name": "teamId",
-						"in": "path",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					},
-					{
-						"name": "installationId",
-						"in": "path",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "",
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "array",
-									"items": {
-										"$ref": "#/components/schemas/GitRepositoryDto"
-									}
-								}
-							}
-						}
-					}
-				},
-				"security": [
-					{
-						"bearerAuth": []
-					}
-				],
-				"summary": "List repositories available to an installation",
-				"tags": ["git"]
-			}
-		},
-		"/api/teams/{teamId}/git/installations/{installationId}/repos/sync": {
-			"post": {
-				"operationId": "teamGitInstallationReposSync",
-				"parameters": [
-					{
-						"name": "teamId",
-						"in": "path",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					},
-					{
-						"name": "installationId",
-						"in": "path",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "",
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "array",
-									"items": {
-										"$ref": "#/components/schemas/GitRepositoryDto"
-									}
-								}
-							}
-						}
-					}
-				},
-				"security": [
-					{
-						"bearerAuth": []
-					}
-				],
-				"summary": "Re-sync an installation’s repositories from GitHub",
-				"tags": ["git"]
-			}
-		},
-		"/api/teams/{teamId}/git/installations/{installationId}": {
-			"delete": {
-				"operationId": "teamGitInstallationsUnbind",
-				"parameters": [
-					{
-						"name": "teamId",
-						"in": "path",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					},
-					{
-						"name": "installationId",
-						"in": "path",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"responses": {
-					"204": {
-						"description": ""
-					}
-				},
-				"security": [
-					{
-						"bearerAuth": []
-					}
-				],
-				"summary": "Unbind a GitHub installation from the team",
-				"tags": ["git"]
 			}
 		}
 	},
@@ -3522,6 +4197,231 @@
 			}
 		},
 		"schemas": {
+			"McpInfoDto": {
+				"type": "object",
+				"properties": {
+					"endpoint": {
+						"type": "string"
+					},
+					"scopes": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"required": ["endpoint", "scopes"]
+			},
+			"McpAccessDto": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					},
+					"kind": {
+						"type": "string",
+						"enum": ["personal", "oauth"]
+					},
+					"scopes": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"teamId": {
+						"type": "string",
+						"nullable": true
+					},
+					"projectIds": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"expiresAt": {
+						"type": "string"
+					},
+					"revokedAt": {
+						"type": "string",
+						"nullable": true
+					},
+					"createdAt": {
+						"type": "string"
+					}
+				},
+				"required": ["id", "name", "kind", "scopes", "teamId", "projectIds", "expiresAt", "revokedAt", "createdAt"]
+			},
+			"McpAccessInputDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"scopes": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"enum": ["read", "write", "deploy", "delete", "team:manage"]
+						}
+					},
+					"teamId": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"projectIds": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"expiresInDays": {
+						"type": "number",
+						"default": 30,
+						"minimum": 1,
+						"maximum": 365
+					}
+				},
+				"required": ["name", "scopes"]
+			},
+			"McpCreatedAccessDto": {
+				"type": "object",
+				"properties": {
+					"token": {
+						"type": "string"
+					},
+					"access": {
+						"$ref": "#/components/schemas/McpAccessDto"
+					},
+					"endpoint": {
+						"type": "string"
+					}
+				},
+				"required": ["token", "access", "endpoint"]
+			},
+			"McpOkDto": {
+				"type": "object",
+				"properties": {
+					"ok": {
+						"type": "boolean"
+					}
+				},
+				"required": ["ok"]
+			},
+			"McpAuthorizationDto": {
+				"type": "object",
+				"properties": {
+					"client_id": {
+						"type": "string"
+					},
+					"redirect_uri": {
+						"type": "string"
+					},
+					"response_type": {
+						"type": "string",
+						"enum": ["code"]
+					},
+					"code_challenge": {
+						"type": "string"
+					},
+					"code_challenge_method": {
+						"type": "string",
+						"enum": ["S256"]
+					},
+					"resource": {
+						"type": "string"
+					},
+					"scope": {
+						"type": "string",
+						"default": "read"
+					},
+					"state": {
+						"type": "string"
+					}
+				},
+				"required": ["client_id", "redirect_uri", "response_type", "code_challenge", "code_challenge_method", "resource"]
+			},
+			"McpAuthorizationDetailsDto": {
+				"type": "object",
+				"properties": {
+					"clientName": {
+						"type": "string"
+					},
+					"redirectUri": {
+						"type": "string"
+					},
+					"scopes": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"required": ["clientName", "redirectUri", "scopes"]
+			},
+			"McpConsentDto": {
+				"type": "object",
+				"properties": {
+					"client_id": {
+						"type": "string"
+					},
+					"redirect_uri": {
+						"type": "string"
+					},
+					"response_type": {
+						"type": "string",
+						"enum": ["code"]
+					},
+					"code_challenge": {
+						"type": "string"
+					},
+					"code_challenge_method": {
+						"type": "string",
+						"enum": ["S256"]
+					},
+					"resource": {
+						"type": "string"
+					},
+					"scope": {
+						"type": "string",
+						"default": "read"
+					},
+					"state": {
+						"type": "string"
+					},
+					"approve": {
+						"type": "boolean"
+					},
+					"teamId": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"projectIds": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"expiresInDays": {
+						"type": "number",
+						"default": 30,
+						"minimum": 1,
+						"maximum": 365
+					}
+				},
+				"required": ["client_id", "redirect_uri", "response_type", "code_challenge", "code_challenge_method", "resource", "approve"]
+			},
+			"McpRedirectDto": {
+				"type": "object",
+				"properties": {
+					"redirectUrl": {
+						"type": "string"
+					}
+				},
+				"required": ["redirectUrl"]
+			},
 			"HealthResponseDto": {
 				"type": "object",
 				"properties": {
@@ -4204,6 +5104,31 @@
 				},
 				"required": ["enabled", "lastPolledCommit", "lastPolledAt", "nextPollAt", "lastPollError"]
 			},
+			"ImageWatchViewDto": {
+				"type": "object",
+				"properties": {
+					"enabled": {
+						"type": "boolean"
+					},
+					"lastDigest": {
+						"type": "string",
+						"nullable": true
+					},
+					"lastCheckedAt": {
+						"type": "string",
+						"nullable": true
+					},
+					"nextCheckAt": {
+						"type": "string",
+						"nullable": true
+					},
+					"lastError": {
+						"type": "string",
+						"nullable": true
+					}
+				},
+				"required": ["enabled", "lastDigest", "lastCheckedAt", "nextCheckAt", "lastError"]
+			},
 			"ExposedEndpointViewDto": {
 				"type": "object",
 				"properties": {
@@ -4239,7 +5164,18 @@
 					},
 					"type": {
 						"type": "string",
-						"enum": ["docker-image", "dockerfile", "public-repo", "private-repo", "github-repo", "postgres", "mysql", "mariadb", "mongodb"]
+						"enum": [
+							"docker-image",
+							"dockerfile",
+							"public-repo",
+							"private-repo",
+							"github-repo",
+							"gitea-repo",
+							"postgres",
+							"mysql",
+							"mariadb",
+							"mongodb"
+						]
 					},
 					"config": {
 						"type": "object",
@@ -4247,6 +5183,9 @@
 					},
 					"autoDeploy": {
 						"$ref": "#/components/schemas/AutoDeployViewDto"
+					},
+					"imageWatch": {
+						"$ref": "#/components/schemas/ImageWatchViewDto"
 					},
 					"internalDomain": {
 						"type": "string",
@@ -4277,6 +5216,7 @@
 					"type",
 					"config",
 					"autoDeploy",
+					"imageWatch",
 					"internalDomain",
 					"defaultUrl",
 					"exposedEndpoints",
@@ -4285,6 +5225,16 @@
 				]
 			},
 			"AutoDeployInputDto": {
+				"type": "object",
+				"properties": {
+					"enabled": {
+						"type": "boolean",
+						"default": false
+					}
+				},
+				"required": ["enabled"]
+			},
+			"ImageWatchInputDto": {
 				"type": "object",
 				"properties": {
 					"enabled": {
@@ -4308,7 +5258,18 @@
 					},
 					"type": {
 						"type": "string",
-						"enum": ["docker-image", "dockerfile", "public-repo", "private-repo", "github-repo", "postgres", "mysql", "mariadb", "mongodb"]
+						"enum": [
+							"docker-image",
+							"dockerfile",
+							"public-repo",
+							"private-repo",
+							"github-repo",
+							"gitea-repo",
+							"postgres",
+							"mysql",
+							"mariadb",
+							"mongodb"
+						]
 					},
 					"config": {
 						"type": "object",
@@ -4316,6 +5277,9 @@
 					},
 					"autoDeploy": {
 						"$ref": "#/components/schemas/AutoDeployInputDto"
+					},
+					"imageWatch": {
+						"$ref": "#/components/schemas/ImageWatchInputDto"
 					}
 				},
 				"required": ["name", "type", "config"]
@@ -4338,6 +5302,9 @@
 					},
 					"autoDeploy": {
 						"$ref": "#/components/schemas/AutoDeployInputDto"
+					},
+					"imageWatch": {
+						"$ref": "#/components/schemas/ImageWatchInputDto"
 					}
 				}
 			},
@@ -4472,6 +5439,470 @@
 					}
 				},
 				"required": ["compose"]
+			},
+			"AiStatusDto": {
+				"type": "object",
+				"properties": {
+					"enabled": {
+						"type": "boolean"
+					}
+				},
+				"required": ["enabled"]
+			},
+			"RepoSourceDto": {
+				"type": "object",
+				"properties": {
+					"type": {
+						"type": "string",
+						"enum": ["public-repo", "private-repo", "github-repo", "gitea-repo"]
+					},
+					"branch": {
+						"type": "string"
+					},
+					"repoUrl": {
+						"type": "string"
+					},
+					"sshKeyId": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"installationId": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"repoFullName": {
+						"type": "string"
+					}
+				},
+				"required": ["type", "branch"]
+			},
+			"AnalyzeRepositoryDto": {
+				"type": "object",
+				"properties": {
+					"source": {
+						"$ref": "#/components/schemas/RepoSourceDto"
+					}
+				},
+				"required": ["source"]
+			},
+			"PlanReferenceDto": {
+				"type": "object",
+				"properties": {
+					"service": {
+						"type": "string"
+					},
+					"kind": {
+						"type": "string",
+						"enum": ["url", "publicUrl", "connectionUri", "env"]
+					},
+					"key": {
+						"type": "string",
+						"nullable": true,
+						"description": "Env key to copy for kind \"env\"."
+					}
+				},
+				"required": ["service", "kind", "key"]
+			},
+			"PlanEnvVarDto": {
+				"type": "object",
+				"properties": {
+					"key": {
+						"type": "string"
+					},
+					"value": {
+						"type": "string",
+						"nullable": true
+					},
+					"secret": {
+						"type": "boolean"
+					},
+					"generate": {
+						"type": "boolean"
+					},
+					"reference": {
+						"nullable": true,
+						"type": "object",
+						"allOf": [
+							{
+								"$ref": "#/components/schemas/PlanReferenceDto"
+							}
+						]
+					},
+					"note": {
+						"type": "string",
+						"nullable": true
+					}
+				},
+				"required": ["key", "value", "secret", "generate", "reference", "note"]
+			},
+			"PlanServiceDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"rootDirectory": {
+						"type": "string"
+					},
+					"builder": {
+						"type": "string",
+						"enum": ["nixpacks", "dockerfile"]
+					},
+					"dockerfilePath": {
+						"type": "string",
+						"nullable": true
+					},
+					"buildCommand": {
+						"type": "string",
+						"nullable": true
+					},
+					"startCommand": {
+						"type": "string",
+						"nullable": true
+					},
+					"containerPort": {
+						"type": "number",
+						"nullable": true
+					},
+					"watchPaths": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"publicDomain": {
+						"type": "boolean"
+					},
+					"env": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanEnvVarDto"
+						}
+					},
+					"reason": {
+						"type": "string"
+					}
+				},
+				"required": [
+					"name",
+					"rootDirectory",
+					"builder",
+					"dockerfilePath",
+					"buildCommand",
+					"startCommand",
+					"containerPort",
+					"watchPaths",
+					"publicDomain",
+					"env",
+					"reason"
+				]
+			},
+			"PlanVolumeDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"mountPath": {
+						"type": "string"
+					},
+					"size": {
+						"type": "string"
+					}
+				},
+				"required": ["name", "mountPath", "size"]
+			},
+			"PlanImageDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"image": {
+						"type": "string"
+					},
+					"tag": {
+						"type": "string"
+					},
+					"containerPort": {
+						"type": "number",
+						"nullable": true
+					},
+					"args": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"volumes": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanVolumeDto"
+						}
+					},
+					"publicDomain": {
+						"type": "boolean"
+					},
+					"env": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanEnvVarDto"
+						}
+					},
+					"reason": {
+						"type": "string"
+					}
+				},
+				"required": ["name", "image", "tag", "containerPort", "args", "volumes", "publicDomain", "env", "reason"]
+			},
+			"PlanDatabaseDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"engine": {
+						"type": "string",
+						"enum": ["postgres", "mysql", "mariadb", "mongodb"]
+					}
+				},
+				"required": ["name", "engine"]
+			},
+			"PlanQuestionDto": {
+				"type": "object",
+				"properties": {
+					"kind": {
+						"type": "string",
+						"enum": ["domain", "values"]
+					},
+					"title": {
+						"type": "string"
+					},
+					"description": {
+						"type": "string",
+						"nullable": true
+					},
+					"services": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"envKeys": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"required": ["kind", "title", "description", "services", "envKeys"]
+			},
+			"DeploymentPlanDto": {
+				"type": "object",
+				"properties": {
+					"services": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanServiceDto"
+						}
+					},
+					"images": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanImageDto"
+						}
+					},
+					"databases": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanDatabaseDto"
+						}
+					},
+					"questions": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanQuestionDto"
+						}
+					},
+					"warnings": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"defaultDomainBase": {
+						"type": "string",
+						"nullable": true,
+						"description": "Base of generated service domains, or null when default domains are unavailable."
+					}
+				},
+				"required": ["services", "images", "databases", "questions", "warnings", "defaultDomainBase"]
+			},
+			"PlanEnvVarInputDto": {
+				"type": "object",
+				"properties": {
+					"key": {
+						"type": "string"
+					},
+					"value": {
+						"type": "string",
+						"nullable": true
+					},
+					"secret": {
+						"type": "boolean"
+					},
+					"generate": {
+						"type": "boolean"
+					},
+					"reference": {
+						"nullable": true,
+						"type": "object",
+						"allOf": [
+							{
+								"$ref": "#/components/schemas/PlanReferenceDto"
+							}
+						]
+					}
+				},
+				"required": ["key", "value", "secret", "generate", "reference"]
+			},
+			"PlanServiceInputDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"rootDirectory": {
+						"type": "string"
+					},
+					"builder": {
+						"type": "string",
+						"enum": ["nixpacks", "dockerfile"]
+					},
+					"dockerfilePath": {
+						"type": "string",
+						"nullable": true
+					},
+					"buildCommand": {
+						"type": "string",
+						"nullable": true
+					},
+					"startCommand": {
+						"type": "string",
+						"nullable": true
+					},
+					"containerPort": {
+						"type": "number",
+						"nullable": true
+					},
+					"watchPaths": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"publicDomain": {
+						"type": "boolean"
+					},
+					"env": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanEnvVarInputDto"
+						}
+					},
+					"domain": {
+						"type": "string",
+						"nullable": true,
+						"description": "Custom public hostname; null uses the generated default domain."
+					}
+				},
+				"required": [
+					"name",
+					"rootDirectory",
+					"builder",
+					"dockerfilePath",
+					"buildCommand",
+					"startCommand",
+					"containerPort",
+					"watchPaths",
+					"publicDomain",
+					"env"
+				]
+			},
+			"PlanImageInputDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"image": {
+						"type": "string"
+					},
+					"tag": {
+						"type": "string"
+					},
+					"containerPort": {
+						"type": "number",
+						"nullable": true
+					},
+					"args": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"volumes": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanVolumeDto"
+						}
+					},
+					"publicDomain": {
+						"type": "boolean"
+					},
+					"env": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanEnvVarInputDto"
+						}
+					},
+					"domain": {
+						"type": "string",
+						"nullable": true
+					}
+				},
+				"required": ["name", "image", "tag", "containerPort", "args", "volumes", "publicDomain", "env"]
+			},
+			"CreateServicesFromPlanDto": {
+				"type": "object",
+				"properties": {
+					"source": {
+						"$ref": "#/components/schemas/RepoSourceDto"
+					},
+					"autoDeploy": {
+						"type": "boolean",
+						"default": false
+					},
+					"services": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanServiceInputDto"
+						}
+					},
+					"images": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanImageInputDto"
+						}
+					},
+					"databases": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlanDatabaseDto"
+						}
+					}
+				},
+				"required": ["source", "services", "databases"]
 			},
 			"ServiceMetricVolumeDto": {
 				"type": "object",
@@ -4617,6 +6048,197 @@
 				},
 				"required": ["mode", "available", "sampledAt", "replicas", "current", "limits", "series"]
 			},
+			"GithubManifestDto": {
+				"type": "object",
+				"properties": {
+					"postUrl": {
+						"type": "string",
+						"description": "POST the form here (carries the signed state in its query)."
+					},
+					"manifest": {
+						"type": "string",
+						"description": "JSON string to submit as the `manifest` form field."
+					}
+				},
+				"required": ["postUrl", "manifest"]
+			},
+			"GithubConnectionDto": {
+				"type": "object",
+				"properties": {
+					"connected": {
+						"type": "boolean"
+					},
+					"appSlug": {
+						"type": "string",
+						"nullable": true
+					},
+					"appId": {
+						"type": "string",
+						"nullable": true
+					},
+					"installUrl": {
+						"type": "string",
+						"nullable": true,
+						"description": "Send the admin here to install the App on their repositories."
+					},
+					"connectedAt": {
+						"type": "string",
+						"format": "date-time",
+						"nullable": true
+					}
+				},
+				"required": ["connected", "appSlug", "appId", "installUrl", "connectedAt"]
+			},
+			"ClaimInstallationDto": {
+				"type": "object",
+				"properties": {
+					"grant": {
+						"type": "string",
+						"description": "Signed grant from the install callback redirect (git_grant query param)."
+					}
+				},
+				"required": ["grant"]
+			},
+			"GitInstallationDto": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"githubInstallationId": {
+						"type": "string"
+					},
+					"accountLogin": {
+						"type": "string"
+					},
+					"accountType": {
+						"type": "string"
+					},
+					"suspended": {
+						"type": "boolean"
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time"
+					}
+				},
+				"required": ["id", "githubInstallationId", "accountLogin", "accountType", "suspended", "createdAt"]
+			},
+			"TeamGitConnectionDto": {
+				"type": "object",
+				"properties": {
+					"connected": {
+						"type": "boolean"
+					},
+					"installUrl": {
+						"type": "string",
+						"nullable": true,
+						"description": "Where a team owner installs the App on their repositories."
+					}
+				},
+				"required": ["connected", "installUrl"]
+			},
+			"GitRepositoryDto": {
+				"type": "object",
+				"properties": {
+					"repoFullName": {
+						"type": "string"
+					},
+					"defaultBranch": {
+						"type": "string"
+					},
+					"isPrivate": {
+						"type": "boolean"
+					}
+				},
+				"required": ["repoFullName", "defaultBranch", "isPrivate"]
+			},
+			"ConnectGiteaDto": {
+				"type": "object",
+				"properties": {
+					"instanceUrl": {
+						"type": "string",
+						"example": "https://gitea.example"
+					},
+					"clientId": {
+						"type": "string"
+					},
+					"clientSecret": {
+						"type": "string"
+					}
+				},
+				"required": ["instanceUrl", "clientId", "clientSecret"]
+			},
+			"GiteaConnectionDto": {
+				"type": "object",
+				"properties": {
+					"connected": {
+						"type": "boolean"
+					},
+					"instanceUrl": {
+						"type": "string",
+						"nullable": true
+					},
+					"clientId": {
+						"type": "string",
+						"nullable": true
+					},
+					"callbackUrl": {
+						"type": "string",
+						"nullable": true,
+						"description": "Paste this as the OAuth redirect URI on the Gitea application."
+					},
+					"webhookUrl": {
+						"type": "string",
+						"nullable": true,
+						"description": "Optional repo webhook URL for instant auto-deploy."
+					},
+					"connectedAt": {
+						"type": "string",
+						"format": "date-time",
+						"nullable": true
+					}
+				},
+				"required": ["connected", "instanceUrl", "clientId", "callbackUrl", "webhookUrl", "connectedAt"]
+			},
+			"GiteaAccountDto": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid"
+					},
+					"giteaUserId": {
+						"type": "string"
+					},
+					"accountLogin": {
+						"type": "string"
+					},
+					"accountType": {
+						"type": "string"
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time"
+					}
+				},
+				"required": ["id", "giteaUserId", "accountLogin", "accountType", "createdAt"]
+			},
+			"TeamGiteaConnectionDto": {
+				"type": "object",
+				"properties": {
+					"connected": {
+						"type": "boolean"
+					},
+					"authorizeUrl": {
+						"type": "string",
+						"nullable": true,
+						"description": "Where a team owner authorizes kubwave against Gitea."
+					}
+				},
+				"required": ["connected", "authorizeUrl"]
+			},
 			"TeamDeploymentViewDto": {
 				"type": "object",
 				"properties": {
@@ -4688,7 +6310,18 @@
 					},
 					"type": {
 						"type": "string",
-						"enum": ["docker-image", "dockerfile", "public-repo", "private-repo", "github-repo", "postgres", "mysql", "mariadb", "mongodb"]
+						"enum": [
+							"docker-image",
+							"dockerfile",
+							"public-repo",
+							"private-repo",
+							"github-repo",
+							"gitea-repo",
+							"postgres",
+							"mysql",
+							"mariadb",
+							"mongodb"
+						]
 					},
 					"status": {
 						"type": "string",
@@ -5510,6 +7143,55 @@
 				},
 				"required": ["enabled", "start", "size", "updateRun"]
 			},
+			"AiSettingsDto": {
+				"type": "object",
+				"properties": {
+					"enabled": {
+						"type": "boolean"
+					},
+					"provider": {
+						"type": "string",
+						"enum": ["anthropic", "openai-compatible"]
+					},
+					"baseUrl": {
+						"type": "string",
+						"nullable": true
+					},
+					"model": {
+						"type": "string",
+						"description": "Model id with an optional \":effort\" suffix, e.g. claude-opus-5:high."
+					},
+					"hasApiKey": {
+						"type": "boolean"
+					}
+				},
+				"required": ["enabled", "provider", "baseUrl", "model", "hasApiKey"]
+			},
+			"UpdateAiSettingsDto": {
+				"type": "object",
+				"properties": {
+					"enabled": {
+						"type": "boolean"
+					},
+					"provider": {
+						"type": "string",
+						"enum": ["anthropic", "openai-compatible"]
+					},
+					"baseUrl": {
+						"type": "string",
+						"nullable": true
+					},
+					"model": {
+						"type": "string"
+					},
+					"apiKey": {
+						"type": "string",
+						"nullable": true,
+						"writeOnly": true
+					}
+				},
+				"required": ["enabled", "provider", "model"]
+			},
 			"TriggerUpdateDto": {
 				"type": "object",
 				"properties": {
@@ -6008,111 +7690,35 @@
 				},
 				"required": ["templateId"]
 			},
-			"GithubManifestDto": {
+			"GeneratedTemplateSecretDto": {
 				"type": "object",
 				"properties": {
-					"postUrl": {
-						"type": "string",
-						"description": "POST the form here (carries the signed state in its query)."
-					},
-					"manifest": {
-						"type": "string",
-						"description": "JSON string to submit as the `manifest` form field."
-					}
-				},
-				"required": ["postUrl", "manifest"]
-			},
-			"GithubConnectionDto": {
-				"type": "object",
-				"properties": {
-					"connected": {
-						"type": "boolean"
-					},
-					"appSlug": {
-						"type": "string",
-						"nullable": true
-					},
-					"appId": {
-						"type": "string",
-						"nullable": true
-					},
-					"installUrl": {
-						"type": "string",
-						"nullable": true,
-						"description": "Send the admin here to install the App on their repositories."
-					},
-					"connectedAt": {
-						"type": "string",
-						"format": "date-time",
-						"nullable": true
-					}
-				},
-				"required": ["connected", "appSlug", "appId", "installUrl", "connectedAt"]
-			},
-			"ClaimInstallationDto": {
-				"type": "object",
-				"properties": {
-					"grant": {
-						"type": "string",
-						"description": "Signed grant from the install callback redirect (git_grant query param)."
-					}
-				},
-				"required": ["grant"]
-			},
-			"GitInstallationDto": {
-				"type": "object",
-				"properties": {
-					"id": {
-						"type": "string",
-						"format": "uuid"
-					},
-					"githubInstallationId": {
+					"key": {
 						"type": "string"
 					},
-					"accountLogin": {
+					"value": {
 						"type": "string"
-					},
-					"accountType": {
-						"type": "string"
-					},
-					"suspended": {
-						"type": "boolean"
-					},
-					"createdAt": {
-						"type": "string",
-						"format": "date-time"
 					}
 				},
-				"required": ["id", "githubInstallationId", "accountLogin", "accountType", "suspended", "createdAt"]
+				"required": ["key", "value"]
 			},
-			"TeamGitConnectionDto": {
+			"CreateFromTemplateResponseDto": {
 				"type": "object",
 				"properties": {
-					"connected": {
-						"type": "boolean"
+					"services": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/ServiceViewDto"
+						}
 					},
-					"installUrl": {
-						"type": "string",
-						"nullable": true,
-						"description": "Where a team owner installs the App on their repositories."
+					"generatedSecrets": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/GeneratedTemplateSecretDto"
+						}
 					}
 				},
-				"required": ["connected", "installUrl"]
-			},
-			"GitRepositoryDto": {
-				"type": "object",
-				"properties": {
-					"repoFullName": {
-						"type": "string"
-					},
-					"defaultBranch": {
-						"type": "string"
-					},
-					"isPrivate": {
-						"type": "boolean"
-					}
-				},
-				"required": ["repoFullName", "defaultBranch", "isPrivate"]
+				"required": ["services", "generatedSecrets"]
 			}
 		}
 	}

@@ -73,7 +73,7 @@ export const serviceSettingsSchema = z
 		startCommand: z.string(),
 		// private-repo only: the team deploy key id. Empty for every other type.
 		sshKeyId: z.string(),
-		// github-repo only: the installation row id + owner/repo. Empty for every other type.
+		// github-repo / gitea-repo: the installation row id + owner/repo. Empty for every other type.
 		installationId: z.string(),
 		repoFullName: z.string(),
 		// public/private-repo only: build method + (dockerfile mode) the Dockerfile path. Empty otherwise.
@@ -116,10 +116,24 @@ export const serviceSettingsSchema = z
 			enabled: z.boolean(),
 			username: z.string(),
 			password: z.string(),
+			// One path entry per line (e.g. /health or /api/*); validated like the API in superRefine below.
+			publicPaths: z.string(),
+			hasPassword: z.boolean()
+		}),
+		// docker-image only: optional private-registry login; blank password with hasPassword keeps the stored one.
+		registryAuth: z.object({
+			enabled: z.boolean(),
+			server: z.string(),
+			username: z.string(),
+			password: z.string(),
 			hasPassword: z.boolean()
 		}),
 		// Repo types only (ignored otherwise); just the toggle — the poll cadence is a global worker setting.
 		autoDeploy: z.object({
+			enabled: z.boolean()
+		}),
+		// docker-image only: watch the registry tag and auto-redeploy when its digest changes; status is read from the service, not edited here.
+		imageWatch: z.object({
 			enabled: z.boolean()
 		})
 	})
@@ -129,6 +143,53 @@ export const serviceSettingsSchema = z
 		}
 		if (val.basicAuth.enabled && !val.basicAuth.hasPassword && !val.basicAuth.password) {
 			ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'A password is required when basic auth is enabled.', path: ['basicAuth', 'password'] });
+		}
+		// Mirror the API's public-path rules: absolute, no "..", wildcard only as a trailing "/*". Only checked while enabled — the payload drops them otherwise.
+		if (val.basicAuth.enabled) {
+			val.basicAuth.publicPaths.split('\n').forEach(raw => {
+				const path = raw.trim();
+				if (!path) return;
+				// Judge the derived path: "//*" strips to "/" and would make every route public.
+				const target = path.endsWith('/*') ? path.slice(0, -2) : path;
+				if (!path.startsWith('/')) {
+					ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Each public path must start with "/".', path: ['basicAuth', 'publicPaths'] });
+				} else if (path.split('/').includes('..')) {
+					ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Public paths cannot contain "..".', path: ['basicAuth', 'publicPaths'] });
+				} else if (!/^\/[^*]*(\/\*)?$/.test(path)) {
+					ctx.addIssue({
+						code: z.ZodIssueCode.custom,
+						message: 'Use absolute paths like /health or /api/* (a wildcard is only allowed at the end as "/*").',
+						path: ['basicAuth', 'publicPaths']
+					});
+				} else if (target === '/' || target === '') {
+					ctx.addIssue({
+						code: z.ZodIssueCode.custom,
+						message: '"/" makes every route public — disable basic auth instead.',
+						path: ['basicAuth', 'publicPaths']
+					});
+				}
+			});
+		}
+		if (val.registryAuth.enabled && !val.registryAuth.server.trim()) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: 'A registry server is required when registry auth is enabled.',
+				path: ['registryAuth', 'server']
+			});
+		}
+		if (val.registryAuth.enabled && !val.registryAuth.username.trim()) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: 'A username is required when registry auth is enabled.',
+				path: ['registryAuth', 'username']
+			});
+		}
+		if (val.registryAuth.enabled && !val.registryAuth.hasPassword && !val.registryAuth.password) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: 'A password is required when registry auth is enabled.',
+				path: ['registryAuth', 'password']
+			});
 		}
 		val.domains.forEach((d, i) => {
 			if (d.host.trim() && !isValidPort(d.port.trim())) {
@@ -270,11 +331,15 @@ export function makeServiceSettingsSchema(type: Service['type'], originalVolumeS
 			}
 			if (!val.branch.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a branch.', path: ['branch'] });
 			if (!val.sshKeyId.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Select a deploy key.', path: ['sshKeyId'] });
-		} else if (type === 'github-repo') {
+		} else if (type === 'github-repo' || type === 'gitea-repo') {
 			if (!val.branch.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a branch.', path: ['branch'] });
-			// repoFullName + installationId are fixed at creation and read-only here; flag defensively if the link is somehow missing.
 			if (!val.installationId.trim() || !val.repoFullName.trim()) {
-				ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'This service is missing its GitHub repository link.', path: ['repoFullName'] });
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					message:
+						type === 'gitea-repo' ? 'This service is missing its Gitea repository link.' : 'This service is missing its GitHub repository link.',
+					path: ['repoFullName']
+				});
 			}
 		} else if (isDatabaseEngine(type)) {
 			if (!val.version.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Pick a version.', path: ['version'] });
@@ -286,7 +351,7 @@ export function makeServiceSettingsSchema(type: Service['type'], originalVolumeS
 			if (!val.image.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter an image.', path: ['image'] });
 			if (!val.tag.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a tag.', path: ['tag'] });
 		}
-		if (type === 'public-repo' || type === 'private-repo' || type === 'github-repo') {
+		if (type === 'public-repo' || type === 'private-repo' || type === 'github-repo' || type === 'gitea-repo') {
 			if (val.commit.trim() && !/^[0-9a-fA-F]{7,64}$/.test(val.commit.trim())) {
 				ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a valid commit SHA.', path: ['commit'] });
 			}
@@ -307,7 +372,7 @@ export function snapshot(service: Service): ServiceSettingsValues {
 	const hc = service.config.healthCheck;
 	const res = service.config.resources;
 	const as = service.config.autoscaling;
-	const ba = (service.config as { basicAuth?: { enabled?: boolean; username?: string; hasPassword?: boolean } }).basicAuth;
+	const ba = (service.config as { basicAuth?: { enabled?: boolean; username?: string; hasPassword?: boolean; publicPaths?: string[] } }).basicAuth;
 
 	return {
 		name: service.name,
@@ -385,10 +450,24 @@ export function snapshot(service: Service): ServiceSettingsValues {
 			enabled: ba?.enabled ?? false,
 			username: ba?.username ?? '',
 			password: '',
+			publicPaths: (ba?.publicPaths ?? []).join('\n'),
 			hasPassword: ba?.hasPassword ?? false
 		},
+		registryAuth: (() => {
+			const ra = (service.config as { registryAuth?: { enabled?: boolean; server?: string; username?: string; hasPassword?: boolean } }).registryAuth;
+			return {
+				enabled: ra?.enabled ?? false,
+				server: ra?.server ?? '',
+				username: ra?.username ?? '',
+				password: '',
+				hasPassword: ra?.hasPassword ?? false
+			};
+		})(),
 		autoDeploy: {
 			enabled: service.autoDeploy?.enabled ?? false
+		},
+		imageWatch: {
+			enabled: service.imageWatch?.enabled ?? false
 		}
 	};
 }

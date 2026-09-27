@@ -73,6 +73,10 @@ describe('claimDueServices', () => {
 		expect(POLLABLE_TYPES).toContain('github-repo');
 	});
 
+	test('gitea-repo services are pollable (Gitea OAuth auto-deploy)', () => {
+		expect(POLLABLE_TYPES).toContain('gitea-repo');
+	});
+
 	test('claims nothing and writes no lease when no service is due', async () => {
 		dueRows = [];
 		const rows = await claimDueServices(now, 20);

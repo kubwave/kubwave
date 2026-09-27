@@ -5,9 +5,11 @@ process.env.DATABASE_URL ??= 'postgres://u:p@localhost:5432/test';
 
 interface OpenApiOperation {
 	operationId?: string;
+	responses?: Record<string, { content?: Record<string, { schema?: { $ref?: string } }> }>;
 }
 interface OpenApiSpec {
 	paths: Record<string, Record<string, OpenApiOperation>>;
+	components?: { schemas?: Record<string, { properties?: Record<string, unknown> }> };
 }
 let spec: OpenApiSpec;
 
@@ -28,5 +30,14 @@ describe('templates OpenAPI contract', () => {
 		expect(spec.paths['/api/templates/{templateId}']?.get?.operationId).toBe('templatesGet');
 		expect(spec.paths['/api/templates/{templateId}/logo']?.get?.operationId).toBe('templatesLogo');
 		expect(spec.paths['/api/environments/{environmentId}/services/from-template']?.post?.operationId).toBe('environmentServicesCreateFromTemplate');
+	});
+
+	test('from-template 201 wraps services and generatedSecrets', () => {
+		const ref =
+			spec.paths['/api/environments/{environmentId}/services/from-template']?.post?.responses?.['201']?.content?.['application/json']?.schema?.$ref;
+		expect(ref).toBe('#/components/schemas/CreateFromTemplateResponseDto');
+		const schema = spec.components?.schemas?.CreateFromTemplateResponseDto;
+		expect(schema?.properties).toHaveProperty('services');
+		expect(schema?.properties).toHaveProperty('generatedSecrets');
 	});
 });

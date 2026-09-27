@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { Eye, EyeOff, KeyRound, Plus, X } from 'lucide-vue-next';
+import { ClipboardPaste, Eye, EyeOff, KeyRound, Plus, X } from 'lucide-vue-next';
 import type { Service } from '~/utils/types';
 import type { ServiceSettingsValues } from '~/composables/use-service-settings-schema';
 
-defineProps<{
+const props = defineProps<{
 	state: ServiceSettingsValues;
 	saving: boolean;
 	service: Service;
@@ -13,7 +13,18 @@ defineProps<{
 	addSecret: () => void;
 	removeSecret: (index: number) => void;
 	toggleSecret: (id: string) => void;
+	importDotenv: (entries: Array<{ key: string; value: string }>, asSecrets: boolean) => void;
 }>();
+
+const pasteOpen = ref(false);
+const pasteText = ref('');
+const parsedPaste = computed(() => parseDotenv(pasteText.value));
+
+function applyPaste(asSecrets: boolean) {
+	props.importDotenv(parsedPaste.value, asSecrets);
+	pasteText.value = '';
+	pasteOpen.value = false;
+}
 </script>
 
 <template>
@@ -25,10 +36,30 @@ defineProps<{
 					<h3 class="text-sm font-medium">Environment variables</h3>
 					<p class="text-xs text-muted-foreground">Injected into the container at runtime.</p>
 				</div>
-				<Button type="button" variant="ghost" size="sm" @click="addEnv">
-					<Plus />
-					Add
-				</Button>
+				<div class="flex items-center gap-1">
+					<Button type="button" variant="ghost" size="sm" :disabled="saving" @click="pasteOpen = !pasteOpen">
+						<ClipboardPaste />
+						Paste .env
+					</Button>
+					<Button type="button" variant="ghost" size="sm" @click="addEnv">
+						<Plus />
+						Add
+					</Button>
+				</div>
+			</div>
+			<div v-if="pasteOpen" class="flex flex-col gap-2 rounded-md border bg-muted/20 p-3">
+				<Textarea v-model="pasteText" placeholder="DATABASE_URL=postgres://…&#10;API_KEY=…" class="min-h-28 font-mono text-xs" :disabled="saving" />
+				<div class="flex flex-wrap items-center justify-between gap-2">
+					<span class="text-xs text-muted-foreground">
+						{{ parsedPaste.length }} {{ parsedPaste.length === 1 ? 'variable' : 'variables' }} found. Existing keys are overwritten.
+					</span>
+					<div class="flex gap-2">
+						<Button type="button" variant="outline" size="sm" :disabled="saving || parsedPaste.length === 0" @click="applyPaste(true)">
+							Add as secrets
+						</Button>
+						<Button type="button" size="sm" :disabled="saving || parsedPaste.length === 0" @click="applyPaste(false)">Add as variables</Button>
+					</div>
+				</div>
 			</div>
 			<p v-if="state.env.length === 0" class="text-sm text-muted-foreground">No variables.</p>
 			<div v-for="(item, index) in state.env" :key="item._id" class="flex items-center gap-2">

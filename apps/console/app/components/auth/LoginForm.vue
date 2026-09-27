@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import * as z from 'zod';
+import { safeRedirect } from '#shared/auth-paths';
 import { setAccessToken } from '~/utils/token-store';
 
 const api = useApi();
@@ -29,7 +30,7 @@ const { form, isSubmitting } = useAppForm({
 				return;
 			}
 			user.value = session.user;
-			await navigateTo('/', { replace: true });
+			await navigateTo(safeRedirect(route.query.redirect), { replace: true });
 		} catch (err) {
 			rootError.value = err instanceof Error ? err.message : 'Could not reach the server.';
 		}

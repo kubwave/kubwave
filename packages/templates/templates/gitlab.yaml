@@ -1,0 +1,47 @@
+id: gitlab
+name: GitLab
+description: Self-hosted Git repository management with merge requests, CI/CD, and a built-in container registry.
+category: developer-tools
+tags: [git, gitlab, scm, devops, repositories]
+logo: gitlab.svg
+documentation: https://docs.gitlab.com/omnibus/docker/
+schemaVersion: 1
+version: 1
+inputs:
+  - key: domain
+    label: Public domain
+    type: string
+    required: true
+    placeholder: gitlab.example.com
+  - key: admin_email
+    label: Admin email
+    type: string
+    required: false
+    placeholder: admin@example.com
+secrets:
+  - { key: root_password, generate: password }
+services:
+  - name: gitlab
+    primary: true
+    type: docker-image
+    config:
+      image: gitlab/gitlab-ce
+      tag: '19.2.4-ce.0'
+      containerPort: 80
+      env:
+        - { key: EXTERNAL_URL, value: 'https://{{ inputs.domain }}' }
+        # The ingress terminates TLS, so GitLab nginx must serve plain HTTP on :80 while EXTERNAL_URL stays https to generate correct links.
+        - {
+            key: GITLAB_OMNIBUS_CONFIG,
+            value: "external_url 'https://{{ inputs.domain }}'; gitlab_rails['nginx']['listen_port'] = 80; gitlab_rails['nginx']['listen_https'] = false;"
+          }
+        - { key: GITLAB_ROOT_EMAIL, value: '{{ inputs.admin_email }}' }
+      secrets:
+        - { key: GITLAB_ROOT_PASSWORD, value: '{{ secrets.root_password }}' }
+      domains:
+        - { host: '{{ inputs.domain }}', port: 80 }
+      volumes:
+        - { name: config, mountPath: /etc/gitlab, size: 5Gi }
+        - { name: data, mountPath: /var/opt/gitlab, size: 10Gi }
+        - { name: logs, mountPath: /var/log/gitlab, size: 1Gi }
+      resources: { cpuRequest: 500m, cpuLimit: 2000m, memoryRequest: 2Gi, memoryLimit: 4Gi }

@@ -3,6 +3,7 @@
 import { apiResult, type KubwaveApiResult, type NormalizeApiData } from '../runtime/result.js';
 import type * as sdk from './sdk.gen.js';
 import type {
+	AiStatusGetResponses,
 	AuthForgotPasswordData,
 	AuthForgotPasswordResponses,
 	AuthLoginData,
@@ -21,9 +22,13 @@ import type {
 	EnvironmentFlowLayoutNodeUpdateData,
 	EnvironmentFlowLayoutNodeUpdateResponses,
 	EnvironmentServiceStatusListResponses,
+	EnvironmentServicesAnalyzeRepositoryData,
+	EnvironmentServicesAnalyzeRepositoryResponses,
 	EnvironmentServicesComposeCreateData,
 	EnvironmentServicesComposeCreateResponses,
 	EnvironmentServicesCreateData,
+	EnvironmentServicesCreateFromPlanData,
+	EnvironmentServicesCreateFromPlanResponses,
 	EnvironmentServicesCreateFromTemplateData,
 	EnvironmentServicesCreateFromTemplateResponses,
 	EnvironmentServicesCreateResponses,
@@ -31,6 +36,10 @@ import type {
 	EnvironmentsDeleteResponses,
 	EnvironmentsUpdateData,
 	EnvironmentsUpdateResponses,
+	GitGiteaConnectData,
+	GitGiteaConnectResponses,
+	GitGiteaConnectionGetResponses,
+	GitGiteaDisconnectResponses,
 	GitGithubConnectionGetResponses,
 	GitGithubCreateManifestData,
 	GitGithubCreateManifestResponses,
@@ -45,6 +54,15 @@ import type {
 	InvitationsListResponses,
 	InvitationsResendResponses,
 	InvitationsValidityResponses,
+	McpAccessCreateData,
+	McpAccessCreateResponses,
+	McpAccessListResponses,
+	McpAccessRevokeResponses,
+	McpAuthorizationGetData,
+	McpAuthorizationGetResponses,
+	McpConsentCreateData,
+	McpConsentCreateResponses,
+	McpInfoGetResponses,
 	PlatformClusterEventsGetResponses,
 	PlatformClusterGetResponses,
 	PlatformClusterNodeGetResponses,
@@ -52,6 +70,9 @@ import type {
 	PlatformClusterNodeUsageGetResponses,
 	PlatformClusterUsageGetData,
 	PlatformClusterUsageGetResponses,
+	PlatformSettingsAiGetResponses,
+	PlatformSettingsAiUpdateData,
+	PlatformSettingsAiUpdateResponses,
 	PlatformSettingsDeploymentConcurrencyGetResponses,
 	PlatformSettingsDeploymentConcurrencyUpdateData,
 	PlatformSettingsDeploymentConcurrencyUpdateResponses,
@@ -124,6 +145,13 @@ import type {
 	TeamGitInstallationsClaimResponses,
 	TeamGitInstallationsListResponses,
 	TeamGitInstallationsUnbindResponses,
+	TeamGiteaConnectionGetResponses,
+	TeamGiteaInstallationReposListResponses,
+	TeamGiteaInstallationReposSyncResponses,
+	TeamGiteaInstallationsClaimData,
+	TeamGiteaInstallationsClaimResponses,
+	TeamGiteaInstallationsListResponses,
+	TeamGiteaInstallationsUnbindResponses,
 	TeamMembersAddData,
 	TeamMembersAddResponses,
 	TeamMembersListResponses,
@@ -176,18 +204,28 @@ type OperationResult<TResponses> = Promise<KubwaveApiResult<ResponseData<TRespon
 
 export type KubwaveResourceClient = {
 	raw: KubwaveRawClient;
+	ai: KubwaveAiResource;
 	auth: KubwaveAuthResource;
 	deployments: KubwaveDeploymentsResource;
 	environments: KubwaveEnvironmentsResource;
 	git: KubwaveGitResource;
 	health: KubwaveHealthResource;
 	invitations: KubwaveInvitationsResource;
+	mcp: KubwaveMcpResource;
 	platform: KubwavePlatformResource;
 	projects: KubwaveProjectsResource;
 	services: KubwaveServicesResource;
 	setup: KubwaveSetupResource;
 	teams: KubwaveTeamsResource;
 	templates: KubwaveTemplatesResource;
+};
+
+export type KubwaveAiResource = {
+	status: KubwaveAiStatusResource;
+};
+
+export type KubwaveAiStatusResource = {
+	get(): OperationResult<AiStatusGetResponses>;
 };
 
 export type KubwaveAuthResource = {
@@ -282,13 +320,23 @@ export type KubwaveEnvironmentsEnvironmentIdFlowLayoutNodesServiceIdResource = {
 export type KubwaveEnvironmentsEnvironmentIdServicesResource = {
 	get(): OperationResult<EnvironmentServicesListResponses>;
 	post(body: EnvironmentServicesCreateData['body']): OperationResult<EnvironmentServicesCreateResponses>;
+	analyze: KubwaveEnvironmentsEnvironmentIdServicesAnalyzeResource;
 	compose: KubwaveEnvironmentsEnvironmentIdServicesComposeResource;
+	fromPlan: KubwaveEnvironmentsEnvironmentIdServicesFromPlanResource;
 	fromTemplate: KubwaveEnvironmentsEnvironmentIdServicesFromTemplateResource;
 	status: KubwaveEnvironmentsEnvironmentIdServicesStatusResource;
 };
 
+export type KubwaveEnvironmentsEnvironmentIdServicesAnalyzeResource = {
+	post(body: EnvironmentServicesAnalyzeRepositoryData['body']): OperationResult<EnvironmentServicesAnalyzeRepositoryResponses>;
+};
+
 export type KubwaveEnvironmentsEnvironmentIdServicesComposeResource = {
 	post(body: EnvironmentServicesComposeCreateData['body']): OperationResult<EnvironmentServicesComposeCreateResponses>;
+};
+
+export type KubwaveEnvironmentsEnvironmentIdServicesFromPlanResource = {
+	post(body: EnvironmentServicesCreateFromPlanData['body']): OperationResult<EnvironmentServicesCreateFromPlanResponses>;
 };
 
 export type KubwaveEnvironmentsEnvironmentIdServicesFromTemplateResource = {
@@ -300,7 +348,14 @@ export type KubwaveEnvironmentsEnvironmentIdServicesStatusResource = {
 };
 
 export type KubwaveGitResource = {
+	gitea: KubwaveGitGiteaResource;
 	github: KubwaveGitGithubResource;
+};
+
+export type KubwaveGitGiteaResource = {
+	get(): OperationResult<GitGiteaConnectionGetResponses>;
+	post(body: GitGiteaConnectData['body']): OperationResult<GitGiteaConnectResponses>;
+	delete(): OperationResult<GitGiteaDisconnectResponses>;
 };
 
 export type KubwaveGitGithubResource = {
@@ -342,6 +397,35 @@ export type KubwaveInvitationsIdValidityResource = {
 	get(): OperationResult<InvitationsValidityResponses>;
 };
 
+export type KubwaveMcpResource = {
+	access: KubwaveMcpAccessResource;
+	authorization: KubwaveMcpAuthorizationResource;
+	consent: KubwaveMcpConsentResource;
+	info: KubwaveMcpInfoResource;
+};
+
+export type KubwaveMcpAccessResource = {
+	(accessId: string): KubwaveMcpAccessAccessIdResource;
+	get(): OperationResult<McpAccessListResponses>;
+	post(body: McpAccessCreateData['body']): OperationResult<McpAccessCreateResponses>;
+};
+
+export type KubwaveMcpAccessAccessIdResource = {
+	delete(): OperationResult<McpAccessRevokeResponses>;
+};
+
+export type KubwaveMcpAuthorizationResource = {
+	post(body: McpAuthorizationGetData['body']): OperationResult<McpAuthorizationGetResponses>;
+};
+
+export type KubwaveMcpConsentResource = {
+	post(body: McpConsentCreateData['body']): OperationResult<McpConsentCreateResponses>;
+};
+
+export type KubwaveMcpInfoResource = {
+	get(): OperationResult<McpInfoGetResponses>;
+};
+
 export type KubwavePlatformResource = {
 	cluster: KubwavePlatformClusterResource;
 	settings: KubwavePlatformSettingsResource;
@@ -379,6 +463,7 @@ export type KubwavePlatformClusterUsageResource = {
 };
 
 export type KubwavePlatformSettingsResource = {
+	ai: KubwavePlatformSettingsAiResource;
 	deploymentConcurrency: KubwavePlatformSettingsDeploymentConcurrencyResource;
 	domain: KubwavePlatformSettingsDomainResource;
 	ha: KubwavePlatformSettingsHaResource;
@@ -389,6 +474,11 @@ export type KubwavePlatformSettingsResource = {
 	smtp: KubwavePlatformSettingsSmtpResource;
 	tcpPortPool: KubwavePlatformSettingsTcpPortPoolResource;
 	volumeAutoscaling: KubwavePlatformSettingsVolumeAutoscalingResource;
+};
+
+export type KubwavePlatformSettingsAiResource = {
+	get(): OperationResult<PlatformSettingsAiGetResponses>;
+	put(body: PlatformSettingsAiUpdateData['body']): OperationResult<PlatformSettingsAiUpdateResponses>;
 };
 
 export type KubwavePlatformSettingsDeploymentConcurrencyResource = {
@@ -571,11 +661,45 @@ export type KubwaveTeamsTeamIdDeploymentsResource = {
 
 export type KubwaveTeamsTeamIdGitResource = {
 	connection: KubwaveTeamsTeamIdGitConnectionResource;
+	gitea: KubwaveTeamsTeamIdGitGiteaResource;
 	installations: KubwaveTeamsTeamIdGitInstallationsResource;
 };
 
 export type KubwaveTeamsTeamIdGitConnectionResource = {
 	get(): OperationResult<TeamGitConnectionGetResponses>;
+};
+
+export type KubwaveTeamsTeamIdGitGiteaResource = {
+	connection: KubwaveTeamsTeamIdGitGiteaConnectionResource;
+	installations: KubwaveTeamsTeamIdGitGiteaInstallationsResource;
+};
+
+export type KubwaveTeamsTeamIdGitGiteaConnectionResource = {
+	get(): OperationResult<TeamGiteaConnectionGetResponses>;
+};
+
+export type KubwaveTeamsTeamIdGitGiteaInstallationsResource = {
+	(installationId: string): KubwaveTeamsTeamIdGitGiteaInstallationsInstallationIdResource;
+	get(): OperationResult<TeamGiteaInstallationsListResponses>;
+	claim: KubwaveTeamsTeamIdGitGiteaInstallationsClaimResource;
+};
+
+export type KubwaveTeamsTeamIdGitGiteaInstallationsInstallationIdResource = {
+	delete(): OperationResult<TeamGiteaInstallationsUnbindResponses>;
+	repos: KubwaveTeamsTeamIdGitGiteaInstallationsInstallationIdReposResource;
+};
+
+export type KubwaveTeamsTeamIdGitGiteaInstallationsInstallationIdReposResource = {
+	get(): OperationResult<TeamGiteaInstallationReposListResponses>;
+	sync: KubwaveTeamsTeamIdGitGiteaInstallationsInstallationIdReposSyncResource;
+};
+
+export type KubwaveTeamsTeamIdGitGiteaInstallationsInstallationIdReposSyncResource = {
+	post(): OperationResult<TeamGiteaInstallationReposSyncResponses>;
+};
+
+export type KubwaveTeamsTeamIdGitGiteaInstallationsClaimResource = {
+	post(body: TeamGiteaInstallationsClaimData['body']): OperationResult<TeamGiteaInstallationsClaimResponses>;
 };
 
 export type KubwaveTeamsTeamIdGitInstallationsResource = {
@@ -649,6 +773,11 @@ export type KubwaveTemplatesTemplateIdLogoResource = {
 export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClient {
 	return {
 		raw: raw,
+		ai: {
+			status: {
+				get: () => apiResult(raw.aiStatusGet({}))
+			}
+		},
 		auth: {
 			forgotPassword: {
 				post: (body: AuthForgotPasswordData['body']) => apiResult(raw.authForgotPassword({ body }))
@@ -709,9 +838,17 @@ export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClie
 					get: () => apiResult(raw.environmentServicesList({ path: { environmentId: environmentId } })),
 					post: (body: EnvironmentServicesCreateData['body']) =>
 						apiResult(raw.environmentServicesCreate({ path: { environmentId: environmentId }, body })),
+					analyze: {
+						post: (body: EnvironmentServicesAnalyzeRepositoryData['body']) =>
+							apiResult(raw.environmentServicesAnalyzeRepository({ path: { environmentId: environmentId }, body }))
+					},
 					compose: {
 						post: (body: EnvironmentServicesComposeCreateData['body']) =>
 							apiResult(raw.environmentServicesComposeCreate({ path: { environmentId: environmentId }, body }))
+					},
+					fromPlan: {
+						post: (body: EnvironmentServicesCreateFromPlanData['body']) =>
+							apiResult(raw.environmentServicesCreateFromPlan({ path: { environmentId: environmentId }, body }))
 					},
 					fromTemplate: {
 						post: (body: EnvironmentServicesCreateFromTemplateData['body']) =>
@@ -725,6 +862,11 @@ export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClie
 			{}
 		),
 		git: {
+			gitea: {
+				get: () => apiResult(raw.gitGiteaConnectionGet({})),
+				post: (body: GitGiteaConnectData['body']) => apiResult(raw.gitGiteaConnect({ body })),
+				delete: () => apiResult(raw.gitGiteaDisconnect({}))
+			},
 			github: {
 				get: () => apiResult(raw.gitGithubConnectionGet({})),
 				delete: () => apiResult(raw.gitGithubDisconnect({})),
@@ -754,6 +896,26 @@ export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClie
 				post: (body: InvitationsCreateData['body']) => apiResult(raw.invitationsCreate({ body }))
 			}
 		),
+		mcp: {
+			access: Object.assign(
+				(accessId: string) => ({
+					delete: () => apiResult(raw.mcpAccessRevoke({ path: { accessId: accessId } }))
+				}),
+				{
+					get: () => apiResult(raw.mcpAccessList({})),
+					post: (body: McpAccessCreateData['body']) => apiResult(raw.mcpAccessCreate({ body }))
+				}
+			),
+			authorization: {
+				post: (body: McpAuthorizationGetData['body']) => apiResult(raw.mcpAuthorizationGet({ body }))
+			},
+			consent: {
+				post: (body: McpConsentCreateData['body']) => apiResult(raw.mcpConsentCreate({ body }))
+			},
+			info: {
+				get: () => apiResult(raw.mcpInfoGet({}))
+			}
+		},
 		platform: {
 			cluster: {
 				get: () => apiResult(raw.platformClusterGet({})),
@@ -774,6 +936,10 @@ export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClie
 				}
 			},
 			settings: {
+				ai: {
+					get: () => apiResult(raw.platformSettingsAiGet({})),
+					put: (body: PlatformSettingsAiUpdateData['body']) => apiResult(raw.platformSettingsAiUpdate({ body }))
+				},
 				deploymentConcurrency: {
 					get: () => apiResult(raw.platformSettingsDeploymentConcurrencyGet({})),
 					put: (body: PlatformSettingsDeploymentConcurrencyUpdateData['body']) => apiResult(raw.platformSettingsDeploymentConcurrencyUpdate({ body }))
@@ -901,6 +1067,29 @@ export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClie
 				git: {
 					connection: {
 						get: () => apiResult(raw.teamGitConnectionGet({ path: { teamId: teamId } }))
+					},
+					gitea: {
+						connection: {
+							get: () => apiResult(raw.teamGiteaConnectionGet({ path: { teamId: teamId } }))
+						},
+						installations: Object.assign(
+							(installationId: string) => ({
+								delete: () => apiResult(raw.teamGiteaInstallationsUnbind({ path: { teamId: teamId, installationId: installationId } })),
+								repos: {
+									get: () => apiResult(raw.teamGiteaInstallationReposList({ path: { teamId: teamId, installationId: installationId } })),
+									sync: {
+										post: () => apiResult(raw.teamGiteaInstallationReposSync({ path: { teamId: teamId, installationId: installationId } }))
+									}
+								}
+							}),
+							{
+								get: () => apiResult(raw.teamGiteaInstallationsList({ path: { teamId: teamId } })),
+								claim: {
+									post: (body: TeamGiteaInstallationsClaimData['body']) =>
+										apiResult(raw.teamGiteaInstallationsClaim({ path: { teamId: teamId }, body }))
+								}
+							}
+						)
 					},
 					installations: Object.assign(
 						(installationId: string) => ({

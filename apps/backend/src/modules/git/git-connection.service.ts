@@ -100,6 +100,7 @@ export class GitConnectionService {
 	async getAppContext(): Promise<{ connectionId: string; appJwt: string } | null> {
 		const row = await this.latestConnectionRow();
 		if (!row) return null;
+		if (!row.privateKeyCiphertext) return null;
 		return { connectionId: row.id, appJwt: signAppJwt(row.appId, decryptSecret(row.privateKeyCiphertext)) };
 	}
 

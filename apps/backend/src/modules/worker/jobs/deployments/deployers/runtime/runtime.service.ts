@@ -1,6 +1,6 @@
 import { AppsV1Api, AutoscalingV2Api, CoreV1Api, CustomObjectsApi, NetworkingV1Api, type V1Deployment } from '@kubernetes/client-node';
-import type { DeploymentLogEntry, RuntimeConfig } from '@kubwave/db';
-import { deploymentRolloutState, LABEL_SERVICE_ID, parseMemoryToBytes, pvcName, resourceName, secretName } from '@kubwave/kube';
+import type { DeploymentLogEntry, DockerImageServiceConfig, RuntimeConfig } from '@kubwave/db';
+import { deploymentRolloutState, LABEL_SERVICE_ID, parseMemoryToBytes, pvcName, registrySecretName, resourceName, secretName } from '@kubwave/kube';
 import {
 	deleteIgnoreMissing,
 	isNotFound,
@@ -18,14 +18,18 @@ import type { DeployContext, ReconcileResult, TeardownContext } from '../types.j
 import { autoscalingEnabled, convergeHPA } from './autoscaling.js';
 import { buildDeployment, containerPorts, deploymentMatchesConfig, withDefaultDomain } from './deployment.js';
 import { runtimeClassForService } from './runtime-class.js';
-import { convergePullSecret } from './pull-secret.js';
+import { convergePullSecret, convergeServicePullSecret } from './pull-secret.js';
 import { convergeSecret } from './secrets.js';
 import { convergeConfigFiles, filesSecretName } from './config-files.js';
 import { buildPVC } from './storage.js';
 
 function resolveBasicAuthSpec(config: RuntimeConfig): BasicAuthSpec | undefined {
 	if (!config.basicAuth) return undefined;
-	return { username: config.basicAuth.username, password: decryptSecret(config.basicAuth.password) };
+	return {
+		username: config.basicAuth.username,
+		password: decryptSecret(config.basicAuth.password),
+		...(config.basicAuth.publicPaths?.length ? { publicPaths: config.basicAuth.publicPaths } : {})
+	};
 }
 
 async function convergePersistentVolumes(
@@ -113,7 +117,14 @@ async function rolloutResult(
 }
 
 // Shared deploy core: converge every cluster resource for the config + image ref and report rollout state. Idempotent - called every tick until terminal.
-export async function reconcileRuntime(ctx: DeployContext, config: RuntimeConfig, imageRef: string): Promise<ReconcileResult> {
+// `mutableTag` says the ref can be republished under the same name, so the pod must re-pull instead of trusting the node's image cache.
+export async function reconcileRuntime(
+	ctx: DeployContext,
+	config: RuntimeConfig,
+	imageRef: string,
+	opts?: { mutableTag?: boolean }
+): Promise<ReconcileResult> {
+	const mutableTag = opts?.mutableTag === true;
 	const serviceId = ctx.deployment.serviceId;
 	const name = resourceName(serviceId);
 	const appsApi = ctx.kc.makeApiClient(AppsV1Api);
@@ -121,7 +132,11 @@ export async function reconcileRuntime(ctx: DeployContext, config: RuntimeConfig
 	const netApi = ctx.kc.makeApiClient(NetworkingV1Api);
 	const customApi = ctx.kc.makeApiClient(CustomObjectsApi);
 	const autoscalingApi = ctx.kc.makeApiClient(AutoscalingV2Api);
-	const imagePullSecretName = env.registryPullSecretName || undefined;
+	const registryAuth = (config as DockerImageServiceConfig).registryAuth;
+	// Platform pull secret (prod registry) plus the per-service secret only when credentials are configured.
+	const imagePullSecretNames = [env.registryPullSecretName || undefined, registryAuth ? registrySecretName(serviceId) : undefined].filter(
+		(name): name is string => name != null
+	);
 	// Same source the namespace reconciler stamps as the PSS enforce label, so pod hardening and the admission level can't diverge.
 	const podSecurityEnforce = tenantIsolation.podSecurityEnforce;
 	const runtimeClass = runtimeClassForService(ctx.deployment.type, tenantIsolation.runtimeClass) || undefined;
@@ -137,6 +152,7 @@ export async function reconcileRuntime(ctx: DeployContext, config: RuntimeConfig
 
 	// Pull/env/config-files Secrets before the Deployment references them, so a value/content change lands before its rollout.
 	await convergePullSecret(coreApi, ctx.namespace, events);
+	await convergeServicePullSecret(coreApi, ctx.namespace, serviceId, (config as DockerImageServiceConfig).registryAuth, events);
 	await convergeSecret(coreApi, ctx.namespace, serviceId, config, events);
 	await convergeConfigFiles(coreApi, ctx.namespace, serviceId, config, events);
 
@@ -163,22 +179,29 @@ export async function reconcileRuntime(ctx: DeployContext, config: RuntimeConfig
 		await appsApi.createNamespacedDeployment({
 			namespace: ctx.namespace,
 			body: buildDeployment(ctx.deployment, ctx.namespace, config, imageRef, {
-				imagePullSecretName,
+				imagePullSecretNames,
 				podSecurityEnforce,
 				runtimeClass,
-				defaultResources
+				defaultResources,
+				mutableTag
 			})
 		});
 		events.push(stepEvent('deployment-created', `Created Deployment ${name} with image ${imageRef}`));
 		await syncNetworking();
 		return { state: 'progressing', phase: 'applying', events };
 	}
-	if (!deploymentMatchesConfig(existing, config, imageRef, serviceId, podSecurityEnforce, runtimeClass, defaultResources)) {
+	if (!deploymentMatchesConfig(existing, config, imageRef, serviceId, podSecurityEnforce, runtimeClass, defaultResources, mutableTag)) {
 		await replaceWithRetry({
 			label: `Deployment ${name}`,
 			read: () => readDeploymentOrNull(appsApi, ctx.namespace, name),
 			build: () =>
-				buildDeployment(ctx.deployment, ctx.namespace, config, imageRef, { imagePullSecretName, podSecurityEnforce, runtimeClass, defaultResources }),
+				buildDeployment(ctx.deployment, ctx.namespace, config, imageRef, {
+					imagePullSecretNames,
+					podSecurityEnforce,
+					runtimeClass,
+					defaultResources,
+					mutableTag
+				}),
 			carryOver: (fresh, desired) => {
 				desired.metadata = { ...desired.metadata, resourceVersion: fresh.metadata?.resourceVersion ?? undefined };
 				// Under HPA, carry over the live replica count so the replace doesn't reset its scaling to the default.
@@ -211,6 +234,7 @@ export async function teardownRuntime(ctx: TeardownContext): Promise<void> {
 	await deleteIgnoreMissing(() => appsApi.deleteNamespacedDeployment({ name, namespace: ctx.namespace, propagationPolicy: 'Background' }));
 	await deleteIgnoreMissing(() => coreApi.deleteNamespacedSecret({ name: secretName(ctx.serviceId), namespace: ctx.namespace }));
 	await deleteIgnoreMissing(() => coreApi.deleteNamespacedSecret({ name: filesSecretName(ctx.serviceId), namespace: ctx.namespace }));
+	await deleteIgnoreMissing(() => coreApi.deleteNamespacedSecret({ name: registrySecretName(ctx.serviceId), namespace: ctx.namespace }));
 	// No volume list at teardown time, so list+delete every PVC matching the service label.
 	let pvcs;
 	try {

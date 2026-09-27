@@ -21,13 +21,16 @@ export type KubwaveApiResult<TData> =
 			response?: Response;
 	  };
 
+// Nested payloads (e.g. from-template wrapping `services`) need the same ServiceViewDto → ServiceView rewrite as top-level arrays.
 export type NormalizeApiData<T> = T extends ServiceViewDto
 	? ServiceView
 	: T extends Array<infer TItem>
 		? Array<NormalizeApiData<TItem>>
 		: T extends { config: ServiceConfigView }
 			? T
-			: T;
+			: T extends object
+				? { [K in keyof T]: NormalizeApiData<T[K]> }
+				: T;
 
 export type ApiData<TPromise extends Promise<unknown>> = NormalizeApiData<
 	Exclude<Awaited<TPromise> extends infer TResult ? (TResult extends { data: infer TData } ? TData : never) : never, null | undefined>

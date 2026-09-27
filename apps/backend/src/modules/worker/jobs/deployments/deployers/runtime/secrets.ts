@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { CoreV1Api, V1Secret } from '@kubernetes/client-node';
-import type { DeploymentLogEntry, RuntimeConfig } from '@kubwave/db';
+import type { DeploymentLogEntry, RegistryAuthConfig, RuntimeConfig } from '@kubwave/db';
 import { decryptSecret } from '@kubwave/crypto';
 import { secretName } from '@kubwave/kube';
 import { convergeManagedSecret } from '../../../../../../shared/cluster/ops.js';
@@ -18,6 +18,13 @@ export function secretsChecksum(config: RuntimeConfig): string | null {
 		.map(s => `${s.key}=${s.value}`)
 		.sort()
 		.join('\n');
+	return createHash('sha256').update(joined).digest('hex');
+}
+
+// Hash over the stored registry credential ciphertext so a credential change rolls the pods (the pull Secret is referenced by name, not content).
+export function registryChecksum(registryAuth: RegistryAuthConfig | undefined): string | null {
+	if (!registryAuth) return null;
+	const joined = `${registryAuth.server}\n${registryAuth.username}\n${registryAuth.password}`;
 	return createHash('sha256').update(joined).digest('hex');
 }
 

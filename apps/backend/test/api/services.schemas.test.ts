@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { databaseUpdateConfigSchema, dockerImageConfigSchema } from '~/modules/services/services.dto';
+import { createServiceSchema, databaseUpdateConfigSchema, dockerImageConfigSchema, updateServiceSchema } from '~/modules/services/services.dto';
 
 const base = {
 	image: 'nginx',
@@ -108,6 +108,90 @@ describe('dockerImageConfigSchema: config files', () => {
 		expect(result.success).toBe(false);
 		const messages = result.success ? [] : result.error.issues.map(i => i.message);
 		expect(messages.some(m => m.includes('total size limit'))).toBe(true);
+	});
+});
+
+// Private-registry credentials: enabling the toggle demands server + username; password may stay null to keep the stored one.
+describe('dockerImageConfigSchema: registry auth', () => {
+	const registryAuth = (overrides: Record<string, unknown> = {}) => ({
+		enabled: true,
+		server: 'ghcr.io',
+		username: 'octocat',
+		password: 's3cret',
+		...overrides
+	});
+
+	test('accepts a complete credential set', () => {
+		const result = dockerImageConfigSchema.safeParse({ ...base, registryAuth: registryAuth() });
+		expect(result.success).toBe(true);
+	});
+
+	test('accepts password null (keep stored) alongside server + username', () => {
+		const result = dockerImageConfigSchema.safeParse({ ...base, registryAuth: registryAuth({ password: null }) });
+		expect(result.success).toBe(true);
+	});
+
+	test('rejects the toggle on without a server', () => {
+		const result = dockerImageConfigSchema.safeParse({ ...base, registryAuth: registryAuth({ server: '' }) });
+		expect(result.success).toBe(false);
+		const messages = result.success ? [] : result.error.issues.map(i => i.message);
+		expect(messages.some(m => m.includes('registry server'))).toBe(true);
+	});
+
+	test('rejects the toggle on without a username', () => {
+		const result = dockerImageConfigSchema.safeParse({ ...base, registryAuth: registryAuth({ username: '' }) });
+		expect(result.success).toBe(false);
+		const messages = result.success ? [] : result.error.issues.map(i => i.message);
+		expect(messages.some(m => m.includes('username'))).toBe(true);
+	});
+
+	test('accepts the toggle off with no other fields', () => {
+		const result = dockerImageConfigSchema.safeParse({ ...base, registryAuth: { enabled: false } });
+		expect(result.success).toBe(true);
+	});
+
+	test('rejects a registry host with a path or scheme', () => {
+		const result = dockerImageConfigSchema.safeParse({ ...base, registryAuth: registryAuth({ server: 'https://ghcr.io' }) });
+		expect(result.success).toBe(false);
+	});
+
+	test('accepts a host with a port', () => {
+		const result = dockerImageConfigSchema.safeParse({ ...base, registryAuth: registryAuth({ server: 'registry.example.com:5000' }) });
+		expect(result.success).toBe(true);
+	});
+});
+
+// Tag-watch toggle: accepted on docker-image create and on any update; other create types must reject it (discriminated union).
+describe('imageWatch schema', () => {
+	test('docker-image create accepts the watch toggle', () => {
+		const result = createServiceSchema.safeParse({
+			name: 'web',
+			type: 'docker-image',
+			config: { ...base },
+			imageWatch: { enabled: true }
+		});
+		expect(result.success).toBe(true);
+	});
+
+	test('docker-image create works without the toggle (defaults off)', () => {
+		const result = createServiceSchema.safeParse({ name: 'web', type: 'docker-image', config: { ...base } });
+		expect(result.success).toBe(true);
+	});
+
+	test('repo create types ignore the toggle (unknown key stripped, like autoDeploy on docker-image)', () => {
+		const result = createServiceSchema.safeParse({
+			name: 'web',
+			type: 'public-repo',
+			config: { repoUrl: 'https://github.com/acme/web.git', branch: 'main', containerPort: null, env: [], domains: [], volumes: [] },
+			imageWatch: { enabled: true }
+		});
+		expect(result.success).toBe(true);
+		expect(result.success ? result.data : null).not.toHaveProperty('imageWatch');
+	});
+
+	test('update accepts the watch toggle', () => {
+		const result = updateServiceSchema.safeParse({ imageWatch: { enabled: true } });
+		expect(result.success).toBe(true);
 	});
 });
 

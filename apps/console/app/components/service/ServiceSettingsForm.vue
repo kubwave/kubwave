@@ -144,7 +144,11 @@ watch(
 );
 
 const isRepoType = computed(
-	() => props.service.type === 'public-repo' || props.service.type === 'private-repo' || props.service.type === 'github-repo'
+	() =>
+		props.service.type === 'public-repo' ||
+		props.service.type === 'private-repo' ||
+		props.service.type === 'github-repo' ||
+		props.service.type === 'gitea-repo'
 );
 
 function addEnv() {
@@ -162,6 +166,20 @@ function addSecret() {
 function removeSecret(index: number) {
 	const [removed] = state.secrets.splice(index, 1);
 	if (removed) delete shownSecrets[removed._id];
+}
+
+// Pasted keys overwrite same-named rows in the target list and move out of the other list, so a key never ends up as both.
+function importDotenv(entries: Array<{ key: string; value: string }>, asSecrets: boolean) {
+	const keys = new Set(entries.map(entry => entry.key));
+	if (asSecrets) {
+		state.env = state.env.filter(item => !keys.has(item.key));
+		state.secrets = state.secrets.filter(item => !keys.has(item.key));
+		state.secrets.push(...entries.map(({ key, value }) => ({ _id: crypto.randomUUID(), key, value, hasValue: false })));
+	} else {
+		state.secrets = state.secrets.filter(item => !keys.has(item.key));
+		state.env = state.env.filter(item => !keys.has(item.key));
+		state.env.push(...entries.map(({ key, value }) => ({ _id: crypto.randomUUID(), key, value })));
+	}
 }
 
 function addDomain() {
@@ -295,7 +313,18 @@ function buildConfig(values: ServiceSettingsValues) {
 			? {
 					enabled: true,
 					username: values.basicAuth.username.trim(),
-					password: values.basicAuth.password || null
+					password: values.basicAuth.password || null,
+					...(values.basicAuth.publicPaths
+						.split('\n')
+						.map(p => p.trim())
+						.filter(Boolean).length > 0
+						? {
+								publicPaths: values.basicAuth.publicPaths
+									.split('\n')
+									.map(p => p.trim())
+									.filter(Boolean)
+							}
+						: {})
 				}
 			: { enabled: false }
 	};
@@ -320,7 +349,7 @@ function buildConfig(values: ServiceSettingsValues) {
 	if (props.service.type === 'private-repo') {
 		return { repoUrl: values.repoUrl.trim(), sshKeyId: values.sshKeyId.trim(), ...repoBuildFields(values), ...sharedConfig };
 	}
-	if (props.service.type === 'github-repo') {
+	if (props.service.type === 'github-repo' || props.service.type === 'gitea-repo') {
 		return { installationId: values.installationId.trim(), repoFullName: values.repoFullName.trim(), ...repoBuildFields(values), ...sharedConfig };
 	}
 	return {
@@ -331,7 +360,16 @@ function buildConfig(values: ServiceSettingsValues) {
 		configFiles: values.configFiles.filter(f => f.path.trim()).map(f => ({ path: f.path.trim(), content: f.content })),
 		// Container entrypoint/args override; drop blank rows, keep order.
 		command: values.command.map(c => c.value.trim()).filter(Boolean),
-		args: values.args.map(a => a.value.trim()).filter(Boolean)
+		args: values.args.map(a => a.value.trim()).filter(Boolean),
+		// Empty password keeps the stored one (null), matching the API's keep-existing semantics.
+		registryAuth: values.registryAuth.enabled
+			? {
+					enabled: true,
+					server: values.registryAuth.server.trim(),
+					username: values.registryAuth.username.trim(),
+					password: values.registryAuth.password || null
+				}
+			: { enabled: false }
 	};
 }
 
@@ -346,10 +384,11 @@ async function onSubmit() {
 
 	const config = buildConfig(result.data);
 	const autoDeploy = isRepoType.value ? { autoDeploy: { enabled: result.data.autoDeploy.enabled } } : {};
+	const imageWatch = props.service.type === 'docker-image' ? { imageWatch: { enabled: result.data.imageWatch.enabled } } : {};
 
 	saving.value = true;
 	try {
-		const updated = await update.mutateAsync({ name: result.data.name, description: result.data.description, config, ...autoDeploy });
+		const updated = await update.mutateAsync({ name: result.data.name, description: result.data.description, config, ...autoDeploy, ...imageWatch });
 		seed(updated);
 		emit('saved', updated);
 		toast.success('Service saved');
@@ -464,6 +503,7 @@ async function onDelete() {
 							:add-secret="addSecret"
 							:remove-secret="removeSecret"
 							:toggle-secret="toggleSecret"
+							:import-dotenv="importDotenv"
 						/>
 					</div>
 

@@ -6,6 +6,7 @@ export type ServiceType =
 	| 'public-repo'
 	| 'private-repo'
 	| 'github-repo'
+	| 'gitea-repo'
 	| 'postgres'
 	| 'mysql'
 	| 'mariadb'
@@ -83,9 +84,25 @@ export interface RuntimeConfig<TSecret> {
 	autoscaling?: AutoscalingConfig;
 }
 
+export interface RegistryAuthView {
+	enabled: boolean;
+	server: string;
+	username: string;
+	hasPassword: boolean;
+}
+
+export interface RegistryAuthInput {
+	enabled: boolean;
+	server: string;
+	username: string;
+	// null = keep the stored password.
+	password: string | null;
+}
+
 export interface DockerImageServiceConfig<TSecret = SecretView> extends RuntimeConfig<TSecret> {
 	image: string;
 	tag: string;
+	registryAuth?: RegistryAuthView;
 }
 
 export interface DockerfileServiceConfig<TSecret = SecretView> extends RuntimeConfig<TSecret> {
@@ -115,6 +132,11 @@ export interface GithubRepoServiceConfig<TSecret = SecretView> extends PublicRep
 	installationId: string;
 }
 
+export interface GiteaRepoServiceConfig<TSecret = SecretView> extends PublicRepoServiceConfig<TSecret> {
+	repoFullName: string;
+	installationId: string;
+}
+
 export interface DatabaseServiceConfig<TSecret = SecretView> extends RuntimeConfig<TSecret> {
 	version: string;
 	storage: {
@@ -130,14 +152,16 @@ export type ServiceConfigView =
 	| PublicRepoServiceConfig<SecretView>
 	| PrivateRepoServiceConfig<SecretView>
 	| GithubRepoServiceConfig<SecretView>
+	| GiteaRepoServiceConfig<SecretView>
 	| DatabaseServiceConfig<SecretView>;
 
 export type ServiceConfigInput =
-	| DockerImageServiceConfig<SecretInput>
+	| (Omit<DockerImageServiceConfig<SecretInput>, 'registryAuth'> & { registryAuth?: RegistryAuthInput })
 	| DockerfileServiceConfig<SecretInput>
 	| PublicRepoServiceConfig<SecretInput>
 	| PrivateRepoServiceConfig<SecretInput>
 	| GithubRepoServiceConfig<SecretInput>
+	| GiteaRepoServiceConfig<SecretInput>
 	| DatabaseServiceConfig<SecretInput>;
 
 export type ServiceView = Omit<ServiceViewDto, 'config'> & {

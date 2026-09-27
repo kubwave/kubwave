@@ -6,6 +6,7 @@ import { ApiError } from '../../shared/errors/api-error.js';
 import { ServicesService } from '../services/services.service.js';
 import type { CreateServiceInput } from '../services/services.dto.js';
 import type { ServiceView } from '../services/services.types.js';
+import type { CreateFromTemplateResult } from './templates.dto.js';
 import { TemplateCatalogService } from './template-catalog.service.js';
 import { resolveTemplateServiceConfig, type ResolveContext } from './template-placeholder.js';
 
@@ -22,7 +23,7 @@ export class TemplatesService {
 		templateId: string,
 		instanceName: string | undefined,
 		inputs: Record<string, string>
-	): Promise<ServiceView[]> {
+	): Promise<CreateFromTemplateResult> {
 		const template = await this.catalog.getTemplate(templateId);
 		if (!template) throw new ApiError(404, 'template_not_found');
 
@@ -105,6 +106,7 @@ export class TemplatesService {
 			created.push(service);
 		}
 
-		return created;
+		const generatedSecrets = template.secrets.map(secret => ({ key: secret.key, value: secrets[secret.key]! }));
+		return { services: created, generatedSecrets };
 	}
 }

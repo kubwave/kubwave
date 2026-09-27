@@ -4,11 +4,12 @@ import { AuthGuard } from '../../shared/auth/auth.guard.js';
 import { CurrentUserId } from '../../shared/auth/current-user.decorator.js';
 import { ApiError } from '../../shared/errors/api-error.js';
 import { ZodValidationPipe } from '../../shared/validation/zod-validation.pipe.js';
-import { ServiceViewDto, environmentServiceParamSchema, type EnvironmentServiceParam } from '../services/services.dto.js';
+import { environmentServiceParamSchema, type EnvironmentServiceParam } from '../services/services.dto.js';
 import { TemplateCatalogService } from './template-catalog.service.js';
 import { TemplatesService } from './templates.service.js';
 import {
 	CreateFromTemplateDto,
+	CreateFromTemplateResponseDto,
 	TemplateDto,
 	createFromTemplateSchema,
 	templateIdParamSchema,
@@ -58,12 +59,12 @@ export class TemplatesController {
 	@ApiBearerAuth('bearerAuth')
 	@ApiOperation({ operationId: 'environmentServicesCreateFromTemplate', summary: 'Create services from a template' })
 	@ApiBody({ type: CreateFromTemplateDto })
-	@ApiCreatedResponse({ type: [ServiceViewDto] })
+	@ApiCreatedResponse({ type: CreateFromTemplateResponseDto })
 	async fromTemplate(
 		@CurrentUserId() userId: string,
 		@Param(new ZodValidationPipe(environmentServiceParamSchema)) params: EnvironmentServiceParam,
 		@Body(new ZodValidationPipe(createFromTemplateSchema)) body: CreateFromTemplateInput
-	): Promise<ServiceViewDto[]> {
+	): Promise<CreateFromTemplateResponseDto> {
 		return this.templates.instantiate(userId, params.environmentId, body.templateId, body.name, body.inputs ?? {});
 	}
 }

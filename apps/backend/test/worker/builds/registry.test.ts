@@ -22,6 +22,7 @@ mock.module('~/shared/config/worker-env', () => ({
 mock.module('@kubwave/db', () => ({ db: {}, sshKeys: {}, gitAppConnections: {}, gitInstallations: {} }));
 mock.module('@kubwave/crypto', () => ({
 	decryptSecret: (s: string) => s,
+	encryptSecret: (s: string) => s,
 	signJwtRs256: () => 'jwt',
 	generateHtpasswd: (u: string, p: string) => `${u}:{SHA}${p}`
 }));
@@ -30,16 +31,24 @@ const { getDeployer } = await import('~/modules/worker/jobs/deployments/deployer
 
 describe('getDeployer', () => {
 	// Each type resolves to a deployer whose own `type` matches the key, proving the map isn't cross-wired.
-	test.each(['docker-image', 'dockerfile', 'public-repo', 'private-repo', 'postgres', 'mysql', 'mariadb', 'mongodb'] as const)(
-		'resolves the %s deployer (type matches)',
-		type => {
-			const deployer = getDeployer(type);
-			expect(deployer).toBeDefined();
-			expect(deployer.type).toBe(type);
-			expect(typeof deployer.reconcile).toBe('function');
-			expect(typeof deployer.teardown).toBe('function');
-		}
-	);
+	test.each([
+		'docker-image',
+		'dockerfile',
+		'public-repo',
+		'private-repo',
+		'github-repo',
+		'gitea-repo',
+		'postgres',
+		'mysql',
+		'mariadb',
+		'mongodb'
+	] as const)('resolves the %s deployer (type matches)', type => {
+		const deployer = getDeployer(type);
+		expect(deployer).toBeDefined();
+		expect(deployer.type).toBe(type);
+		expect(typeof deployer.reconcile).toBe('function');
+		expect(typeof deployer.teardown).toBe('function');
+	});
 
 	test('the same type always returns the same singleton deployer instance', () => {
 		expect(getDeployer('dockerfile')).toBe(getDeployer('dockerfile'));

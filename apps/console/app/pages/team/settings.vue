@@ -16,7 +16,9 @@ const initialTab =
 			? 'ssh-keys'
 			: route.query.tab === 'github' || route.query.installation_id
 				? 'github'
-				: 'general';
+				: route.query.tab === 'gitea' || route.query.git_grant || route.query.git_error
+					? 'gitea'
+					: 'general';
 
 onServerPrefetch(async () => {
 	const teamsData = await queryClient.fetchQuery(teamsQuery(api));

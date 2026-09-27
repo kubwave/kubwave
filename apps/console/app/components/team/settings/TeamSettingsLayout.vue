@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { CalendarDays, Github, Hash, KeyRound, Settings2, Shield, ShieldAlert, Star, Trash2, Users } from 'lucide-vue-next';
+import { CalendarDays, Github, GitFork, Hash, KeyRound, Settings2, Shield, ShieldAlert, Star, Trash2, Users } from 'lucide-vue-next';
 
-type SettingsTab = 'general' | 'members' | 'ssh-keys' | 'github';
+type SettingsTab = 'general' | 'members' | 'ssh-keys' | 'github' | 'gitea';
 
 const props = withDefaults(defineProps<{ initialTab?: SettingsTab }>(), { initialTab: 'general' });
 
@@ -76,6 +76,10 @@ const memberSince = computed(() =>
 				<TabsTrigger value="github">
 					<Github />
 					GitHub
+				</TabsTrigger>
+				<TabsTrigger value="gitea">
+					<GitFork />
+					Gitea
 				</TabsTrigger>
 			</TabsList>
 		</Tabs>
@@ -202,6 +206,10 @@ const memberSince = computed(() =>
 
 		<div v-else-if="tab === 'github'">
 			<TeamGithubCard />
+		</div>
+
+		<div v-else-if="tab === 'gitea'">
+			<TeamGiteaCard />
 		</div>
 	</div>
 </template>

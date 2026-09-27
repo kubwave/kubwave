@@ -23,5 +23,8 @@ export const ANNOTATION_SECRETS_CHECKSUM = 'kubwave/secrets-checksum';
 // Same idea for config files: subPath mounts don't update in place, so a content change must flip this hash to roll the pod.
 export const ANNOTATION_CONFIG_FILES_CHECKSUM = 'kubwave/config-files-checksum';
 
+// Same idea for per-service registry credentials: the pull Secret is referenced by name, so a credential change must flip this hash to roll the pod.
+export const ANNOTATION_REGISTRY_CHECKSUM = 'kubwave/registry-checksum';
+
 // Pod volume name projecting the files Secret. Prefixed to avoid colliding with user-defined volume names.
 export const CONFIG_FILES_VOLUME_NAME = 'kubwave-config-files';

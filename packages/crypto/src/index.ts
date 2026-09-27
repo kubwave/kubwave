@@ -102,3 +102,13 @@ export function verifyWebhookSignature(rawBody: Buffer | string, signatureHeader
 	if (providedBuf.length !== expectedBuf.length) return false;
 	return timingSafeEqual(providedBuf, expectedBuf);
 }
+
+// Gitea/Forgejo send X-Gitea-Signature as a raw hex HMAC-SHA256 of the body (no "sha256=" prefix).
+export function verifyGiteaWebhookSignature(rawBody: Buffer | string, signatureHeader: string | undefined | null, secret: string): boolean {
+	if (!signatureHeader || signatureHeader.includes('=')) return false;
+	const expected = createHmac('sha256', secret).update(rawBody).digest('hex');
+	const providedBuf = Buffer.from(signatureHeader, 'utf8');
+	const expectedBuf = Buffer.from(expected, 'utf8');
+	if (providedBuf.length !== expectedBuf.length) return false;
+	return timingSafeEqual(providedBuf, expectedBuf);
+}

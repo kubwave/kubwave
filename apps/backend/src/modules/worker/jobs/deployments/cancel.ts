@@ -14,7 +14,7 @@ import { finalize, insertLogs, logEntry, phaseEntry } from './logs.js';
 // it counts as available, so a fixed low attempt count could exhaust itself before the rollback is
 // even given a chance to succeed. 3 covers genuinely-failing rollbacks on top of that ready window.
 const MAX_CANCEL_ROLLBACK_ATTEMPTS = 3 + Math.ceil((SERVICE_ROLLOUT_MIN_READY_SECONDS * 1000) / env.reconcileIntervalMs);
-const BUILD_SERVICE_TYPES = new Set<Deployment['type']>(['dockerfile', 'public-repo', 'private-repo', 'github-repo']);
+const BUILD_SERVICE_TYPES = new Set<Deployment['type']>(['dockerfile', 'public-repo', 'private-repo', 'github-repo', 'gitea-repo']);
 
 function isBuildDeployment(row: Deployment): boolean {
 	return BUILD_SERVICE_TYPES.has(row.type);

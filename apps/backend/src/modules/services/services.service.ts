@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, inArray, ne } from 'drizzle-orm';
+import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
 import {
 	DATABASE_ENGINE_CATALOG,
 	DEFAULT_DATABASE_NAME,
@@ -11,6 +11,7 @@ import {
 	databaseConnectionUri,
 	db,
 	environments,
+	gitAppConnections,
 	gitInstallations,
 	isAllowedDatabaseVersion,
 	isDatabaseEngine,
@@ -22,9 +23,11 @@ import {
 	teamMembers
 } from '@kubwave/db';
 import type { DatabaseServiceConfig, ServiceConfig, ServiceType } from '@kubwave/db';
-import { decryptSecret } from '@kubwave/crypto';
+import { decryptSecret, encryptSecret } from '@kubwave/crypto';
+import { ApiError } from '../../shared/errors/api-error.js';
 import { internalServiceName, parseMemoryToBytes } from '@kubwave/kube';
 import { EnvironmentsService } from '../environments/environments.service.js';
+import { GiteaInstallationsService } from '../git/gitea-installations.service.js';
 import { BackendConfigService } from '../../shared/config/backend-config.service.js';
 import { SettingsService } from '../../shared/settings/settings.service.js';
 import { reconcileExposedPorts } from './port-exposures.js';
@@ -33,12 +36,14 @@ import {
 	buildStoredDatabaseConfig,
 	buildStoredDockerfileConfig,
 	buildStoredGithubRepoConfig,
+	buildStoredGiteaRepoConfig,
 	buildStoredPrivateRepoConfig,
 	buildStoredPublicRepoConfig,
 	normalizeDockerConfig,
 	toConfigView
 } from './services.config.js';
-import type { AutoDeployInput, CreateComposeServicesInput, CreateServiceInput, UpdateServiceInput } from './services.dto.js';
+import type { AutoDeployInput, CreateComposeServicesInput, CreateServiceInput, ImageWatchInput, UpdateServiceInput } from './services.dto.js';
+import { updateServiceSchema } from './services.dto.js';
 import { ComposeParseError } from './compose/compose.errors.js';
 import { parseComposeServices } from './compose/compose.parser.js';
 import { composeReferenceIssues, rewriteComposeServiceReferences } from './compose/compose.references.js';
@@ -57,7 +62,7 @@ import {
 import type { DefaultDomainContext, ServiceConnectionView, ServiceRow, ServiceView } from './services.types.js';
 
 function isRepoType(type: ServiceType): boolean {
-	return type === 'public-repo' || type === 'private-repo' || type === 'github-repo';
+	return type === 'public-repo' || type === 'private-repo' || type === 'github-repo' || type === 'gitea-repo';
 }
 
 function autoDeployColumns(
@@ -68,6 +73,16 @@ function autoDeployColumns(
 	if (!input || !isRepoType(type)) return {};
 	if (input.enabled) return { autoDeployEnabled: true, nextPollAt: now };
 	return { autoDeployEnabled: false, nextPollAt: null, lastPollError: null };
+}
+
+function imageWatchColumns(
+	type: ServiceType,
+	input: ImageWatchInput | undefined,
+	now: Date
+): Partial<Pick<typeof services.$inferInsert, 'imageWatchEnabled' | 'nextWatchAt' | 'lastWatchError'>> {
+	if (!input || type !== 'docker-image') return {};
+	if (input.enabled) return { imageWatchEnabled: true, nextWatchAt: now };
+	return { imageWatchEnabled: false, nextWatchAt: null, lastWatchError: null };
 }
 
 function trimDescription(description?: string): string {
@@ -103,6 +118,13 @@ function toServiceView(row: ServiceRow, defaultDomain: DefaultDomainContext): Se
 			nextPollAt: row.nextPollAt?.toISOString() ?? null,
 			lastPollError: row.lastPollError
 		},
+		imageWatch: {
+			enabled: row.imageWatchEnabled,
+			lastDigest: row.lastWatchedDigest,
+			lastCheckedAt: row.lastWatchedAt?.toISOString() ?? null,
+			nextCheckAt: row.nextWatchAt?.toISOString() ?? null,
+			lastError: row.lastWatchError
+		},
 		internalDomain: hasInternalService ? internalServiceName(row.id) : null,
 		defaultUrl: resolveDefaultUrl(defaultDomain, row),
 		exposedEndpoints: (row.config.exposedPorts ?? []).map(exposure => ({
@@ -120,7 +142,8 @@ export class ServicesService {
 	constructor(
 		private readonly environmentsService: EnvironmentsService,
 		private readonly settings: SettingsService,
-		private readonly backendConfig: BackendConfigService
+		private readonly backendConfig: BackendConfigService,
+		private readonly gitea: GiteaInstallationsService
 	) {}
 
 	async listServicesForEnvironment(actingUserId: string, environmentId: string): Promise<ServiceView[]> {
@@ -147,8 +170,14 @@ export class ServicesService {
 			await this.assertSshKeyForTeam(environment.teamId, input.config.sshKeyId);
 		}
 		if (input.type === 'github-repo') {
-			await this.assertInstallationForTeam(environment.teamId, input.config.installationId);
+			await this.assertInstallationForTeam(environment.teamId, input.config.installationId, 'github');
 		}
+		if (input.type === 'gitea-repo') {
+			await this.assertInstallationForTeam(environment.teamId, input.config.installationId, 'gitea');
+		}
+
+		const giteaInstanceUrl =
+			input.type === 'gitea-repo' ? await this.gitea.instanceUrlForInstallation(environment.teamId, input.config.installationId) : null;
 
 		const config: ServiceConfig = (() => {
 			switch (input.type) {
@@ -160,6 +189,8 @@ export class ServicesService {
 					return buildStoredPrivateRepoConfig(input.config, []);
 				case 'github-repo':
 					return buildStoredGithubRepoConfig(input.config, []);
+				case 'gitea-repo':
+					return buildStoredGiteaRepoConfig(input.config, [], undefined, giteaInstanceUrl!);
 				case 'postgres':
 				case 'mysql':
 				case 'mariadb':
@@ -185,7 +216,8 @@ export class ServicesService {
 					description: trimDescription(input.description),
 					type: input.type,
 					config,
-					...autoDeployColumns(input.type, 'autoDeploy' in input ? input.autoDeploy : undefined, new Date())
+					...autoDeployColumns(input.type, 'autoDeploy' in input ? input.autoDeploy : undefined, new Date()),
+					...imageWatchColumns(input.type, 'imageWatch' in input ? input.imageWatch : undefined, new Date())
 				})
 				.returning();
 			if (!inserted) throw new Error('failed to create service');
@@ -200,6 +232,10 @@ export class ServicesService {
 			if (!withPorts) throw new Error('failed to create service');
 			return withPorts;
 		});
+
+		if (input.type === 'gitea-repo') {
+			await this.gitea.tryRegisterRepoHook(input.config.installationId, input.config.repoFullName);
+		}
 
 		return toServiceView(service, await this.loadDefaultDomainContext());
 	}
@@ -288,7 +324,51 @@ export class ServicesService {
 		};
 	}
 
-	async updateService(actingUserId: string, serviceId: string, input: UpdateServiceInput): Promise<ServiceView> {
+	async patchService(actingUserId: string, serviceId: string, patch: Record<string, unknown>): Promise<ServiceView> {
+		const current = await this.loadServiceForUser(actingUserId, serviceId);
+		const input = { ...patch };
+		if (patch.config !== undefined) {
+			if (!patch.config || typeof patch.config !== 'object' || Array.isArray(patch.config)) throw new ApiError(400, 'invalid_config');
+			const view = toConfigView(current.config);
+			const config = {
+				...view,
+				secrets: (current.config.secrets ?? []).map(secret => ({ key: secret.key, value: null })),
+				...(view.basicAuth ? { basicAuth: { enabled: true, username: view.basicAuth.username, password: null } } : {}),
+				...('registryAuth' in view && view.registryAuth ? { registryAuth: { ...view.registryAuth, password: null } } : {}),
+				...patch.config
+			};
+			input.config = config;
+		}
+		return this.updateService(actingUserId, serviceId, updateServiceSchema.parse(input), current.updatedAt);
+	}
+
+	async connectDatabase(
+		actingUserId: string,
+		databaseServiceId: string,
+		applicationServiceId: string,
+		envKey: string
+	): Promise<{ serviceId: string; secretKey: string }> {
+		if (!/^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(envKey)) throw new ApiError(400, 'invalid_env_key');
+		const source = await this.loadServiceForUser(actingUserId, databaseServiceId);
+		const target = await this.loadServiceForUser(actingUserId, applicationServiceId);
+		if (source.environmentId !== target.environmentId) throw new ApiError(400, 'database_environment_mismatch');
+		if (isDatabaseEngine(target.type)) throw new ApiError(400, 'expected_application_service');
+		const connection = await this.getServiceConnection(actingUserId, databaseServiceId);
+		const encrypted = encryptSecret(connection.uri);
+		await db.transaction(async tx => {
+			const [current] = await tx.select().from(services).where(eq(services.id, applicationServiceId)).for('update');
+			if (!current) throw new ServiceNotFoundError();
+			const config = {
+				...current.config,
+				env: current.config.env.filter(entry => entry.key !== envKey),
+				secrets: [...(current.config.secrets ?? []).filter(entry => entry.key !== envKey), { key: envKey, value: encrypted }]
+			};
+			await tx.update(services).set({ config, updatedAt: new Date() }).where(eq(services.id, applicationServiceId));
+		});
+		return { serviceId: applicationServiceId, secretKey: envKey };
+	}
+
+	async updateService(actingUserId: string, serviceId: string, input: UpdateServiceInput, expectedUpdatedAt?: Date): Promise<ServiceView> {
 		const service = await this.loadServiceForUser(actingUserId, serviceId);
 		const now = new Date();
 		// Absent key = keep the stored exposures (older clients); explicit [] = clear them.
@@ -300,7 +380,12 @@ export class ServicesService {
 			description?: string;
 			config?: ServiceConfig;
 			updatedAt: Date;
-		} & ReturnType<typeof autoDeployColumns> = { updatedAt: now, ...autoDeployColumns(service.type, input.autoDeploy, now) };
+		} & ReturnType<typeof autoDeployColumns> &
+			ReturnType<typeof imageWatchColumns> = {
+			updatedAt: now,
+			...autoDeployColumns(service.type, input.autoDeploy, now),
+			...imageWatchColumns(service.type, input.imageWatch, now)
+		};
 
 		if (input.name !== undefined) {
 			const name = input.name.trim();
@@ -347,8 +432,13 @@ export class ServicesService {
 				values.config = buildStoredPublicRepoConfig(incoming, service.config.secrets, service.config.basicAuth);
 			} else if (service.type === 'github-repo') {
 				if (!('installationId' in incoming) || !('repoFullName' in incoming)) throw new ServiceConfigTypeMismatchError();
-				await this.assertInstallationForTeam(service.teamId, incoming.installationId);
+				await this.assertInstallationForTeam(service.teamId, incoming.installationId, 'github');
 				values.config = buildStoredGithubRepoConfig(incoming, service.config.secrets, service.config.basicAuth);
+			} else if (service.type === 'gitea-repo') {
+				if (!('installationId' in incoming) || !('repoFullName' in incoming)) throw new ServiceConfigTypeMismatchError();
+				await this.assertInstallationForTeam(service.teamId, incoming.installationId, 'gitea');
+				const instanceUrl = await this.gitea.instanceUrlForInstallation(service.teamId, incoming.installationId);
+				values.config = buildStoredGiteaRepoConfig(incoming, service.config.secrets, service.config.basicAuth, instanceUrl);
 			} else if (isDatabaseEngine(service.type)) {
 				if (!('version' in incoming) || !('storage' in incoming)) throw new ServiceConfigTypeMismatchError();
 				if (!isAllowedDatabaseVersion(service.type, incoming.version)) throw new InvalidDatabaseVersionError(incoming.version);
@@ -361,7 +451,8 @@ export class ServicesService {
 				values.config = buildStoredDatabaseConfig(service.type, incoming, { secrets: stored.secrets, password: stored.password });
 			} else {
 				if (!('image' in incoming)) throw new ServiceConfigTypeMismatchError();
-				values.config = buildStoredConfig(incoming, service.config.secrets, service.config.basicAuth);
+				const existingRegistryAuth = 'registryAuth' in service.config ? service.config.registryAuth : undefined;
+				values.config = buildStoredConfig(incoming, service.config.secrets, service.config.basicAuth, existingRegistryAuth);
 			}
 		}
 
@@ -377,8 +468,15 @@ export class ServicesService {
 			const [row] = await tx
 				.update(services)
 				.set({ ...values, ...(config !== undefined ? { config } : {}) })
-				.where(eq(services.id, service.id))
+				// JS Dates hold milliseconds; defaultNow() stores microseconds.
+				.where(
+					and(
+						eq(services.id, service.id),
+						expectedUpdatedAt ? sql`date_trunc('milliseconds', ${services.updatedAt}) = ${expectedUpdatedAt.toISOString()}::timestamptz` : undefined
+					)
+				)
 				.returning();
+			if (!row && expectedUpdatedAt) throw new ApiError(409, 'service_changed');
 			return row;
 		});
 		if (!updated) throw new ServiceNotFoundError();
@@ -407,6 +505,11 @@ export class ServicesService {
 				lastPolledAt: services.lastPolledAt,
 				nextPollAt: services.nextPollAt,
 				lastPollError: services.lastPollError,
+				imageWatchEnabled: services.imageWatchEnabled,
+				lastWatchedDigest: services.lastWatchedDigest,
+				lastWatchedAt: services.lastWatchedAt,
+				nextWatchAt: services.nextWatchAt,
+				lastWatchError: services.lastWatchError,
 				createdAt: services.createdAt,
 				updatedAt: services.updatedAt
 			})
@@ -435,7 +538,7 @@ export class ServicesService {
 		return Boolean(row);
 	}
 
-	private async assertSshKeyForTeam(teamId: string, sshKeyId: string): Promise<void> {
+	async assertSshKeyForTeam(teamId: string, sshKeyId: string): Promise<void> {
 		const [row] = await db
 			.select({ id: sshKeys.id })
 			.from(sshKeys)
@@ -445,17 +548,18 @@ export class ServicesService {
 		if (!row) throw new SshKeyNotAvailableError();
 	}
 
-	private async assertInstallationForTeam(teamId: string, installationId: string): Promise<void> {
+	async assertInstallationForTeam(teamId: string, installationId: string, provider: 'github' | 'gitea'): Promise<void> {
 		const [row] = await db
 			.select({ id: gitInstallations.id })
 			.from(gitInstallations)
-			.where(and(eq(gitInstallations.id, installationId), eq(gitInstallations.teamId, teamId)))
+			.innerJoin(gitAppConnections, eq(gitInstallations.connectionId, gitAppConnections.id))
+			.where(and(eq(gitInstallations.id, installationId), eq(gitInstallations.teamId, teamId), eq(gitAppConnections.provider, provider)))
 			.limit(1);
 
 		if (!row) throw new GitInstallationNotAvailableError();
 	}
 
-	private async loadDefaultDomainContext(): Promise<DefaultDomainContext> {
+	async loadDefaultDomainContext(): Promise<DefaultDomainContext> {
 		const [settings, runtime] = await Promise.all([
 			this.settings.get<Partial<DefaultDomainContext['settings']>>(DEFAULT_DOMAIN_SETTINGS_KEY),
 			this.settings.get<Partial<DefaultDomainContext['runtime']>>(DEFAULT_DOMAIN_RUNTIME_KEY)

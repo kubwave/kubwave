@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, test } from 'bun:test';
 import { randomBytes } from 'node:crypto';
 import { decryptSecret } from '@kubwave/crypto';
-import { resolveSecrets, toConfigView } from '~/modules/services/services.config';
-import type { ServiceConfig } from '@kubwave/db';
+import { buildStoredConfig, resolveRegistryAuth, resolveSecrets, toConfigView } from '~/modules/services/services.config';
+import type { RegistryAuthConfig, ServiceConfig } from '@kubwave/db';
 
 beforeAll(() => {
 	process.env.SECRETS_KEY = randomBytes(32).toString('base64url');
@@ -67,5 +67,84 @@ describe('toConfigView', () => {
 	test('defaults secrets to [] for rows persisted before the field existed', () => {
 		const stored = { image: 'nginx', tag: 'latest', containerPort: null, env: [], domains: [], volumes: [] } as ServiceConfig;
 		expect(toConfigView(stored).secrets).toEqual([]);
+	});
+});
+
+// Registry credentials are the same sensitive pattern as secrets: ciphertext at rest, hasValue-only in views, null = keep.
+describe('resolveRegistryAuth', () => {
+	test('encrypts the password when enabled', () => {
+		const out = resolveRegistryAuth({ enabled: true, server: 'ghcr.io', username: 'octocat', password: 's3cret' }, undefined);
+		expect(out).not.toBeUndefined();
+		expect(out!.server).toBe('ghcr.io');
+		expect(out!.password).not.toBe('s3cret');
+		expect(decryptSecret(out!.password)).toBe('s3cret');
+	});
+
+	test('null password keeps the stored ciphertext and applies the new server/username', () => {
+		const existing: RegistryAuthConfig = { server: 'ghcr.io', username: 'old', password: 'STORED_CIPHERTEXT' };
+		const out = resolveRegistryAuth({ enabled: true, server: 'ghcr.io', username: 'new-user', password: null }, existing);
+		expect(out).toEqual({ server: 'ghcr.io', username: 'new-user', password: 'STORED_CIPHERTEXT' });
+	});
+
+	test('disabled (or absent) input removes stored credentials', () => {
+		const existing: RegistryAuthConfig = { server: 'ghcr.io', username: 'u', password: 'C' };
+		expect(resolveRegistryAuth({ enabled: false }, existing)).toBeUndefined();
+		expect(resolveRegistryAuth(undefined, existing)).toBeUndefined();
+	});
+
+	test('throws when enabled without a password and none is stored', () => {
+		expect(() => resolveRegistryAuth({ enabled: true, server: 'ghcr.io', username: 'u' }, undefined)).toThrow();
+	});
+
+	test('trims server and username', () => {
+		const out = resolveRegistryAuth({ enabled: true, server: '  ghcr.io  ', username: '  octo  ', password: 'p' }, undefined);
+		expect(out).toEqual({ server: 'ghcr.io', username: 'octo', password: expect.stringMatching(/^v1:/) });
+	});
+});
+
+describe('buildStoredConfig registry auth', () => {
+	const input = {
+		image: 'ghcr.io/acme/web',
+		tag: 'latest',
+		containerPort: null,
+		env: [],
+		secrets: [],
+		configFiles: [],
+		domains: [],
+		volumes: []
+	};
+
+	test('encrypts registryAuth at rest and exposes only hasPassword via the view', () => {
+		const stored = buildStoredConfig({ ...input, registryAuth: { enabled: true, server: 'ghcr.io', username: 'octocat', password: 's3cret' } }, []);
+		expect(stored.registryAuth).not.toBeUndefined();
+		expect(stored.registryAuth!.password).not.toBe('s3cret');
+		expect(decryptSecret(stored.registryAuth!.password)).toBe('s3cret');
+
+		const view = toConfigView(stored);
+		const registryAuthView = 'registryAuth' in view ? view.registryAuth : undefined;
+		expect(registryAuthView).toEqual({ enabled: true, server: 'ghcr.io', username: 'octocat', hasPassword: true });
+		expect(JSON.stringify(view)).not.toContain('s3cret');
+	});
+
+	test('keeps the stored password when the update sends null', () => {
+		const stored = buildStoredConfig({ ...input, registryAuth: { enabled: true, server: 'ghcr.io', username: 'octocat', password: 's3cret' } }, []);
+		const updated = buildStoredConfig(
+			{ ...input, registryAuth: { enabled: true, server: 'ghcr.io', username: 'octocat', password: null } },
+			[],
+			undefined,
+			stored.registryAuth
+		);
+		expect(updated.registryAuth?.password).toBe(stored.registryAuth?.password);
+	});
+
+	test('removes registryAuth when the toggle is off', () => {
+		const stored = buildStoredConfig({ ...input, registryAuth: { enabled: true, server: 'ghcr.io', username: 'octocat', password: 's3cret' } }, []);
+		const updated = buildStoredConfig({ ...input, registryAuth: { enabled: false } }, [], undefined, stored.registryAuth);
+		expect(updated.registryAuth).toBeUndefined();
+	});
+
+	test('omits registryAuth entirely when absent (anonymous pull)', () => {
+		const stored = buildStoredConfig({ ...input }, []);
+		expect(stored.registryAuth).toBeUndefined();
 	});
 });

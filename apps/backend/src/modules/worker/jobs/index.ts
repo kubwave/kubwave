@@ -3,6 +3,7 @@ import { env } from '../../../shared/config/worker-env.js';
 import { BUILD_LOG_CAPTURE_INTERVAL_MS, runBuildLogCapture } from './deployments/builds/logs.js';
 import { runDeploymentReconcile } from './deployments/job.js';
 import { runGitPoll } from './git-poll/job.js';
+import { runTagWatch } from './registry-tag-watch/job.js';
 import { runPlatformReconcile } from './platform/job.js';
 import { runVolumeAutoscaling } from './platform/volume-autoscaling/job.js';
 import { runPrDiscovery } from './pr-preview/job.js';
@@ -62,6 +63,11 @@ const workerJobDefinitions: WorkerJobDefinition[] = [
 		name: 'git-poll',
 		intervalMs: () => env.gitPollIntervalMs,
 		task: runGitPoll
+	},
+	{
+		name: 'registry-tag-watch',
+		intervalMs: () => env.registryTagWatchIntervalMs,
+		task: runTagWatch
 	},
 	{
 		name: 'pr-discovery',

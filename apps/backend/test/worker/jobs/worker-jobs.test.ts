@@ -10,7 +10,8 @@ const fakeEnv = {
 	registryGcIntervalMs: 14_000,
 	registryGcEnabled: true,
 	volumeAutoscalingIntervalMs: 15_000,
-	templateCatalogPollIntervalMs: 1_800_000
+	templateCatalogPollIntervalMs: 1_800_000,
+	registryTagWatchIntervalMs: 16_000
 };
 const createdOptions: IntervalJobOptions[] = [];
 
@@ -27,6 +28,7 @@ mock.module('~/modules/worker/jobs/deployments/builds/logs', () => ({
 }));
 mock.module('~/modules/worker/jobs/deployments/job', () => ({ runDeploymentReconcile: async () => {} }));
 mock.module('~/modules/worker/jobs/git-poll/job', () => ({ runGitPoll: async () => {} }));
+mock.module('~/modules/worker/jobs/registry-tag-watch/job', () => ({ runTagWatch: async () => {} }));
 mock.module('~/modules/worker/jobs/platform/job', () => ({ runPlatformReconcile: async () => {} }));
 mock.module('~/modules/worker/jobs/platform/volume-autoscaling/job', () => ({ runVolumeAutoscaling: async () => {} }));
 mock.module('~/modules/worker/jobs/pr-preview/job', () => ({ runPrDiscovery: async () => {} }));
@@ -57,7 +59,7 @@ describe('createWorkerJobs', () => {
 		const jobs = createWorkerJobs();
 		const byName = new Map(createdOptions.map(opts => [opts.name, opts]));
 
-		expect(jobs).toHaveLength(11);
+		expect(jobs).toHaveLength(12);
 		expect([...byName.keys()]).toEqual([
 			'reconcile',
 			'build-log-capture',
@@ -66,6 +68,7 @@ describe('createWorkerJobs', () => {
 			'version-poller',
 			'template-catalog-poller',
 			'git-poll',
+			'registry-tag-watch',
 			'pr-discovery',
 			'registry-prune',
 			'registry-gc',
@@ -78,6 +81,7 @@ describe('createWorkerJobs', () => {
 		expect(byName.get('version-poller')).toMatchObject({ intervalMs: 6 * 60 * 60 * 1000 });
 		expect(byName.get('template-catalog-poller')).toMatchObject({ intervalMs: 1_800_000, runImmediately: true });
 		expect(byName.get('git-poll')).toMatchObject({ intervalMs: 11_000 });
+		expect(byName.get('registry-tag-watch')).toMatchObject({ intervalMs: 16_000 });
 		expect(byName.get('pr-discovery')).toMatchObject({ intervalMs: 12_000 });
 		expect(byName.get('registry-prune')).toMatchObject({ intervalMs: 13_000, enabled: true });
 		expect(byName.get('registry-gc')).toMatchObject({ intervalMs: 14_000, enabled: true });

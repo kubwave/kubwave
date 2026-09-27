@@ -34,6 +34,17 @@ export function secretName(serviceId: string): string {
 	return `svc-${serviceId}-env`;
 }
 
+export function registrySecretName(serviceId: string): string {
+	return `svc-${serviceId}-registry`;
+}
+
+// Canonical registry server key for dockerconfigjson auth entries: Docker Hub logins are keyed by the legacy index URL, not `docker.io`.
+export function normalizeRegistryServer(server: string): string {
+	const host = server.trim().toLowerCase();
+	if (host === 'docker.io' || host === 'index.docker.io' || host === 'registry.hub.docker.com') return 'https://index.docker.io/v1/';
+	return host;
+}
+
 // Maps an absolute path to a valid Secret data key; NOT injective — distinct paths can collide, so callers must reject collisions (the config schema does).
 export function fileKey(path: string): string {
 	return path.replace(/^\/+/, '').replace(/[^-._a-zA-Z0-9]/g, '_');

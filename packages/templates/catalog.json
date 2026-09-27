@@ -137,6 +137,109 @@
     "logoSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" width=\"24\" height=\"24\"><rect width=\"24\" height=\"24\" rx=\"4\" fill=\"#15171a\"/></svg>\n"
   },
   {
+    "id": "gitlab",
+    "name": "GitLab",
+    "description": "Self-hosted Git repository management with merge requests, CI/CD, and a built-in container registry.",
+    "category": "developer-tools",
+    "tags": [
+      "git",
+      "gitlab",
+      "scm",
+      "devops",
+      "repositories"
+    ],
+    "logo": "gitlab.svg",
+    "documentation": "https://docs.gitlab.com/omnibus/docker/",
+    "schemaVersion": 1,
+    "version": 1,
+    "inputs": [
+      {
+        "key": "domain",
+        "label": "Public domain",
+        "type": "string",
+        "required": true,
+        "placeholder": "gitlab.example.com"
+      },
+      {
+        "key": "admin_email",
+        "label": "Admin email",
+        "type": "string",
+        "required": false,
+        "placeholder": "admin@example.com"
+      }
+    ],
+    "secrets": [
+      {
+        "key": "root_password",
+        "generate": "password"
+      }
+    ],
+    "services": [
+      {
+        "name": "gitlab",
+        "primary": true,
+        "type": "docker-image",
+        "config": {
+          "image": "gitlab/gitlab-ce",
+          "tag": "19.2.4-ce.0",
+          "containerPort": 80,
+          "env": [
+            {
+              "key": "EXTERNAL_URL",
+              "value": "https://{{ inputs.domain }}"
+            },
+            {
+              "key": "GITLAB_OMNIBUS_CONFIG",
+              "value": "external_url 'https://{{ inputs.domain }}'; gitlab_rails['nginx']['listen_port'] = 80; gitlab_rails['nginx']['listen_https'] = false;"
+            },
+            {
+              "key": "GITLAB_ROOT_EMAIL",
+              "value": "{{ inputs.admin_email }}"
+            }
+          ],
+          "secrets": [
+            {
+              "key": "GITLAB_ROOT_PASSWORD",
+              "value": "{{ secrets.root_password }}"
+            }
+          ],
+          "domains": [
+            {
+              "host": "{{ inputs.domain }}",
+              "port": 80
+            }
+          ],
+          "exposedPorts": [],
+          "volumes": [
+            {
+              "name": "config",
+              "mountPath": "/etc/gitlab",
+              "size": "5Gi"
+            },
+            {
+              "name": "data",
+              "mountPath": "/var/opt/gitlab",
+              "size": "10Gi"
+            },
+            {
+              "name": "logs",
+              "mountPath": "/var/log/gitlab",
+              "size": "1Gi"
+            }
+          ],
+          "configFiles": [],
+          "resources": {
+            "cpuRequest": "500m",
+            "cpuLimit": "2000m",
+            "memoryRequest": "2Gi",
+            "memoryLimit": "4Gi"
+          }
+        }
+      }
+    ],
+    "logoSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" width=\"24\" height=\"24\"><path d=\"M22.65 14.39 12 13.63 1.35 14.39a.51.51 0 0 0-.17.91l2.19 2.04a.57.57 0 0 1 .16.5l-.62 2.85a.51.51 0 0 0 .18.52l.06.04 1.76 1.2a.51.51 0 0 0 .66-.08l3.65-3.87a.51.51 0 0 1 .78 0l3.65 3.87a.51.51 0 0 0 .66.08l1.76-1.2c.02-.01.04-.03.06-.04a.51.51 0 0 0 .18-.52l-.62-2.85a.57.57 0 0 1 .16-.5l2.19-2.04a.51.51 0 0 0-.17-.91Z\" fill=\"#FC6D26\"/></svg>"
+  },
+  {
     "id": "kodus",
     "name": "Kodus",
     "description": "Self-hosted AI code reviewer — subscribes to your Git provider's webhooks, builds an AST graph of the repo, and posts inline LLM review suggestions on pull requests. Bring your own LLM key.",

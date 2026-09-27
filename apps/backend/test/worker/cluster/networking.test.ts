@@ -56,6 +56,8 @@ function fakeCore(state: ServiceState) {
 
 interface IngressState {
 	existing: V1Ingress | null;
+	// Live state of the sibling auth-exempt Ingress (`<name>-public`); separate so converge can't see the main Ingress under that name.
+	public?: V1Ingress | null;
 }
 
 function fakeNet(state: IngressState) {
@@ -63,9 +65,10 @@ function fakeNet(state: IngressState) {
 	let created: V1Ingress | undefined;
 	let replaced: V1Ingress | undefined;
 	const api = {
-		readNamespacedIngress: async () => {
-			if (!state.existing) throw { code: 404 };
-			return state.existing;
+		readNamespacedIngress: async ({ name }: { name: string }) => {
+			const existing = name === `${NAME}-public` ? state.public : state.existing;
+			if (!existing) throw { code: 404 };
+			return existing;
 		},
 		createNamespacedIngress: async ({ body }: { body: V1Ingress }) => {
 			calls.create++;
@@ -129,6 +132,7 @@ async function run(args: {
 	tcpRoutesEnabled?: boolean;
 	custom?: ReturnType<typeof fakeCustom>;
 	ingress?: IngressOptions;
+	basicAuth?: { username: string; password: string; publicPaths?: string[] };
 }): Promise<DeploymentLogEntry[]> {
 	const events: DeploymentLogEntry[] = [];
 	await convergeNetworking({
@@ -142,6 +146,7 @@ async function run(args: {
 		exposedPorts: args.exposedPorts ?? [],
 		tcpRoutesEnabled: args.tcpRoutesEnabled ?? true,
 		ingress: args.ingress ?? noIngress,
+		basicAuth: args.basicAuth,
 		events
 	});
 	return events;
@@ -313,7 +318,7 @@ describe('convergeNetworking — Ingress', () => {
 		const events = await run({ core, net, ports: [8080], domains: [] });
 
 		expect(net.calls.delete).toBe(1);
-		expect(stepMessages(events, 'ingress-converged')).toEqual([`Removed Ingress ${NAME} in ns (no domains)`]);
+		expect(stepMessages(events, 'ingress-converged')).toEqual([`Removed Ingress ${NAME} in ns (hosts: none)`]);
 	});
 
 	test('is unchanged (no call, no event) when no Ingress exists and no domains', async () => {
@@ -328,7 +333,9 @@ describe('convergeNetworking — Ingress', () => {
 	test('is unchanged (no call, no event) when the live Ingress already matches the desired one', async () => {
 		const matching = {
 			metadata: { name: NAME, resourceVersion: '1' },
-			spec: { rules: [{ host: 'a.test', http: { paths: [{ backend: { service: { name: NAME, port: { number: 80 } } } }] } }] }
+			spec: {
+				rules: [{ host: 'a.test', http: { paths: [{ path: '/', pathType: 'Prefix', backend: { service: { name: NAME, port: { number: 80 } } } }] } }]
+			}
 		} as V1Ingress;
 		const core = fakeCore({ existing: { metadata: { name: NAME }, spec: { ports: [{ port: 80 }] } } as V1Service });
 		const net = fakeNet({ existing: matching });
@@ -339,13 +346,132 @@ describe('convergeNetworking — Ingress', () => {
 	});
 });
 
+describe('convergeNetworking — auth-exempt public paths', () => {
+	test('creates the public Ingress with exact + prefix paths and no middleware annotation', async () => {
+		const core = fakeCore({ existing: { metadata: { name: NAME }, spec: { ports: [{ port: 80 }] } } as V1Service });
+		const net = fakeNet({ existing: null });
+		const events = await run({
+			core,
+			net,
+			ports: [],
+			domains: [domain('a.test', 80)],
+			basicAuth: { username: 'u', password: 'p', publicPaths: ['/health', '/api/*'] }
+		});
+
+		expect(net.calls.create).toBe(2);
+		const body = net.getCreated()!;
+		expect(body.metadata?.name).toBe(`${NAME}-public`);
+		// Explicit priority so the exempt routers always outrank the main PathPrefix("/") router; middleware annotation stays absent.
+		expect(body.metadata?.annotations).toEqual({ 'traefik.ingress.kubernetes.io/router.priority': '1000' });
+		expect(body.spec?.rules?.[0]?.host).toBe('a.test');
+		// "/api/*" must not exempt string-prefix siblings like "/apikeys": Prefix is pinned to "/api/" plus an exact "/api".
+		expect(body.spec?.rules?.[0]?.http?.paths).toEqual([
+			{ path: '/health', pathType: 'Exact', backend: { service: { name: NAME, port: { number: 80 } } } },
+			{ path: '/api/', pathType: 'Prefix', backend: { service: { name: NAME, port: { number: 80 } } } },
+			{ path: '/api', pathType: 'Exact', backend: { service: { name: NAME, port: { number: 80 } } } }
+		]);
+		expect(stepMessages(events, 'ingress-converged')).toContain(`Created Ingress ${NAME}-public in ns (hosts: a.test)`);
+	});
+
+	test('skips the public Ingress entirely when every path entry collapses away', async () => {
+		const core = fakeCore({ existing: { metadata: { name: NAME }, spec: { ports: [{ port: 80 }] } } as V1Service });
+		const net = fakeNet({ existing: null });
+		const events = await run({
+			core,
+			net,
+			ports: [],
+			domains: [domain('a.test', 80)],
+			basicAuth: { username: 'u', password: 'p', publicPaths: ['/*'] }
+		});
+
+		// Only the protected main Ingress is created; nothing path-less ever reaches the API.
+		expect(net.calls.create).toBe(1);
+		expect(net.getCreated()?.metadata?.name).toBe(NAME);
+		expect(stepMessages(events, 'ingress-converged')).toEqual([`Created Ingress ${NAME} in ns (hosts: a.test)`]);
+
+		// A live public Ingress from an earlier config is torn down instead of updated.
+		const matchingMain = {
+			metadata: {
+				name: NAME,
+				annotations: { 'traefik.ingress.kubernetes.io/router.middlewares': `ns-${NAME}-basic-auth@kubernetescrd` }
+			},
+			spec: {
+				rules: [{ host: 'a.test', http: { paths: [{ path: '/', pathType: 'Prefix', backend: { service: { name: NAME, port: { number: 80 } } } }] } }]
+			}
+		} as V1Ingress;
+		const stale = fakeNet({
+			existing: matchingMain,
+			public: {
+				metadata: { name: `${NAME}-public` },
+				spec: { rules: [{ host: 'a.test', http: { paths: [{ path: '/api', pathType: 'Prefix' }] } }] }
+			} as V1Ingress
+		});
+		await run({ core, net: stale, ports: [], domains: [domain('a.test', 80)], basicAuth: { username: 'u', password: 'p', publicPaths: ['/*'] } });
+		// Main Ingress already matches (unchanged); the stale public one is torn down, never updated.
+		expect(stale.calls).toEqual({ create: 0, replace: 0, delete: 1 });
+	});
+
+	test('replaces the public Ingress when the path list changes', async () => {
+		const core = fakeCore({ existing: { metadata: { name: NAME }, spec: { ports: [{ port: 80 }] } } as V1Service });
+		const net = fakeNet({
+			existing: null,
+			public: {
+				metadata: { name: `${NAME}-public`, resourceVersion: '5' },
+				spec: { rules: [{ host: 'a.test', http: { paths: [{ path: '/old', pathType: 'Exact' }] } }] }
+			} as V1Ingress
+		});
+		const events = await run({
+			core,
+			net,
+			ports: [],
+			domains: [domain('a.test', 80)],
+			basicAuth: { username: 'u', password: 'p', publicPaths: ['/health'] }
+		});
+
+		expect(net.calls.replace).toBe(1);
+		expect(net.getReplaced()?.metadata?.resourceVersion).toBe('5');
+		expect(stepMessages(events, 'ingress-converged')).toContain(`Updated Ingress ${NAME}-public in ns (hosts: a.test)`);
+	});
+
+	test('deletes the public Ingress when basic auth stays on but every path is removed', async () => {
+		const core = fakeCore({ existing: { metadata: { name: NAME }, spec: { ports: [{ port: 80 }] } } as V1Service });
+		const net = fakeNet({
+			existing: null,
+			public: { metadata: { name: `${NAME}-public` }, spec: { rules: [{ host: 'a.test' }] } } as V1Ingress
+		});
+		const events = await run({ core, net, ports: [], domains: [domain('a.test', 80)], basicAuth: { username: 'u', password: 'p' } });
+
+		expect(net.calls.delete).toBe(1);
+		expect(stepMessages(events, 'ingress-converged')).toContain(`Removed Ingress ${NAME}-public in ns (hosts: a.test)`);
+	});
+
+	test('cleans up a stale public Ingress when basic auth is off, leaving the main Ingress alone', async () => {
+		const core = fakeCore({ existing: { metadata: { name: NAME }, spec: { ports: [{ port: 80 }] } } as V1Service });
+		const matchingMain = {
+			metadata: { name: NAME },
+			spec: {
+				rules: [{ host: 'a.test', http: { paths: [{ path: '/', pathType: 'Prefix', backend: { service: { name: NAME, port: { number: 80 } } } }] } }]
+			}
+		} as V1Ingress;
+		const stalePublic = {
+			metadata: { name: `${NAME}-public` },
+			spec: { rules: [{ host: 'a.test', http: { paths: [{ path: '/health', pathType: 'Exact' }] } }] }
+		} as V1Ingress;
+		const net = fakeNet({ existing: matchingMain, public: stalePublic });
+		const events = await run({ core, net, ports: [], domains: [domain('a.test', 80)] });
+
+		expect(net.calls).toEqual({ create: 0, replace: 0, delete: 1 });
+		expect(stepMessages(events, 'ingress-converged')).toEqual([`Removed Ingress ${NAME}-public in ns (hosts: a.test)`]);
+	});
+});
+
 describe('teardownNetworking', () => {
-	test('deletes both the Service and the Ingress by name, ignoring 404s', async () => {
+	test('deletes the Service, both Ingresses by name, ignoring 404s', async () => {
 		const core = fakeCore({ existing: null });
 		const net = fakeNet({ existing: null });
 		await teardownNetworking({ coreApi: core.api, netApi: net.api, customApi: fakeCustom({}).api, namespace: 'ns', serviceId: SERVICE_ID });
 		expect(core.calls.delete).toBe(1);
-		expect(net.calls.delete).toBe(1);
+		expect(net.calls.delete).toBe(2);
 	});
 
 	test('deletes every IngressRouteTCP labelled for the service', async () => {

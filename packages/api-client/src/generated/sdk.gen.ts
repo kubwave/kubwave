@@ -3,6 +3,8 @@
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
 import type {
+	AiStatusGetData,
+	AiStatusGetResponses,
 	AuthForgotPasswordData,
 	AuthForgotPasswordResponses,
 	AuthLoginData,
@@ -31,9 +33,13 @@ import type {
 	EnvironmentFlowLayoutNodeUpdateResponses,
 	EnvironmentsDeleteData,
 	EnvironmentsDeleteResponses,
+	EnvironmentServicesAnalyzeRepositoryData,
+	EnvironmentServicesAnalyzeRepositoryResponses,
 	EnvironmentServicesComposeCreateData,
 	EnvironmentServicesComposeCreateResponses,
 	EnvironmentServicesCreateData,
+	EnvironmentServicesCreateFromPlanData,
+	EnvironmentServicesCreateFromPlanResponses,
 	EnvironmentServicesCreateFromTemplateData,
 	EnvironmentServicesCreateFromTemplateResponses,
 	EnvironmentServicesCreateResponses,
@@ -43,6 +49,12 @@ import type {
 	EnvironmentServiceStatusListResponses,
 	EnvironmentsUpdateData,
 	EnvironmentsUpdateResponses,
+	GitGiteaConnectData,
+	GitGiteaConnectionGetData,
+	GitGiteaConnectionGetResponses,
+	GitGiteaConnectResponses,
+	GitGiteaDisconnectData,
+	GitGiteaDisconnectResponses,
 	GitGithubConnectionGetData,
 	GitGithubConnectionGetResponses,
 	GitGithubCreateManifestData,
@@ -63,6 +75,18 @@ import type {
 	InvitationsResendResponses,
 	InvitationsValidityData,
 	InvitationsValidityResponses,
+	McpAccessCreateData,
+	McpAccessCreateResponses,
+	McpAccessListData,
+	McpAccessListResponses,
+	McpAccessRevokeData,
+	McpAccessRevokeResponses,
+	McpAuthorizationGetData,
+	McpAuthorizationGetResponses,
+	McpConsentCreateData,
+	McpConsentCreateResponses,
+	McpInfoGetData,
+	McpInfoGetResponses,
 	PlatformClusterEventsGetData,
 	PlatformClusterEventsGetResponses,
 	PlatformClusterGetData,
@@ -73,6 +97,10 @@ import type {
 	PlatformClusterNodeUsageGetResponses,
 	PlatformClusterUsageGetData,
 	PlatformClusterUsageGetResponses,
+	PlatformSettingsAiGetData,
+	PlatformSettingsAiGetResponses,
+	PlatformSettingsAiUpdateData,
+	PlatformSettingsAiUpdateResponses,
 	PlatformSettingsDeploymentConcurrencyGetData,
 	PlatformSettingsDeploymentConcurrencyGetResponses,
 	PlatformSettingsDeploymentConcurrencyUpdateData,
@@ -167,6 +195,18 @@ import type {
 	TeamDeploymentsListResponses,
 	TeamGitConnectionGetData,
 	TeamGitConnectionGetResponses,
+	TeamGiteaConnectionGetData,
+	TeamGiteaConnectionGetResponses,
+	TeamGiteaInstallationReposListData,
+	TeamGiteaInstallationReposListResponses,
+	TeamGiteaInstallationReposSyncData,
+	TeamGiteaInstallationReposSyncResponses,
+	TeamGiteaInstallationsClaimData,
+	TeamGiteaInstallationsClaimResponses,
+	TeamGiteaInstallationsListData,
+	TeamGiteaInstallationsListResponses,
+	TeamGiteaInstallationsUnbindData,
+	TeamGiteaInstallationsUnbindResponses,
 	TeamGitInstallationReposListData,
 	TeamGitInstallationReposListResponses,
 	TeamGitInstallationReposSyncData,
@@ -230,6 +270,90 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
 	 */
 	meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta;
 };
+
+/**
+ * Get MCP connection details and available scopes
+ */
+export const mcpInfoGet = <ThrowOnError extends boolean = false>(
+	options?: Options<McpInfoGetData, ThrowOnError>
+): RequestResult<McpInfoGetResponses, unknown, ThrowOnError> =>
+	(options?.client ?? client).get<McpInfoGetResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/mcp/info',
+		...options
+	});
+
+/**
+ * List your MCP tokens and OAuth connections
+ */
+export const mcpAccessList = <ThrowOnError extends boolean = false>(
+	options?: Options<McpAccessListData, ThrowOnError>
+): RequestResult<McpAccessListResponses, unknown, ThrowOnError> =>
+	(options?.client ?? client).get<McpAccessListResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/mcp/access',
+		...options
+	});
+
+/**
+ * Create a personal MCP token; shown once
+ */
+export const mcpAccessCreate = <ThrowOnError extends boolean = false>(
+	options: Options<McpAccessCreateData, ThrowOnError>
+): RequestResult<McpAccessCreateResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<McpAccessCreateResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/mcp/access',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
+
+/**
+ * Revoke a personal token or OAuth connection immediately
+ */
+export const mcpAccessRevoke = <ThrowOnError extends boolean = false>(
+	options: Options<McpAccessRevokeData, ThrowOnError>
+): RequestResult<McpAccessRevokeResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).delete<McpAccessRevokeResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/mcp/access/{accessId}',
+		...options
+	});
+
+/**
+ * Validate an OAuth request before displaying consent
+ */
+export const mcpAuthorizationGet = <ThrowOnError extends boolean = false>(
+	options: Options<McpAuthorizationGetData, ThrowOnError>
+): RequestResult<McpAuthorizationGetResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<McpAuthorizationGetResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/mcp/authorization',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
+
+/**
+ * Approve or deny an MCP OAuth connection
+ */
+export const mcpConsentCreate = <ThrowOnError extends boolean = false>(
+	options: Options<McpConsentCreateData, ThrowOnError>
+): RequestResult<McpConsentCreateResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<McpConsentCreateResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/mcp/consent',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
 
 /**
  * Health check
@@ -803,6 +927,50 @@ export const environmentServicesComposeCreate = <ThrowOnError extends boolean = 
 	});
 
 /**
+ * Whether the AI assistant is enabled on this instance
+ */
+export const aiStatusGet = <ThrowOnError extends boolean = false>(
+	options?: Options<AiStatusGetData, ThrowOnError>
+): RequestResult<AiStatusGetResponses, unknown, ThrowOnError> =>
+	(options?.client ?? client).get<AiStatusGetResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/ai/status',
+		...options
+	});
+
+/**
+ * Propose services for a repository with the configured AI model
+ */
+export const environmentServicesAnalyzeRepository = <ThrowOnError extends boolean = false>(
+	options: Options<EnvironmentServicesAnalyzeRepositoryData, ThrowOnError>
+): RequestResult<EnvironmentServicesAnalyzeRepositoryResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<EnvironmentServicesAnalyzeRepositoryResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/environments/{environmentId}/services/analyze',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
+
+/**
+ * Create the services of a reviewed deployment plan
+ */
+export const environmentServicesCreateFromPlan = <ThrowOnError extends boolean = false>(
+	options: Options<EnvironmentServicesCreateFromPlanData, ThrowOnError>
+): RequestResult<EnvironmentServicesCreateFromPlanResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<EnvironmentServicesCreateFromPlanResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/environments/{environmentId}/services/from-plan',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
+
+/**
  * Get service CPU, memory, network, and PVC metrics
  */
 export const serviceMetricsGet = <ThrowOnError extends boolean = false>(
@@ -811,6 +979,234 @@ export const serviceMetricsGet = <ThrowOnError extends boolean = false>(
 	(options.client ?? client).get<ServiceMetricsGetResponses, unknown, ThrowOnError>({
 		security: [{ scheme: 'bearer', type: 'http' }],
 		url: '/api/services/{serviceId}/metrics',
+		...options
+	});
+
+/**
+ * Build a GitHub App manifest and signed state
+ */
+export const gitGithubCreateManifest = <ThrowOnError extends boolean = false>(
+	options?: Options<GitGithubCreateManifestData, ThrowOnError>
+): RequestResult<GitGithubCreateManifestResponses, unknown, ThrowOnError> =>
+	(options?.client ?? client).post<GitGithubCreateManifestResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/git/github/manifest',
+		...options
+	});
+
+/**
+ * Disconnect the GitHub App
+ */
+export const gitGithubDisconnect = <ThrowOnError extends boolean = false>(
+	options?: Options<GitGithubDisconnectData, ThrowOnError>
+): RequestResult<GitGithubDisconnectResponses, unknown, ThrowOnError> =>
+	(options?.client ?? client).delete<GitGithubDisconnectResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/git/github',
+		...options
+	});
+
+/**
+ * Get the connected GitHub App
+ */
+export const gitGithubConnectionGet = <ThrowOnError extends boolean = false>(
+	options?: Options<GitGithubConnectionGetData, ThrowOnError>
+): RequestResult<GitGithubConnectionGetResponses, unknown, ThrowOnError> =>
+	(options?.client ?? client).get<GitGithubConnectionGetResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/git/github',
+		...options
+	});
+
+/**
+ * Redeem an ownership-verified install grant to bind it to the team
+ */
+export const teamGitInstallationsClaim = <ThrowOnError extends boolean = false>(
+	options: Options<TeamGitInstallationsClaimData, ThrowOnError>
+): RequestResult<TeamGitInstallationsClaimResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<TeamGitInstallationsClaimResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/teams/{teamId}/git/installations/claim',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
+
+/**
+ * Whether a GitHub App is connected, plus the install URL
+ */
+export const teamGitConnectionGet = <ThrowOnError extends boolean = false>(
+	options: Options<TeamGitConnectionGetData, ThrowOnError>
+): RequestResult<TeamGitConnectionGetResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).get<TeamGitConnectionGetResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/teams/{teamId}/git/connection',
+		...options
+	});
+
+/**
+ * List the team’s GitHub installations
+ */
+export const teamGitInstallationsList = <ThrowOnError extends boolean = false>(
+	options: Options<TeamGitInstallationsListData, ThrowOnError>
+): RequestResult<TeamGitInstallationsListResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).get<TeamGitInstallationsListResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/teams/{teamId}/git/installations',
+		...options
+	});
+
+/**
+ * List repositories available to an installation
+ */
+export const teamGitInstallationReposList = <ThrowOnError extends boolean = false>(
+	options: Options<TeamGitInstallationReposListData, ThrowOnError>
+): RequestResult<TeamGitInstallationReposListResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).get<TeamGitInstallationReposListResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/teams/{teamId}/git/installations/{installationId}/repos',
+		...options
+	});
+
+/**
+ * Re-sync an installation’s repositories from GitHub
+ */
+export const teamGitInstallationReposSync = <ThrowOnError extends boolean = false>(
+	options: Options<TeamGitInstallationReposSyncData, ThrowOnError>
+): RequestResult<TeamGitInstallationReposSyncResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<TeamGitInstallationReposSyncResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/teams/{teamId}/git/installations/{installationId}/repos/sync',
+		...options
+	});
+
+/**
+ * Unbind a GitHub installation from the team
+ */
+export const teamGitInstallationsUnbind = <ThrowOnError extends boolean = false>(
+	options: Options<TeamGitInstallationsUnbindData, ThrowOnError>
+): RequestResult<TeamGitInstallationsUnbindResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).delete<TeamGitInstallationsUnbindResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/teams/{teamId}/git/installations/{installationId}',
+		...options
+	});
+
+/**
+ * Disconnect the Gitea OAuth application
+ */
+export const gitGiteaDisconnect = <ThrowOnError extends boolean = false>(
+	options?: Options<GitGiteaDisconnectData, ThrowOnError>
+): RequestResult<GitGiteaDisconnectResponses, unknown, ThrowOnError> =>
+	(options?.client ?? client).delete<GitGiteaDisconnectResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/git/gitea',
+		...options
+	});
+
+/**
+ * Get the connected Gitea OAuth application
+ */
+export const gitGiteaConnectionGet = <ThrowOnError extends boolean = false>(
+	options?: Options<GitGiteaConnectionGetData, ThrowOnError>
+): RequestResult<GitGiteaConnectionGetResponses, unknown, ThrowOnError> =>
+	(options?.client ?? client).get<GitGiteaConnectionGetResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/git/gitea',
+		...options
+	});
+
+/**
+ * Connect a Gitea OAuth application
+ */
+export const gitGiteaConnect = <ThrowOnError extends boolean = false>(
+	options: Options<GitGiteaConnectData, ThrowOnError>
+): RequestResult<GitGiteaConnectResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<GitGiteaConnectResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/git/gitea',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
+
+/**
+ * Redeem a Gitea OAuth grant to bind the account to the team
+ */
+export const teamGiteaInstallationsClaim = <ThrowOnError extends boolean = false>(
+	options: Options<TeamGiteaInstallationsClaimData, ThrowOnError>
+): RequestResult<TeamGiteaInstallationsClaimResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<TeamGiteaInstallationsClaimResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/teams/{teamId}/git/gitea/installations/claim',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
+
+/**
+ * Whether Gitea is connected, plus the authorize URL
+ */
+export const teamGiteaConnectionGet = <ThrowOnError extends boolean = false>(
+	options: Options<TeamGiteaConnectionGetData, ThrowOnError>
+): RequestResult<TeamGiteaConnectionGetResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).get<TeamGiteaConnectionGetResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/teams/{teamId}/git/gitea/connection',
+		...options
+	});
+
+/**
+ * List the team’s connected Gitea accounts
+ */
+export const teamGiteaInstallationsList = <ThrowOnError extends boolean = false>(
+	options: Options<TeamGiteaInstallationsListData, ThrowOnError>
+): RequestResult<TeamGiteaInstallationsListResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).get<TeamGiteaInstallationsListResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/teams/{teamId}/git/gitea/installations',
+		...options
+	});
+
+/**
+ * List repositories available to a Gitea account
+ */
+export const teamGiteaInstallationReposList = <ThrowOnError extends boolean = false>(
+	options: Options<TeamGiteaInstallationReposListData, ThrowOnError>
+): RequestResult<TeamGiteaInstallationReposListResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).get<TeamGiteaInstallationReposListResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/teams/{teamId}/git/gitea/installations/{installationId}/repos',
+		...options
+	});
+
+/**
+ * Re-sync repositories from Gitea
+ */
+export const teamGiteaInstallationReposSync = <ThrowOnError extends boolean = false>(
+	options: Options<TeamGiteaInstallationReposSyncData, ThrowOnError>
+): RequestResult<TeamGiteaInstallationReposSyncResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<TeamGiteaInstallationReposSyncResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/teams/{teamId}/git/gitea/installations/{installationId}/repos/sync',
+		...options
+	});
+
+/**
+ * Unbind a Gitea account from the team
+ */
+export const teamGiteaInstallationsUnbind = <ThrowOnError extends boolean = false>(
+	options: Options<TeamGiteaInstallationsUnbindData, ThrowOnError>
+): RequestResult<TeamGiteaInstallationsUnbindResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).delete<TeamGiteaInstallationsUnbindResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/teams/{teamId}/git/gitea/installations/{installationId}',
 		...options
 	});
 
@@ -1318,6 +1714,34 @@ export const platformSettingsTcpPortPoolUpdate = <ThrowOnError extends boolean =
 	});
 
 /**
+ * Get AI assistant settings
+ */
+export const platformSettingsAiGet = <ThrowOnError extends boolean = false>(
+	options?: Options<PlatformSettingsAiGetData, ThrowOnError>
+): RequestResult<PlatformSettingsAiGetResponses, unknown, ThrowOnError> =>
+	(options?.client ?? client).get<PlatformSettingsAiGetResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/platform/settings/ai',
+		...options
+	});
+
+/**
+ * Update AI assistant settings
+ */
+export const platformSettingsAiUpdate = <ThrowOnError extends boolean = false>(
+	options: Options<PlatformSettingsAiUpdateData, ThrowOnError>
+): RequestResult<PlatformSettingsAiUpdateResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).put<PlatformSettingsAiUpdateResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/platform/settings/ai',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
+
+/**
  * List platform update runs
  */
 export const platformUpdatesList = <ThrowOnError extends boolean = false>(
@@ -1467,116 +1891,4 @@ export const environmentServicesCreateFromTemplate = <ThrowOnError extends boole
 			'Content-Type': 'application/json',
 			...options.headers
 		}
-	});
-
-/**
- * Build a GitHub App manifest and signed state
- */
-export const gitGithubCreateManifest = <ThrowOnError extends boolean = false>(
-	options?: Options<GitGithubCreateManifestData, ThrowOnError>
-): RequestResult<GitGithubCreateManifestResponses, unknown, ThrowOnError> =>
-	(options?.client ?? client).post<GitGithubCreateManifestResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
-		url: '/api/git/github/manifest',
-		...options
-	});
-
-/**
- * Disconnect the GitHub App
- */
-export const gitGithubDisconnect = <ThrowOnError extends boolean = false>(
-	options?: Options<GitGithubDisconnectData, ThrowOnError>
-): RequestResult<GitGithubDisconnectResponses, unknown, ThrowOnError> =>
-	(options?.client ?? client).delete<GitGithubDisconnectResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
-		url: '/api/git/github',
-		...options
-	});
-
-/**
- * Get the connected GitHub App
- */
-export const gitGithubConnectionGet = <ThrowOnError extends boolean = false>(
-	options?: Options<GitGithubConnectionGetData, ThrowOnError>
-): RequestResult<GitGithubConnectionGetResponses, unknown, ThrowOnError> =>
-	(options?.client ?? client).get<GitGithubConnectionGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
-		url: '/api/git/github',
-		...options
-	});
-
-/**
- * Redeem an ownership-verified install grant to bind it to the team
- */
-export const teamGitInstallationsClaim = <ThrowOnError extends boolean = false>(
-	options: Options<TeamGitInstallationsClaimData, ThrowOnError>
-): RequestResult<TeamGitInstallationsClaimResponses, unknown, ThrowOnError> =>
-	(options.client ?? client).post<TeamGitInstallationsClaimResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
-		url: '/api/teams/{teamId}/git/installations/claim',
-		...options,
-		headers: {
-			'Content-Type': 'application/json',
-			...options.headers
-		}
-	});
-
-/**
- * Whether a GitHub App is connected, plus the install URL
- */
-export const teamGitConnectionGet = <ThrowOnError extends boolean = false>(
-	options: Options<TeamGitConnectionGetData, ThrowOnError>
-): RequestResult<TeamGitConnectionGetResponses, unknown, ThrowOnError> =>
-	(options.client ?? client).get<TeamGitConnectionGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
-		url: '/api/teams/{teamId}/git/connection',
-		...options
-	});
-
-/**
- * List the team’s GitHub installations
- */
-export const teamGitInstallationsList = <ThrowOnError extends boolean = false>(
-	options: Options<TeamGitInstallationsListData, ThrowOnError>
-): RequestResult<TeamGitInstallationsListResponses, unknown, ThrowOnError> =>
-	(options.client ?? client).get<TeamGitInstallationsListResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
-		url: '/api/teams/{teamId}/git/installations',
-		...options
-	});
-
-/**
- * List repositories available to an installation
- */
-export const teamGitInstallationReposList = <ThrowOnError extends boolean = false>(
-	options: Options<TeamGitInstallationReposListData, ThrowOnError>
-): RequestResult<TeamGitInstallationReposListResponses, unknown, ThrowOnError> =>
-	(options.client ?? client).get<TeamGitInstallationReposListResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
-		url: '/api/teams/{teamId}/git/installations/{installationId}/repos',
-		...options
-	});
-
-/**
- * Re-sync an installation’s repositories from GitHub
- */
-export const teamGitInstallationReposSync = <ThrowOnError extends boolean = false>(
-	options: Options<TeamGitInstallationReposSyncData, ThrowOnError>
-): RequestResult<TeamGitInstallationReposSyncResponses, unknown, ThrowOnError> =>
-	(options.client ?? client).post<TeamGitInstallationReposSyncResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
-		url: '/api/teams/{teamId}/git/installations/{installationId}/repos/sync',
-		...options
-	});
-
-/**
- * Unbind a GitHub installation from the team
- */
-export const teamGitInstallationsUnbind = <ThrowOnError extends boolean = false>(
-	options: Options<TeamGitInstallationsUnbindData, ThrowOnError>
-): RequestResult<TeamGitInstallationsUnbindResponses, unknown, ThrowOnError> =>
-	(options.client ?? client).delete<TeamGitInstallationsUnbindResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
-		url: '/api/teams/{teamId}/git/installations/{installationId}',
-		...options
 	});

@@ -149,6 +149,18 @@ describe('buildFailureReason', () => {
 		expect(reason).toBe('Build failed: OOMKilled');
 	});
 
+	test('names an OOM kill with the container memory limit and a heap hint instead of the truncated log', async () => {
+		const pod = {
+			metadata: { name: 'build-pod' },
+			spec: { containers: [{ name: 'builder', resources: { limits: { memory: '2Gi' } } }] },
+			status: { containerStatuses: [{ name: 'builder', state: { terminated: { reason: 'OOMKilled', exitCode: 137 } } }] }
+		};
+		const reason = await buildFailureReason(coreWith({ pod, log: '[nitro] Building Nuxt Nitro server' }), 'kubwave', 'job-1', ['builder']);
+		expect(reason).toStartWith('Build ran out of memory (limit 2Gi) and was killed.');
+		expect(reason).toContain('NODE_OPTIONS=--max-old-space-size=1331');
+		expect(reason).toContain('ARG NODE_OPTIONS');
+	});
+
 	test('falls back to the terminated reason + exit code when there is no message', async () => {
 		const pod = {
 			metadata: { name: 'build-pod' },
