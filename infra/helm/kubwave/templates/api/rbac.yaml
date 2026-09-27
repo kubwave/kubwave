@@ -46,6 +46,8 @@ subjects:
 # creates namespaces — read-only is the invariant.
 #   - nodes/proxy: get   (kubelet Summary API for live service metrics — CPU/mem/net/PVC)
 #   - pods/log: get      (tail tenant container logs for the service Logs tab)
+#   - nodes: get/list    (capacity, allocatable, conditions, kubelet version for the monitoring page)
+#   - events: get/list   (cluster-wide Warning events for the monitoring page)
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -65,6 +67,12 @@ rules:
   - apiGroups: [""]
     resources: ["nodes/proxy"]
     verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

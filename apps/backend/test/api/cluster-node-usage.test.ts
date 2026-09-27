@@ -1,0 +1,109 @@
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import type { MetricsConfigService } from '~/shared/metrics/metrics-config.service';
+
+mock.module('@kubwave/db', () => ({ db: {}, settings: {} }));
+
+const { ClusterUsageService } = await import('~/modules/platform/cluster/cluster-usage.service');
+
+const originalFetch = globalThis.fetch;
+let capturedQueries: string[] = [];
+let prometheusUrl: string | null = 'http://prometheus:9090';
+
+function makeService() {
+	const metricsConfig = {
+		getMetricsProviderSettings: async () => ({ provider: 'prometheus-managed', prometheusUrl }),
+		resolvePrometheusUrl: () => prometheusUrl
+	} as unknown as MetricsConfigService;
+	return new ClusterUsageService(metricsConfig);
+}
+
+// A distinct value per metric name so a query wired to the wrong metric surfaces as a wrong value, not a coincidentally-matching one.
+function fixtureValueFor(query: string): string {
+	if (query.includes('container_cpu_usage_seconds_total')) return '250';
+	if (query.includes('container_memory_working_set_bytes')) return '500';
+	return '750';
+}
+
+// cAdvisor reports the node rootfs under two device labels (block device + overlay mount) for the same filesystem.
+// A real max() query collapses both into one series; a regression back to sum() would double this value.
+function resultFor(query: string): Array<{ metric: Record<string, string>; values: [number, string][] }> {
+	if (query.includes('container_fs_usage_bytes')) {
+		const value = fixtureValueFor(query);
+		return [
+			{ metric: { device: '/dev/vda1' }, values: [[100, value]] },
+			{ metric: { device: 'overlay_0-65' }, values: [[100, value]] }
+		];
+	}
+	return [{ metric: {}, values: [[100, fixtureValueFor(query)]] }];
+}
+
+beforeEach(() => {
+	capturedQueries = [];
+	prometheusUrl = 'http://prometheus:9090';
+	globalThis.fetch = (async (input: string | URL | Request) => {
+		const url = input instanceof URL ? input : new URL(String(input));
+		const query = url.searchParams.get('query') ?? '';
+		capturedQueries.push(query);
+		return new Response(JSON.stringify({ status: 'success', data: { result: resultFor(query) } }), {
+			headers: { 'content-type': 'application/json' }
+		});
+	}) as typeof fetch;
+});
+
+afterEach(() => {
+	globalThis.fetch = originalFetch;
+});
+
+describe('ClusterUsageService for one node', () => {
+	test('scopes every query to the node and targets the right metric per series', async () => {
+		await makeService().getUsage('1h', 'node-1');
+		expect(capturedQueries.length).toBe(3);
+		expect(capturedQueries[0]).toContain('container_cpu_usage_seconds_total');
+		expect(capturedQueries[1]).toContain('container_memory_working_set_bytes');
+		expect(capturedQueries[2]).toContain('container_fs_usage_bytes');
+		for (const query of capturedQueries) {
+			expect(query).toContain('id="/",node="node-1"');
+		}
+	});
+
+	// cAdvisor reports the node rootfs under two device labels for the same filesystem; max() collapses
+	// them to one value, sum() would double-count.
+	test('aggregates the disk series with max, not sum, to avoid double-counting the rootfs device', async () => {
+		expect(capturedQueries).toEqual([]);
+		await makeService().getUsage('1h', 'node-1');
+		expect(capturedQueries[2]).toMatch(/^max\(container_fs_usage_bytes\{/);
+		expect(capturedQueries[2]).not.toContain('sum(container_fs_usage_bytes');
+	});
+
+	test('parses the returned matrix into points', async () => {
+		const usage = await makeService().getUsage('1h', 'node-1');
+		expect(usage.available).toBe(true);
+		expect(usage.range).toBe('1h');
+		expect(usage.series.cpuMillicores).toEqual([{ t: 100, v: 250 }]);
+		expect(usage.series.memoryBytes).toEqual([{ t: 100, v: 500 }]);
+		expect(usage.series.diskBytes).toEqual([{ t: 100, v: 750 }]);
+	});
+
+	test('defaults to the 1h range', async () => {
+		const usage = await makeService().getUsage(undefined, 'node-1');
+		expect(usage.range).toBe('1h');
+	});
+
+	test('reports unavailable with empty series when no prometheus is configured', async () => {
+		prometheusUrl = null;
+		const usage = await makeService().getUsage('24h', 'node-1');
+		expect(usage).toEqual({
+			available: false,
+			range: '24h',
+			sampledAt: expect.any(String),
+			series: { cpuMillicores: [], memoryBytes: [], diskBytes: [] }
+		});
+		expect(capturedQueries).toEqual([]);
+	});
+
+	test('reports unavailable when prometheus errors', async () => {
+		globalThis.fetch = (async () => new Response('boom', { status: 500 })) as unknown as typeof fetch;
+		const usage = await makeService().getUsage('1h', 'node-1');
+		expect(usage.available).toBe(false);
+	});
+});

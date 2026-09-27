@@ -63,6 +63,13 @@ import type {
 	McpConsentCreateData,
 	McpConsentCreateResponses,
 	McpInfoGetResponses,
+	PlatformClusterEventsGetResponses,
+	PlatformClusterGetResponses,
+	PlatformClusterNodeGetResponses,
+	PlatformClusterNodeUsageGetData,
+	PlatformClusterNodeUsageGetResponses,
+	PlatformClusterUsageGetData,
+	PlatformClusterUsageGetResponses,
 	PlatformSettingsAiGetResponses,
 	PlatformSettingsAiUpdateData,
 	PlatformSettingsAiUpdateResponses,
@@ -420,10 +427,39 @@ export type KubwaveMcpInfoResource = {
 };
 
 export type KubwavePlatformResource = {
+	cluster: KubwavePlatformClusterResource;
 	settings: KubwavePlatformSettingsResource;
 	updates: KubwavePlatformUpdatesResource;
 	users: KubwavePlatformUsersResource;
 	version: KubwavePlatformVersionResource;
+};
+
+export type KubwavePlatformClusterResource = {
+	get(): OperationResult<PlatformClusterGetResponses>;
+	events: KubwavePlatformClusterEventsResource;
+	nodes: KubwavePlatformClusterNodesResource;
+	usage: KubwavePlatformClusterUsageResource;
+};
+
+export type KubwavePlatformClusterEventsResource = {
+	get(): OperationResult<PlatformClusterEventsGetResponses>;
+};
+
+export type KubwavePlatformClusterNodesResource = {
+	(name: string): KubwavePlatformClusterNodesNameResource;
+};
+
+export type KubwavePlatformClusterNodesNameResource = {
+	get(): OperationResult<PlatformClusterNodeGetResponses>;
+	usage: KubwavePlatformClusterNodesNameUsageResource;
+};
+
+export type KubwavePlatformClusterNodesNameUsageResource = {
+	get(query?: PlatformClusterNodeUsageGetData['query']): OperationResult<PlatformClusterNodeUsageGetResponses>;
+};
+
+export type KubwavePlatformClusterUsageResource = {
+	get(query?: PlatformClusterUsageGetData['query']): OperationResult<PlatformClusterUsageGetResponses>;
 };
 
 export type KubwavePlatformSettingsResource = {
@@ -881,6 +917,24 @@ export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClie
 			}
 		},
 		platform: {
+			cluster: {
+				get: () => apiResult(raw.platformClusterGet({})),
+				events: {
+					get: () => apiResult(raw.platformClusterEventsGet({}))
+				},
+				nodes: Object.assign(
+					(name: string) => ({
+						get: () => apiResult(raw.platformClusterNodeGet({ path: { name: name } })),
+						usage: {
+							get: (query?: PlatformClusterNodeUsageGetData['query']) => apiResult(raw.platformClusterNodeUsageGet({ path: { name: name }, query }))
+						}
+					}),
+					{}
+				),
+				usage: {
+					get: (query?: PlatformClusterUsageGetData['query']) => apiResult(raw.platformClusterUsageGet({ query }))
+				}
+			},
 			settings: {
 				ai: {
 					get: () => apiResult(raw.platformSettingsAiGet({})),

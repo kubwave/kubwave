@@ -120,6 +120,9 @@ export function buildPrometheusConfig(): string {
 		'        regex: (.+)',
 		'        target_label: __metrics_path__',
 		'        replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor',
+		// Same `node` label kube-prometheus-stack sets, so the node history queries work against either Prometheus.
+		'      - source_labels: [__meta_kubernetes_node_name]',
+		'        target_label: node',
 		'  - job_name: kubernetes-kubelet',
 		'    scheme: https',
 		'    tls_config:',

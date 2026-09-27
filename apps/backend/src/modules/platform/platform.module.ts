@@ -1,5 +1,10 @@
 import { Module } from '@nestjs/common';
 import { AdminGuard } from '../../shared/auth/auth.guard.js';
+import { ClusterController } from './cluster/cluster.controller.js';
+import { ClusterEventsService } from './cluster/cluster-events.service.js';
+import { ClusterNodeService } from './cluster/cluster-node.service.js';
+import { ClusterSnapshotService } from './cluster/cluster-snapshot.service.js';
+import { ClusterUsageService } from './cluster/cluster-usage.service.js';
 import { PlatformController } from './platform.controller.js';
 import { PlatformAiSettingsController } from './settings/ai/platform-ai-settings.controller.js';
 import { PlatformAiSettingsService } from './settings/ai/platform-ai-settings.service.js';
@@ -44,7 +49,8 @@ import { PlatformVersionService } from './version/platform-version.service.js';
 		PlatformVolumesController,
 		PlatformTcpPortPoolSettingsController,
 		PlatformAiSettingsController,
-		PlatformUpdatesController
+		PlatformUpdatesController,
+		ClusterController
 	],
 	providers: [
 		AdminGuard,
@@ -61,7 +67,11 @@ import { PlatformVersionService } from './version/platform-version.service.js';
 		PlatformTcpPortPoolSettingsService,
 		PlatformAiSettingsService,
 		PlatformVersionService,
-		PlatformUpdatesService
+		PlatformUpdatesService,
+		ClusterSnapshotService,
+		ClusterEventsService,
+		ClusterUsageService,
+		ClusterNodeService
 	]
 })
 export class PlatformModule {}

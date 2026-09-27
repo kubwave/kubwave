@@ -87,6 +87,16 @@ import type {
 	McpConsentCreateResponses,
 	McpInfoGetData,
 	McpInfoGetResponses,
+	PlatformClusterEventsGetData,
+	PlatformClusterEventsGetResponses,
+	PlatformClusterGetData,
+	PlatformClusterGetResponses,
+	PlatformClusterNodeGetData,
+	PlatformClusterNodeGetResponses,
+	PlatformClusterNodeUsageGetData,
+	PlatformClusterNodeUsageGetResponses,
+	PlatformClusterUsageGetData,
+	PlatformClusterUsageGetResponses,
 	PlatformSettingsAiGetData,
 	PlatformSettingsAiGetResponses,
 	PlatformSettingsAiUpdateData,
@@ -1780,6 +1790,66 @@ export const platformUpdateLogsGet = <ThrowOnError extends boolean = false>(
 	(options.client ?? client).get<PlatformUpdateLogsGetResponses, unknown, ThrowOnError>({
 		security: [{ scheme: 'bearer', type: 'http' }],
 		url: '/api/platform/updates/{id}/logs',
+		...options
+	});
+
+/**
+ * Get a cluster capacity and health snapshot
+ */
+export const platformClusterGet = <ThrowOnError extends boolean = false>(
+	options?: Options<PlatformClusterGetData, ThrowOnError>
+): RequestResult<PlatformClusterGetResponses, unknown, ThrowOnError> =>
+	(options?.client ?? client).get<PlatformClusterGetResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/platform/cluster',
+		...options
+	});
+
+/**
+ * List cluster-wide Kubernetes warning events
+ */
+export const platformClusterEventsGet = <ThrowOnError extends boolean = false>(
+	options?: Options<PlatformClusterEventsGetData, ThrowOnError>
+): RequestResult<PlatformClusterEventsGetResponses, unknown, ThrowOnError> =>
+	(options?.client ?? client).get<PlatformClusterEventsGetResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/platform/cluster/events',
+		...options
+	});
+
+/**
+ * Get cluster-wide CPU and memory history
+ */
+export const platformClusterUsageGet = <ThrowOnError extends boolean = false>(
+	options?: Options<PlatformClusterUsageGetData, ThrowOnError>
+): RequestResult<PlatformClusterUsageGetResponses, unknown, ThrowOnError> =>
+	(options?.client ?? client).get<PlatformClusterUsageGetResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/platform/cluster/usage',
+		...options
+	});
+
+/**
+ * Get one node with its pods, conditions and events
+ */
+export const platformClusterNodeGet = <ThrowOnError extends boolean = false>(
+	options: Options<PlatformClusterNodeGetData, ThrowOnError>
+): RequestResult<PlatformClusterNodeGetResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).get<PlatformClusterNodeGetResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/platform/cluster/nodes/{name}',
+		...options
+	});
+
+/**
+ * Get one node CPU, memory and disk history
+ */
+export const platformClusterNodeUsageGet = <ThrowOnError extends boolean = false>(
+	options: Options<PlatformClusterNodeUsageGetData, ThrowOnError>
+): RequestResult<PlatformClusterNodeUsageGetResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).get<PlatformClusterNodeUsageGetResponses, unknown, ThrowOnError>({
+		security: [{ scheme: 'bearer', type: 'http' }],
+		url: '/api/platform/cluster/nodes/{name}/usage',
 		...options
 	});
 

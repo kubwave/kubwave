@@ -1,5 +1,5 @@
 import type { CoreV1Api, V1Pod } from '@kubernetes/client-node';
-import { nodeStatsSummary, type KubeletPodStats, type NodeStatsSummary } from '../metrics/index';
+import { nodeStatsSummary, podStatsByKey, type NodeStatsSummary } from '../metrics/index';
 
 // Cluster-managed PVCs the autoscaler grows (registry, CNPG postgres, managed Prometheus); shared by worker's sweep and api's usage display.
 
@@ -41,14 +41,7 @@ export function fullestPvcUsage(
 	summaries: NodeStatsSummary[],
 	wantsPvc: (pvcName: string) => boolean
 ): PvcUsage | null {
-	const statsByKey = new Map<string, KubeletPodStats>();
-	for (const summary of summaries) {
-		for (const pod of summary.pods ?? []) {
-			const ns = pod.podRef?.namespace;
-			const name = pod.podRef?.name;
-			if (ns && name) statsByKey.set(`${ns}/${name}`, pod);
-		}
-	}
+	const statsByKey = podStatsByKey(summaries);
 
 	let best: PvcUsage | null = null;
 	for (const pod of pods) {

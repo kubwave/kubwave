@@ -3,6 +3,10 @@ import type {
 	DeploymentLogsListResponse,
 	EnvironmentFlowLayoutGetResponse,
 	EnvVar,
+	PlatformClusterEventsGetResponse,
+	PlatformClusterGetResponse,
+	PlatformClusterNodeGetResponse,
+	PlatformClusterUsageGetResponse,
 	ProjectDetailDto,
 	ServiceDeploymentsListResponse,
 	ServiceLogsGetResponse,
@@ -32,3 +36,13 @@ export type DeploymentBuildLogs = DeploymentBuildLogsGetResponse;
 export type DeploymentBuildLogContainer = DeploymentBuildLogs['containers'][number];
 export type TeamMember = TeamMembersListResponse[number];
 export type SshKey = TeamSshKeysListResponse[number];
+export type ClusterSnapshot = PlatformClusterGetResponse;
+export type ClusterNode = ClusterSnapshot['nodes'][number];
+export type ClusterComponent = ClusterSnapshot['components'][number];
+export type ClusterMeter = ClusterSnapshot['cpu'];
+export type ClusterEvents = PlatformClusterEventsGetResponse;
+export type ClusterEvent = ClusterEvents['events'][number];
+export type ClusterUsage = PlatformClusterUsageGetResponse;
+export type ClusterNodeDetail = PlatformClusterNodeGetResponse;
+export type ClusterNodeCondition = ClusterNodeDetail['conditions'][number];
+export type ClusterNodePod = ClusterNodeDetail['pods'][number];

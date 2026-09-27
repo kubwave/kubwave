@@ -5,7 +5,8 @@ import type { NodeStatsSummary, ServicePodRef, ServiceUsage, ServiceUsageLimits 
 import { MetricsConfigService } from '../../../shared/metrics/metrics-config.service.js';
 import { ServicesService } from '../services.service.js';
 import type { ServiceView } from '../services.types.js';
-import type { MetricsRange, ServiceMetricsDto } from './metrics.dto.js';
+import type { MetricsRange } from '../../../shared/metrics/prometheus.types.js';
+import type { ServiceMetricsDto } from './metrics.dto.js';
 import { PrometheusMetricsService } from './prometheus.service.js';
 
 function toLiveMetrics(usage: ServiceUsage, sampledAt: string): ServiceMetricsDto {

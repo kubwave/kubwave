@@ -1,5 +1,5 @@
 import type * as k8s from '@kubernetes/client-node';
-import { pvcName } from '../workloads/index';
+import { pvcName, WORKLOADS_NAMESPACE_PREFIX } from '../workloads/index';
 
 // Kubelet Summary API (/stats/summary) via apiserver node proxy; unlike metrics-server it carries per-pod CPU, memory, network, and PVC usage.
 
@@ -21,14 +21,34 @@ export interface KubeletPodStats {
 	volume?: KubeletVolumeStats[];
 }
 
+// The kubelet's own roll-up for the node, distinct from the sum of its pods: it includes system-daemon overhead outside any container.
+export interface KubeletNodeStats {
+	nodeName?: string;
+	cpu?: { usageNanoCores?: number };
+	memory?: { workingSetBytes?: number };
+	fs?: { capacityBytes?: number; usedBytes?: number };
+}
+
 export interface NodeStatsSummary {
+	node?: KubeletNodeStats;
 	pods?: KubeletPodStats[];
 }
 
-// Fetch one node's kubelet stats via the apiserver node proxy.
+const SUMMARY_TIMEOUT_MS = 5000;
+
+// Fetch one node's kubelet stats via the apiserver node proxy. Bounded, because a hung kubelet otherwise stalls every caller.
 export async function nodeStatsSummary(api: k8s.CoreV1Api, nodeName: string): Promise<NodeStatsSummary> {
-	const raw = await api.connectGetNodeProxyWithPath({ name: nodeName, path: 'stats/summary' });
-	return (typeof raw === 'string' ? JSON.parse(raw) : raw) as NodeStatsSummary;
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timeout = new Promise<never>((_, reject) => {
+		timer = setTimeout(() => reject(new Error(`kubelet stats for ${nodeName} timed out`)), SUMMARY_TIMEOUT_MS);
+	});
+
+	try {
+		const raw = await Promise.race([api.connectGetNodeProxyWithPath({ name: nodeName, path: 'stats/summary' }), timeout]);
+		return (typeof raw === 'string' ? JSON.parse(raw) : raw) as NodeStatsSummary;
+	} finally {
+		clearTimeout(timer);
+	}
 }
 
 export function parseCpuToMillicores(quantity: string | undefined | null): number | null {
@@ -60,8 +80,26 @@ export function parseMemoryToBytes(quantity: string | undefined | null): number 
 			return Number.isFinite(n) ? Math.round(n * factor) : null;
 		}
 	}
+	// The apiserver canonicalizes fractional byte quantities like 0.1Gi to milli-bytes ("107374182400m").
+	if (q.endsWith('m')) {
+		const n = Number(q.slice(0, -1));
+		return Number.isFinite(n) ? Math.round(n / 1000) : null;
+	}
 	const n = Number(q);
 	return Number.isFinite(n) ? Math.round(n) : null;
+}
+
+// Keyed by namespace/name so same-named pods in different tenant namespaces don't collide.
+export function podStatsByKey(summaries: NodeStatsSummary[]): Map<string, KubeletPodStats> {
+	const statsByKey = new Map<string, KubeletPodStats>();
+	for (const summary of summaries) {
+		for (const pod of summary.pods ?? []) {
+			const ns = pod.podRef?.namespace;
+			const name = pod.podRef?.name;
+			if (ns && name) statsByKey.set(`${ns}/${name}`, pod);
+		}
+	}
+	return statsByKey;
 }
 
 export interface ServicePodRef {
@@ -105,16 +143,7 @@ export function aggregateServiceUsage(args: {
 	limits?: ServiceUsageLimits;
 }): ServiceUsage {
 	const { serviceId, namespace, pods, summaries, limits } = args;
-
-	// Index pod stats by namespace/name to avoid collisions across tenant namespaces.
-	const statsByKey = new Map<string, KubeletPodStats>();
-	for (const summary of summaries) {
-		for (const pod of summary.pods ?? []) {
-			const ns = pod.podRef?.namespace;
-			const name = pod.podRef?.name;
-			if (ns && name) statsByKey.set(`${ns}/${name}`, pod);
-		}
-	}
+	const statsByKey = podStatsByKey(summaries);
 
 	const volumes = new Map<string, ServiceVolumeUsage>();
 	let cpuMillicores = 0;
@@ -174,4 +203,90 @@ export function emptyServiceUsage(limits?: ServiceUsageLimits): ServiceUsage {
 		cpuLimitMillicores: parseCpuToMillicores(limits?.cpuLimit),
 		memoryLimitBytes: parseMemoryToBytes(limits?.memoryLimit)
 	};
+}
+
+export interface ClusterNodeUsage {
+	nodeName: string;
+	// False when the kubelet reported no cpu/memory for the node, so callers render "unknown" instead of a misleading 0.
+	available: boolean;
+	cpuMillicores: number;
+	memoryBytes: number;
+	fsUsedBytes: number;
+	fsCapacityBytes: number;
+}
+
+export interface WorkloadUsage {
+	cpuMillicores: number;
+	memoryBytes: number;
+}
+
+export interface ClusterUsageAggregate {
+	nodes: ClusterNodeUsage[];
+	volumeUsedBytes: number;
+	volumeCapacityBytes: number;
+	platform: WorkloadUsage;
+	tenants: WorkloadUsage;
+	// Everything that is neither the platform namespace nor a tenant namespace (kube-system, ingress, cert-manager).
+	other: WorkloadUsage;
+}
+
+export function nodeUsageFromSummary(summary: NodeStatsSummary): ClusterNodeUsage | null {
+	const node = summary.node;
+	if (!node?.nodeName) return null;
+
+	return {
+		nodeName: node.nodeName,
+		available: node.cpu?.usageNanoCores != null || node.memory?.workingSetBytes != null,
+		cpuMillicores: (node.cpu?.usageNanoCores ?? 0) / 1e6,
+		memoryBytes: node.memory?.workingSetBytes ?? 0,
+		fsUsedBytes: node.fs?.usedBytes ?? 0,
+		fsCapacityBytes: node.fs?.capacityBytes ?? 0
+	};
+}
+
+export function aggregateClusterUsage(args: { summaries: NodeStatsSummary[]; platformNamespace: string }): ClusterUsageAggregate {
+	const { summaries, platformNamespace } = args;
+
+	const nodes: ClusterNodeUsage[] = [];
+	const platform: WorkloadUsage = { cpuMillicores: 0, memoryBytes: 0 };
+	const tenants: WorkloadUsage = { cpuMillicores: 0, memoryBytes: 0 };
+	const other: WorkloadUsage = { cpuMillicores: 0, memoryBytes: 0 };
+	// Keyed by namespace/claim so a ReadWriteMany volume mounted by several pods is counted once.
+	const claims = new Map<string, { usedBytes: number; capacityBytes: number }>();
+
+	for (const summary of summaries) {
+		const nodeUsage = nodeUsageFromSummary(summary);
+		if (nodeUsage) nodes.push(nodeUsage);
+		const nodeFsCapacity = summary.node?.fs?.capacityBytes;
+
+		for (const pod of summary.pods ?? []) {
+			const namespace = pod.podRef?.namespace;
+			if (!namespace) continue;
+
+			const bucket = namespace === platformNamespace ? platform : namespace.startsWith(WORKLOADS_NAMESPACE_PREFIX) ? tenants : other;
+			bucket.cpuMillicores += (pod.cpu?.usageNanoCores ?? 0) / 1e6;
+			bucket.memoryBytes += pod.memory?.workingSetBytes ?? 0;
+
+			for (const volume of pod.volume ?? []) {
+				const claimName = volume.pvcRef?.name;
+				if (!claimName) continue;
+				// ponytail: host-path provisioners (local-path) report the node's own filesystem for every claim, so summing them
+				// multiplies the node disk; skip claims sized exactly like it. Fails only if a real PV matches the node fs to the byte.
+				if (nodeFsCapacity && volume.capacityBytes === nodeFsCapacity) continue;
+				claims.set(`${volume.pvcRef?.namespace ?? namespace}/${claimName}`, {
+					usedBytes: volume.usedBytes ?? 0,
+					capacityBytes: volume.capacityBytes ?? 0
+				});
+			}
+		}
+	}
+
+	let volumeUsedBytes = 0;
+	let volumeCapacityBytes = 0;
+	for (const claim of claims.values()) {
+		volumeUsedBytes += claim.usedBytes;
+		volumeCapacityBytes += claim.capacityBytes;
+	}
+
+	return { nodes, volumeUsedBytes, volumeCapacityBytes, platform, tenants, other };
 }

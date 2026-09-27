@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LayoutDashboard, FolderKanban, Settings2, Shield } from 'lucide-vue-next';
+import { Activity, LayoutDashboard, FolderKanban, Settings2, Shield } from 'lucide-vue-next';
 import type { Component } from 'vue';
 
 interface NavItem {
@@ -21,6 +21,7 @@ const team: NavItem[] = [
 	{ to: '/team/settings', label: 'Settings', icon: Settings2 }
 ];
 const admin: NavItem[] = [
+	{ to: '/admin/monitoring', label: 'Monitoring', icon: Activity },
 	{ to: '/admin/users', label: 'Users', icon: Shield },
 	{ to: '/admin/settings', label: 'Settings', icon: Settings2 }
 ];

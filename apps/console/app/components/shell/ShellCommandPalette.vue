@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, FolderKanban, LayoutDashboard, Monitor, Moon, Settings2, Shield, Sun, Users } from 'lucide-vue-next';
+import { Activity, Check, FolderKanban, LayoutDashboard, Monitor, Moon, Settings2, Shield, Sun, Users } from 'lucide-vue-next';
 
 // Global ⌘K/Ctrl+K palette: navigation, team switching and theme — no backend calls of its own.
 const open = defineModel<boolean>('open', { default: false });
@@ -23,6 +23,7 @@ const navItems = computed(() => [
 	{ to: '/team/settings', label: 'Team settings', icon: Settings2 },
 	...(isAdmin.value
 		? [
+				{ to: '/admin/monitoring', label: 'Admin monitoring', icon: Activity },
 				{ to: '/admin/users', label: 'Admin users', icon: Shield },
 				{ to: '/admin/settings', label: 'Admin settings', icon: Settings2 }
 			]
