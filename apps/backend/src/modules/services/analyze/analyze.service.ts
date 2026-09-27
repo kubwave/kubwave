@@ -13,7 +13,7 @@ import { ServiceNameTakenError } from '../services.errors.js';
 import { ServicesService } from '../services.service.js';
 import type { ServiceView } from '../services.types.js';
 import type { AnalyzeRepositoryInput, AnalyzeRepositoryResult, CreateServicesFromPlanInput, RepoSource } from './analyze.dto.js';
-import { AI_SETTINGS_KEY, generateDeploymentPlan, languageModel, parseModelSpec, renderPrompt, type AiSettings } from './llm.js';
+import { AI_SETTINGS_KEY, generateDeploymentPlan, languageModel, maxOutputTokens, parseModelSpec, renderPrompt, type AiSettings } from './llm.js';
 import { buildAppInputs, buildDatabaseInputs, buildImageInputs, fillGeneratedSecrets, literalEnv, type PlanTarget } from './plan-inputs.js';
 import { snapshotRepo } from './repo-snapshot.js';
 
@@ -44,16 +44,22 @@ export class ServiceAnalyzeService {
 		this.inFlight.add(actingUserId);
 		try {
 			const auth = await this.resolveSource(environment.teamId, input.source);
-			const [snapshot, existing, domains] = await Promise.all([
+			const { model, effort } = parseModelSpec(ai.model);
+			const apiKey = ai.apiKeyCiphertext ? decryptSecret(ai.apiKeyCiphertext) : undefined;
+			const [snapshot, existing, domains, outputTokens] = await Promise.all([
 				snapshotRepo({ ...auth, branch: input.source.branch, timeoutMs: SNAPSHOT_TIMEOUT_MS }).catch(err => {
 					throw new ApiError(422, 'repository_unreachable', { message: errorMessage(err) });
 				}),
 				this.services.listServicesForEnvironment(actingUserId, environmentId),
-				this.services.loadDefaultDomainContext()
+				this.services.loadDefaultDomainContext(),
+				maxOutputTokens(ai, apiKey, model)
 			]);
-			const { model, effort } = parseModelSpec(ai.model);
-			const apiKey = ai.apiKeyCiphertext ? decryptSecret(ai.apiKeyCiphertext) : undefined;
-			const plan = await generateDeploymentPlan(structured => languageModel(ai, apiKey, model, structured), effort, renderPrompt(snapshot, existing));
+			const plan = await generateDeploymentPlan(
+				structured => languageModel(ai, apiKey, model, structured),
+				effort,
+				outputTokens,
+				renderPrompt(snapshot, existing)
+			);
 			return { ...plan, defaultDomainBase: effectiveBase(domains.settings, domains.runtime) };
 		} finally {
 			this.inFlight.delete(actingUserId);

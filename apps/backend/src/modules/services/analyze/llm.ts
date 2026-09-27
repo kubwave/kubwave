@@ -1,6 +1,6 @@
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { AISDKError, APICallError, NoObjectGeneratedError, Output, generateText, type LanguageModel } from 'ai';
+import { AISDKError, APICallError, NoObjectGeneratedError, Output, streamText, type LanguageModel } from 'ai';
 import { z } from 'zod';
 import { ApiError } from '../../../shared/errors/api-error.js';
 import type { ServiceView } from '../services.types.js';
@@ -55,6 +55,23 @@ export function languageModel(
 // Each provider only reads its own key, so both can be set without branching on the provider.
 export function effortProviderOptions(effort: string | null) {
 	return effort ? { anthropic: { effort }, [OPENAI_COMPATIBLE_NAME]: { reasoningEffort: effort } } : undefined;
+}
+
+// Thinking counts against max_tokens, so give the model its full cap. OpenAI-compatible /models reports none and hosts often reject large values.
+export async function maxOutputTokens(
+	settings: Pick<AiSettings, 'provider' | 'baseUrl'>,
+	apiKey: string | undefined,
+	modelId: string
+): Promise<number | undefined> {
+	if (settings.provider !== 'anthropic') return 16_000;
+	const base = (settings.baseUrl ?? 'https://api.anthropic.com/v1').replace(/\/+$/, '');
+	const res = await fetch(`${base}/models/${encodeURIComponent(modelId)}`, {
+		headers: { 'x-api-key': apiKey ?? '', 'anthropic-version': '2023-06-01' },
+		signal: AbortSignal.timeout(10_000)
+	}).catch(() => null);
+	const body = res?.ok ? ((await res.json().catch(() => null)) as { max_tokens?: unknown } | null) : null;
+	// Undefined lets @ai-sdk/anthropic fall back to its per-model table.
+	return typeof body?.max_tokens === 'number' ? body.max_tokens : undefined;
 }
 
 export const SYSTEM_PROMPT = `You plan deployments for kubwave, a Kubernetes PaaS. You receive a snapshot of one git repository: its file tree, selected config files, and the environment variable names its code reads, grouped by project directory. Propose the services needed to run it.
@@ -120,17 +137,32 @@ export function renderPrompt(snapshot: RepoSnapshot, existingServices: ServiceVi
 	].join('\n\n');
 }
 
-async function requestPlan(model: LanguageModel, effort: string | null, prompt: string): Promise<DeploymentPlan> {
-	const { output } = await generateText({
+// Streamed because non-streaming responses only send headers when done, and long high-effort runs exceed Node fetch's 300 s header timeout.
+async function requestPlan(
+	model: LanguageModel,
+	effort: string | null,
+	maxOutputTokens: number | undefined,
+	prompt: string
+): Promise<DeploymentPlan> {
+	let streamError: unknown;
+	const result = streamText({
 		model,
 		system: SYSTEM_PROMPT,
 		prompt,
 		output: Output.object({ schema: deploymentPlanSchema, name: 'deployment_plan' }),
 		providerOptions: effortProviderOptions(effort),
-		maxOutputTokens: 16_000,
-		maxRetries: 2
+		maxOutputTokens,
+		maxRetries: 2,
+		onError: ({ error }) => {
+			streamError = error;
+		}
 	});
-	return output;
+	try {
+		return await result.output;
+	} catch (err) {
+		// streamText reports provider errors via onError and rejects output with a generic error; rethrow the original.
+		throw streamError ?? err;
+	}
 }
 
 function rejectsResponseFormat(err: unknown): boolean {
@@ -142,12 +174,13 @@ function rejectsResponseFormat(err: unknown): boolean {
 export async function generateDeploymentPlan(
 	model: (structuredOutputs: boolean) => LanguageModel,
 	effort: string | null,
+	maxOutputTokens: number | undefined,
 	prompt: string
 ): Promise<DeploymentPlan> {
 	try {
-		return await requestPlan(model(true), effort, prompt).catch(err => {
+		return await requestPlan(model(true), effort, maxOutputTokens, prompt).catch(err => {
 			if (!rejectsResponseFormat(err)) throw err;
-			return requestPlan(model(false), effort, prompt);
+			return requestPlan(model(false), effort, maxOutputTokens, prompt);
 		});
 	} catch (err) {
 		if (NoObjectGeneratedError.isInstance(err)) {

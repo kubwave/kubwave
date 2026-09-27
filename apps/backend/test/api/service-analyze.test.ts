@@ -1,10 +1,10 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { APICallError } from 'ai';
-import { MockLanguageModelV4 } from 'ai/test';
+import { MockLanguageModelV4, convertArrayToReadableStream } from 'ai/test';
 import { internalServiceName } from '@kubwave/kube';
 import { updateAiSettingsSchema } from '~/modules/platform/settings/ai/platform-ai-settings.dto';
 import { createServicesFromPlanSchema, type CreateServicesFromPlanInput, type DeploymentPlan } from '~/modules/services/analyze/analyze.dto';
-import { effortProviderOptions, generateDeploymentPlan, parseModelSpec } from '~/modules/services/analyze/llm';
+import { effortProviderOptions, generateDeploymentPlan, maxOutputTokens, parseModelSpec } from '~/modules/services/analyze/llm';
 import {
 	buildAppInputs,
 	buildImageInputs,
@@ -47,15 +47,21 @@ const plan: DeploymentPlan = {
 
 function mockModel(text: string) {
 	return new MockLanguageModelV4({
-		doGenerate: {
-			content: [{ type: 'text', text }],
-			finishReason: { unified: 'stop', raw: 'stop' },
-			usage: {
-				inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-				outputTokens: { total: 1, text: 1, reasoning: 0 }
-			},
-			warnings: []
-		}
+		doStream: async () => ({
+			stream: convertArrayToReadableStream([
+				{ type: 'text-start', id: '1' },
+				{ type: 'text-delta', id: '1', delta: text },
+				{ type: 'text-end', id: '1' },
+				{
+					type: 'finish',
+					finishReason: { unified: 'stop', raw: 'stop' },
+					usage: {
+						inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+						outputTokens: { total: 1, text: 1, reasoning: 0 }
+					}
+				}
+			])
+		})
 	});
 }
 
@@ -112,19 +118,44 @@ describe('parseModelSpec', () => {
 	});
 });
 
+describe('maxOutputTokens', () => {
+	afterEach(() => {
+		(globalThis.fetch as unknown as { mockRestore?: () => void }).mockRestore?.();
+	});
+
+	test('reads the output cap from the Anthropic Models API', async () => {
+		const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ id: 'claude-opus-5', max_tokens: 128_000 }));
+		expect(await maxOutputTokens({ provider: 'anthropic', baseUrl: 'https://gateway.example.com/v1/' }, 'key', 'claude-opus-5')).toBe(128_000);
+		expect(String(fetchSpy.mock.calls[0]?.[0])).toBe('https://gateway.example.com/v1/models/claude-opus-5');
+	});
+
+	test('falls back to the provider table when the lookup fails', async () => {
+		spyOn(globalThis, 'fetch').mockResolvedValue(new Response('not found', { status: 404 }));
+		expect(await maxOutputTokens({ provider: 'anthropic', baseUrl: null }, 'key', 'claude-opus-5')).toBeUndefined();
+	});
+
+	test('keeps a fixed cap for OpenAI-compatible providers', async () => {
+		const fetchSpy = spyOn(globalThis, 'fetch');
+		expect(await maxOutputTokens({ provider: 'openai-compatible', baseUrl: 'http://ollama:11434/v1' }, undefined, 'qwen')).toBe(16_000);
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+});
+
 describe('generateDeploymentPlan', () => {
-	test('returns the parsed plan from the model output', async () => {
-		expect(await generateDeploymentPlan(() => mockModel(JSON.stringify(plan)), null, 'repo')).toEqual(plan);
+	test('returns the parsed plan from the streamed model output', async () => {
+		const model = mockModel(JSON.stringify(plan));
+		expect(await generateDeploymentPlan(() => model, null, 128_000, 'repo')).toEqual(plan);
+		expect(model.doStreamCalls[0]?.maxOutputTokens).toBe(128_000);
 	});
 
 	test('maps output that does not match the schema to ai_invalid_output', async () => {
-		const promise = generateDeploymentPlan(() => mockModel(JSON.stringify({ services: 'nope' })), null, 'repo');
+		const promise = generateDeploymentPlan(() => mockModel(JSON.stringify({ services: 'nope' })), null, undefined, 'repo');
 		await expect(promise).rejects.toMatchObject({ status: 502, code: 'ai_invalid_output' });
 	});
 
 	test('retries in plain JSON mode when the provider rejects json_schema', async () => {
 		const rejected = new MockLanguageModelV4({
-			doGenerate: async () => {
+			doStream: async () => {
 				throw new APICallError({
 					message: 'This response_format type is unavailable now',
 					url: 'https://api.example.com/v1/chat/completions',
@@ -141,6 +172,7 @@ describe('generateDeploymentPlan', () => {
 				return structured ? rejected : mockModel(JSON.stringify(plan));
 			},
 			null,
+			undefined,
 			'repo'
 		);
 		expect(result).toEqual(plan);
@@ -149,7 +181,7 @@ describe('generateDeploymentPlan', () => {
 
 	test('does not retry on other provider errors', async () => {
 		const unauthorized = new MockLanguageModelV4({
-			doGenerate: async () => {
+			doStream: async () => {
 				throw new APICallError({ message: 'Invalid API key', url: 'https://x', requestBodyValues: {}, statusCode: 401, isRetryable: false });
 			}
 		});
@@ -160,6 +192,7 @@ describe('generateDeploymentPlan', () => {
 				return unauthorized;
 			},
 			null,
+			undefined,
 			'repo'
 		);
 		await expect(promise).rejects.toMatchObject({ status: 502, code: 'ai_provider_error' });
