@@ -90,3 +90,26 @@ PersistentVolumeClaim, so it belongs to one instance — services that need a vo
 
 Each service has live CPU, memory, network, and volume metrics out of the box, read from the kubelet.
 Point the platform at Prometheus if you want historical metrics beyond the live view.
+
+## PR previews
+
+With PR previews enabled, each open pull request gets a copy of the base environment. Custom domains
+don't carry over. Every service that is public in the base (custom domain or default domain) is
+served on its own generated **default domain** in the preview. Internal services stay internal.
+
+To make the copy talk to itself instead of the base, the platform rewrites references in environment
+variables, secrets, and config files:
+
+- internal service hosts (`svc-<id>`) and the environment namespace point at the preview's services,
+  so a `DATABASE_URL` reaches the preview database, not the base one;
+- the base's public hosts (custom and default domains) become the preview's default-domain hosts,
+  e.g. `https://app.example.com` → `https://web-1a2b3c4d.<default-domain>`.
+
+Only exact host matches are rewritten: `api.example.com` is not touched when only `example.com` is a
+domain of the base, and email addresses like `noreply@example.com` stay as they are. Values are
+rewritten once, when the preview is created. Preview databases start empty.
+
+::callout{type="caution"}
+Previews need the platform default domain (**Admin → Settings → App domain**). When it is off, public services
+get no preview URL and keep pointing at the base hosts; the preview deployment log shows a warning.
+::

@@ -1,3 +1,4 @@
+import { decryptSecret, encryptSecret } from '@kubwave/crypto';
 import type { NewService, Service, ServiceConfig } from '@kubwave/db';
 import { rewriteCrossRefs, type RefMapping } from './rewrite.js';
 
@@ -19,6 +20,8 @@ export interface PreviewServiceRow extends NewService {
 
 export interface ClonePlan {
 	services: PreviewServiceRow[];
+	// Preview ids of base-public services that got no preview host (default domain off/unresolved or no container port).
+	noPreviewHost: Set<string>;
 }
 
 // Services whose stored repoUrl matches the PR's track the PR ref + auto-deploy; the rest get frozen copies. Monorepo: several services share one repoUrl.
@@ -30,21 +33,44 @@ function defaultDomainIsActive(config: ServiceConfig): boolean {
 	return config.defaultDomainEnabled === true && config.containerPort != null && (config.domains ?? []).length === 0;
 }
 
-function buildDefaultDomainMap(base: Service[], previewIdByBase: Map<string, string>, ctx: ClonePlanContext): Map<string, string> {
-	const map = new Map<string, string>();
-	if (!ctx.defaultDomainHost) return map;
+function isPublic(config: ServiceConfig): boolean {
+	return (config.domains ?? []).length > 0 || (config.defaultDomainEnabled === true && config.containerPort != null);
+}
+
+// Custom domains can't follow into a preview, so every base public host maps to the preview copy's generated default host.
+function buildHostMap(
+	base: Service[],
+	previewIdByBase: Map<string, string>,
+	ctx: ClonePlanContext
+): { hosts: Map<string, string>; noPreviewHost: Set<string> } {
+	const hosts = new Map<string, string>();
+	const noPreviewHost = new Set<string>();
 
 	for (const svc of base) {
-		if (!defaultDomainIsActive(svc.config)) continue;
-		const previewId = previewIdByBase.get(svc.id);
-		if (!previewId) continue;
+		if (!isPublic(svc.config)) continue;
+		const previewId = previewIdByBase.get(svc.id)!;
+		const to = svc.config.containerPort != null ? (ctx.defaultDomainHost?.({ serviceId: previewId, serviceName: svc.name }) ?? null) : null;
+		if (!to) {
+			noPreviewHost.add(previewId);
+			continue;
+		}
 
-		const from = ctx.defaultDomainHost({ serviceId: svc.id, serviceName: svc.name });
-		const to = ctx.defaultDomainHost({ serviceId: previewId, serviceName: svc.name });
-		if (from && to && from !== to) map.set(from, to);
+		const from = (svc.config.domains ?? []).map(d => d.host);
+		if (defaultDomainIsActive(svc.config)) {
+			const baseDefault = ctx.defaultDomainHost?.({ serviceId: svc.id, serviceName: svc.name });
+			if (baseDefault) from.push(baseDefault);
+		}
+		for (const host of from) if (host !== to) hosts.set(host, to);
 	}
 
-	return map;
+	return { hosts, noPreviewHost };
+}
+
+// Plaintext only lives in worker memory (it already holds SECRETS_KEY); untouched values keep their original ciphertext.
+function rewriteCiphertext(ciphertext: string, mapping: RefMapping): string {
+	const plain = decryptSecret(ciphertext);
+	const next = rewriteCrossRefs(plain, mapping);
+	return next === plain ? ciphertext : encryptSecret(next);
 }
 
 export function planPreviewServices(base: Service[], ctx: ClonePlanContext): ClonePlan {
@@ -56,10 +82,11 @@ export function planPreviewServices(base: Service[], ctx: ClonePlanContext): Clo
 		previewIdByBase.set(svc.id, previewId);
 		idMap.set(`svc-${svc.id}`, `svc-${previewId}`);
 	}
+	const { hosts, noPreviewHost } = buildHostMap(base, previewIdByBase, ctx);
 	const mapping: RefMapping = {
 		namespace: { from: ctx.baseNamespace, to: ctx.previewNamespace },
 		services: idMap,
-		defaultDomains: buildDefaultDomainMap(base, previewIdByBase, ctx)
+		hosts
 	};
 
 	const services: PreviewServiceRow[] = base.map(svc => {
@@ -69,6 +96,10 @@ export function planPreviewServices(base: Service[], ctx: ClonePlanContext): Clo
 		const config = structuredClone(svc.config) as ServiceConfig;
 		// env + domains exist on every ServiceConfig member (RuntimeConfig base).
 		config.env = (config.env ?? []).map(e => ({ key: e.key, value: rewriteCrossRefs(e.value, mapping) }));
+		if (config.secrets) config.secrets = config.secrets.map(s => ({ key: s.key, value: rewriteCiphertext(s.value, mapping) }));
+		if (config.configFiles) config.configFiles = config.configFiles.map(f => ({ path: f.path, content: rewriteCiphertext(f.content, mapping) }));
+		// Public in base => public in preview, on the generated default host; internal services stay internal.
+		if (isPublic(svc.config)) config.defaultDomainEnabled = true;
 		config.domains = [];
 		// Previews never inherit public TCP exposures: the pool ports are scarce and the base's routes point at the base's pods.
 		delete config.exposedPorts;
@@ -96,7 +127,7 @@ export function planPreviewServices(base: Service[], ctx: ClonePlanContext): Clo
 		};
 	});
 
-	return { services };
+	return { services, noPreviewHost };
 }
 
 // Rows that get an initial preview deploy: PR-tracking services plus any whose base runs in prod (succeeded). The rest stay un-deployed, mirroring prod.

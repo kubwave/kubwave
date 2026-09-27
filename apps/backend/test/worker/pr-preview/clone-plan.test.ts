@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'bun:test';
+import { randomBytes } from 'node:crypto';
+import { beforeAll, describe, expect, it } from 'bun:test';
+import { decryptSecret, encryptSecret } from '@kubwave/crypto';
 import type { Service } from '@kubwave/db';
 import { deployablePreviewRows, planPreviewServices } from '~/modules/worker/jobs/pr-preview/clone-plan';
 
@@ -34,6 +36,10 @@ const ctx = {
 function defaultDomainHost(service: { serviceId: string; serviceName: string }): string {
 	return `${service.serviceName}-${service.serviceId.replace(/-/g, '').slice(0, 8)}.kubwave.com`;
 }
+
+beforeAll(() => {
+	process.env.SECRETS_KEY = randomBytes(32).toString('base64url');
+});
 
 describe('planPreviewServices', () => {
 	it('puts the PR-repo service on the PR ref with auto-deploy on, pinned to head', () => {
@@ -246,6 +252,114 @@ describe('planPreviewServices', () => {
 		expect(valueByName.get('no-port')).toBe('no-port-22222222.kubwave.com');
 		expect(valueByName.get('custom')).toBe('custom-33333333.kubwave.com');
 		expect(valueByName.get('unresolved')).toBe('unresolved-44444444.kubwave.com');
+	});
+
+	it('publishes custom-domain services on the preview default host and rewrites env, secrets and config files', () => {
+		const ids = ['aaaaaaaa-0000-0000-0000-000000000000', 'bbbbbbbb-0000-0000-0000-000000000000', 'cccccccc-0000-0000-0000-000000000000'];
+		let next = 0;
+		const baseDbUrl = 'postgres://app:pw@svc-33333333-0000-0000-0000-000000000000.kubwave-env-BASE.svc.cluster.local:5432/app';
+		const untouchedKey = encryptSecret('sk-live-123');
+		const base = [
+			baseService({
+				id: '11111111-0000-0000-0000-000000000000',
+				type: 'docker-image',
+				name: 'web',
+				config: {
+					image: 'web',
+					tag: '1',
+					containerPort: 3000,
+					defaultDomainEnabled: false,
+					env: [{ key: 'NUXT_PUBLIC_API_BASE', value: 'https://api.example.com/api/v1' }],
+					configFiles: [
+						{ path: '/etc/nginx/conf.d/default.conf', content: encryptSecret('proxy_pass http://svc-22222222-0000-0000-0000-000000000000:8080;') }
+					],
+					domains: [{ host: 'app.example.com', port: 3000 }],
+					volumes: []
+				} as never
+			}),
+			baseService({
+				id: '22222222-0000-0000-0000-000000000000',
+				type: 'docker-image',
+				name: 'api',
+				config: {
+					image: 'api',
+					tag: '1',
+					containerPort: 8080,
+					env: [
+						{ key: 'API_CORS_ORIGIN', value: 'https://app.example.com' },
+						{ key: 'MAIL_FROM', value: 'noreply@app.example.com' }
+					],
+					secrets: [
+						{ key: 'DATABASE_URL', value: encryptSecret(baseDbUrl) },
+						{ key: 'WEBHOOK_BASE_URL', value: encryptSecret('https://api.example.com') },
+						{ key: 'API_KEY', value: untouchedKey }
+					],
+					domains: [{ host: 'api.example.com', port: 8080 }],
+					volumes: []
+				} as never
+			}),
+			baseService({
+				id: '33333333-0000-0000-0000-000000000000',
+				type: 'docker-image',
+				name: 'postgres',
+				config: { image: 'postgres', tag: '16', containerPort: 5432, env: [], domains: [], volumes: [] } as never
+			})
+		];
+
+		const { services, noPreviewHost } = planPreviewServices(base, { ...ctx, defaultDomainHost, newId: () => ids[next++]! });
+		type Cfg = {
+			defaultDomainEnabled?: boolean;
+			domains: unknown[];
+			env: { key: string; value: string }[];
+			secrets?: { key: string; value: string }[];
+			configFiles?: { path: string; content: string }[];
+		};
+		const cfg = (name: string) => services.find(s => s.name === name)!.config as Cfg;
+
+		expect(noPreviewHost.size).toBe(0);
+		for (const name of ['web', 'api']) {
+			expect(cfg(name).domains).toEqual([]);
+			expect(cfg(name).defaultDomainEnabled).toBe(true);
+		}
+		expect(cfg('postgres').defaultDomainEnabled).toBeUndefined();
+
+		expect(cfg('web').env).toEqual([{ key: 'NUXT_PUBLIC_API_BASE', value: 'https://api-bbbbbbbb.kubwave.com/api/v1' }]);
+		expect(decryptSecret(cfg('web').configFiles![0]!.content)).toBe('proxy_pass http://svc-bbbbbbbb-0000-0000-0000-000000000000:8080;');
+		expect(cfg('api').env).toEqual([
+			{ key: 'API_CORS_ORIGIN', value: 'https://web-aaaaaaaa.kubwave.com' },
+			{ key: 'MAIL_FROM', value: 'noreply@app.example.com' }
+		]);
+
+		const secrets = new Map(cfg('api').secrets!.map(s => [s.key, s.value]));
+		expect(decryptSecret(secrets.get('DATABASE_URL')!)).toBe(
+			'postgres://app:pw@svc-cccccccc-0000-0000-0000-000000000000.kubwave-env-PREVIEW.svc.cluster.local:5432/app'
+		);
+		expect(decryptSecret(secrets.get('WEBHOOK_BASE_URL')!)).toBe('https://api-bbbbbbbb.kubwave.com');
+		expect(secrets.get('API_KEY')).toBe(untouchedKey);
+	});
+
+	it('flags base-public services that get no preview host and leaves their host refs untouched', () => {
+		const base = [
+			baseService({
+				id: '11111111-0000-0000-0000-000000000000',
+				type: 'docker-image',
+				name: 'web',
+				config: {
+					image: 'web',
+					tag: '1',
+					containerPort: 3000,
+					env: [{ key: 'PUBLIC_URL', value: 'https://app.example.com' }],
+					domains: [{ host: 'app.example.com', port: 3000 }],
+					volumes: []
+				} as never
+			})
+		];
+
+		const { services, noPreviewHost } = planPreviewServices(base, { ...ctx, defaultDomainHost: () => null, newId: () => 'preview-web' });
+		expect([...noPreviewHost]).toEqual(['preview-web']);
+		const cfg = services[0]!.config as { defaultDomainEnabled?: boolean; env: { value: string }[] };
+		expect(cfg.defaultDomainEnabled).toBe(true);
+		expect(cfg.env[0]!.value).toBe('https://app.example.com');
 	});
 
 	it('tracks every service sharing the PR repoUrl (monorepo)', () => {
