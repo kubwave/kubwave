@@ -6,6 +6,7 @@ mock.module('@kubwave/db', () => ({ db: {}, deployments: {}, environments: {}, m
 
 const { assertGrantTarget, assertMcpScopes, mcpError, redactMcpOutput } = await import('~/modules/mcp/mcp-execution');
 const { InvalidReferenceError } = await import('~/modules/services/services.errors');
+const { ApiError } = await import('~/shared/errors/api-error');
 
 const teamId = '00000000-0000-4000-8000-000000000001';
 const projectId = '00000000-0000-4000-8000-000000000002';
@@ -47,12 +48,15 @@ describe('mcp', () => {
 		});
 	});
 
-	test('keeps API error details so agents can fix invalid references', () => {
+	test('forwards only reference issues from API error details', () => {
 		const issue = 'env A: ${{services.x.host}}: no service named "x" in this environment';
 		expect(mcpError(new InvalidReferenceError([issue])).structuredContent).toEqual({
 			error: 'invalid_reference',
 			status: 400,
-			details: { message: issue, issues: [issue] }
+			details: { issues: [issue] }
 		});
+		const leaky = mcpError(new ApiError(502, 'github_api_error', 'token=ghp_secret redis://:hunter2@cache'));
+		expect(leaky.structuredContent).toEqual({ error: 'github_api_error', status: 502 });
+		expect(leaky.content[0]?.text).not.toContain('hunter2');
 	});
 });

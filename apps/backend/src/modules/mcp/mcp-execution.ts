@@ -3,6 +3,7 @@ import { db, deployments, environments, mcpRequests, projects, services, teamMem
 import { z } from 'zod';
 import type { Tool } from '@modelcontextprotocol/server';
 import { ApiError } from '../../shared/errors/api-error.js';
+import { InvalidReferenceError } from '../services/services.errors.js';
 import type { McpPrincipal } from './mcp-auth.service.js';
 import { tokenHash, type McpScope } from './mcp.schemas.js';
 
@@ -106,8 +107,9 @@ function result(value: unknown, isError = false): McpToolResult {
 export function mcpError(error: unknown): McpToolResult {
 	if (error instanceof z.ZodError)
 		return result({ error: 'invalid_input', details: error.issues.map(issue => ({ path: issue.path, message: issue.message })) }, true);
-	if (error instanceof ApiError)
-		return result({ error: error.code, status: error.status, ...(error.details !== undefined ? { details: error.details } : {}) }, true);
+	// Other details can carry upstream response bodies or provider messages; reference issues hold only key, path and the `${{…}}` token.
+	if (error instanceof InvalidReferenceError) return result({ error: error.code, status: error.status, details: { issues: error.issues } }, true);
+	if (error instanceof ApiError) return result({ error: error.code, status: error.status }, true);
 	console.error('[mcp] tool failed', error);
 	return result({ error: 'internal_error' }, true);
 }
