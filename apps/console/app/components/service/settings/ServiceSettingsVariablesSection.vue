@@ -16,6 +16,13 @@ const props = defineProps<{
 	importDotenv: (entries: Array<{ key: string; value: string }>, asSecrets: boolean) => void;
 }>();
 
+// Strings, not template text: Vue would treat the `{{ }}` as interpolation.
+const referenceTrigger = '${{';
+const referenceExample = '${{services.<name>.url}}';
+
+const { data: environmentServices } = useEnvironmentServices(() => props.service.environmentId);
+const serviceNames = computed(() => (environmentServices.value ?? []).map(s => s.name));
+
 const pasteOpen = ref(false);
 const pasteText = ref('');
 const parsedPaste = computed(() => parseDotenv(pasteText.value));
@@ -35,6 +42,11 @@ function applyPaste(asSecrets: boolean) {
 				<div>
 					<h3 class="text-sm font-medium">Environment variables</h3>
 					<p class="text-xs text-muted-foreground">Injected into the container at runtime.</p>
+					<p class="text-xs text-muted-foreground">
+						Type <code class="font-mono">{{ referenceTrigger }}</code> to reference a service in this environment, e.g.
+						<code class="font-mono">{{ referenceExample }}</code
+						>. Resolved on every deploy, also in secrets and config files.
+					</p>
 				</div>
 				<div class="flex items-center gap-1">
 					<Button type="button" variant="ghost" size="sm" :disabled="saving" @click="pasteOpen = !pasteOpen">
@@ -64,7 +76,13 @@ function applyPaste(asSecrets: boolean) {
 			<p v-if="state.env.length === 0" class="text-sm text-muted-foreground">No variables.</p>
 			<div v-for="(item, index) in state.env" :key="item._id" class="flex items-center gap-2">
 				<Input v-model="item.key" placeholder="KEY" class="flex-1 font-mono text-xs" :disabled="saving" />
-				<Input v-model="item.value" placeholder="value" class="flex-1 font-mono text-xs" :disabled="saving" />
+				<ServiceSettingsReferenceInput
+					v-model="item.value"
+					:service-names="serviceNames"
+					placeholder="value"
+					class="w-full font-mono text-xs"
+					:disabled="saving"
+				/>
 				<Button
 					type="button"
 					variant="ghost"
@@ -101,8 +119,9 @@ function applyPaste(asSecrets: boolean) {
 					<Input v-model="item.key" placeholder="KEY" class="w-full pl-8 font-mono text-xs" :disabled="saving" />
 				</div>
 				<div class="relative flex-1">
-					<Input
+					<ServiceSettingsReferenceInput
 						v-model="item.value"
+						:service-names="serviceNames"
 						:type="shownSecrets[item._id] ? 'text' : 'password'"
 						autocomplete="new-password"
 						:placeholder="item.hasValue ? '•••••••• (unchanged)' : 'value'"

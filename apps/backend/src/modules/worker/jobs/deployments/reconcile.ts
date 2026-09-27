@@ -2,6 +2,7 @@ import { and, eq, inArray, lt, or } from 'drizzle-orm';
 import type { KubeConfig } from '@kubernetes/client-node';
 import { buildDefaultDomainForService, db, deployments, type DefaultDomainRuntime, type DefaultDomainSettings } from '@kubwave/db';
 import { env } from '../../../../shared/config/worker-env.js';
+import { loadReferenceResolvers } from './references.js';
 import { RECONCILE_IN_FLIGHT_STATUSES } from './types.js';
 import { reconcileOne } from './workflow/reconcile-one.js';
 import { resolveServiceMeta } from './workflow/service-meta.js';
@@ -21,6 +22,8 @@ export async function reconcileInFlight(kc: KubeConfig, defaultDomain: DefaultDo
 		);
 
 	const serviceMeta = await resolveServiceMeta(rows);
+	const environmentIds = [...new Set([...serviceMeta.values()].map(meta => meta.environmentId))];
+	const resolverFor = await loadReferenceResolvers(environmentIds, { settings: defaultDomain, runtime });
 	for (const row of rows) {
 		const meta = serviceMeta.get(row.serviceId);
 		if (!meta) continue;
@@ -30,7 +33,8 @@ export async function reconcileInFlight(kc: KubeConfig, defaultDomain: DefaultDo
 			kc,
 			deployment: row,
 			environmentId: meta.environmentId,
-			defaultDomainHost
+			defaultDomainHost,
+			resolveConfig: resolverFor(meta.environmentId)
 		});
 	}
 }

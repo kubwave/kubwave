@@ -77,6 +77,23 @@ describe('deriveServiceConnections', () => {
 		]);
 	});
 
+	test('creates connections for ${{ services.<name>.<prop> }} references regardless of the key', () => {
+		const connections = deriveServiceConnections([
+			service('my.db', 'svc-db'),
+			service('api', 'svc-api'),
+			service('web', 'svc-web', [
+				{ key: 'NUXT_PUBLIC_API_BASE', value: '${{ services.api.url }}/api/v1' },
+				{ key: 'DATABASE_URL', value: 'postgres://u:p@${{ services.my.db.host }}:${{ services.my.db.port }}/app' },
+				{ key: 'UNRELATED', value: '${{ services.apiary.url }}' }
+			])
+		]);
+
+		expect(connections).toEqual([
+			{ id: 'service-connection:web:api', sourceServiceId: 'web', targetServiceId: 'api', envKeys: ['NUXT_PUBLIC_API_BASE'] },
+			{ id: 'service-connection:web:my.db', sourceServiceId: 'web', targetServiceId: 'my.db', envKeys: ['DATABASE_URL'] }
+		]);
+	});
+
 	test('ignores non-reference environment keys', () => {
 		const connections = deriveServiceConnections([
 			service('db', 'svc-db'),

@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import type { CompletionSource } from '@codemirror/autocomplete';
 import { indentWithTab } from '@codemirror/commands';
-import { yaml } from '@codemirror/lang-yaml';
+import { yaml, yamlLanguage } from '@codemirror/lang-yaml';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { EditorView, keymap } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
@@ -15,13 +16,15 @@ const props = withDefaults(
 		placeholder?: string;
 		filename?: string;
 		languageLabel?: string;
+		completionSource?: CompletionSource;
 	}>(),
 	{
 		autofocus: false,
 		disabled: false,
 		placeholder: undefined,
 		filename: 'docker-compose.yml',
-		languageLabel: 'YAML'
+		languageLabel: 'YAML',
+		completionSource: undefined
 	}
 );
 
@@ -121,6 +124,8 @@ function buildExtensions() {
 		keymap.of([indentWithTab]),
 		basicSetup,
 		yaml(),
+		// basicSetup already runs autocompletion; this only adds a source to it.
+		...(props.completionSource ? [yamlLanguage.data.of({ autocomplete: props.completionSource })] : []),
 		syntaxHighlighting(codeHighlightStyle),
 		editorTheme,
 		EditorView.lineWrapping,

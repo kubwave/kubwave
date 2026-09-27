@@ -53,6 +53,14 @@ export function decryptSecret(serialized: string): string {
 	return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
 }
 
+let cachedChecksumKey: Buffer | null = null;
+
+// Keyed digest of decrypted values (e.g. a pod annotation readable without Secret access), so a weak secret can't be brute-forced from it.
+export function secretChecksum(plaintext: string): string {
+	cachedChecksumKey ??= createHmac('sha256', getKey()).update('kubwave-checksum').digest();
+	return createHmac('sha256', cachedChecksumKey).update(plaintext, 'utf8').digest('hex');
+}
+
 // Apache htpasswd line ({SHA} scheme) for Traefik basicAuth Middleware secrets.
 export function generateHtpasswd(username: string, password: string): string {
 	const digest = createHash('sha1').update(password, 'utf8').digest('base64');

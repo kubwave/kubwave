@@ -65,6 +65,12 @@ describe('findPlaceholders', () => {
 	});
 });
 
+describe('findPlaceholders ignores deploy-time references', () => {
+	test('skips ${{ services.<name>.<prop> }}', () => {
+		expect(findPlaceholders('${{ services.api.url }} {{ services.db.host }}')).toEqual([{ ns: 'services', key: 'db', sub: 'host' }]);
+	});
+});
+
 describe('validateTemplateReferences', () => {
 	test('valid ghost template has no errors', () => {
 		expect(validateTemplateReferences(ghostLike())).toEqual([]);
@@ -78,6 +84,18 @@ describe('validateTemplateReferences', () => {
 		const t = ghostLike();
 		// db references ghost (declared later); ghost already references db -> a cycle. Both are valid now.
 		t.services[0]!.config.env.push({ key: 'X', value: '{{ services.ghost.host }}' });
+		expect(validateTemplateReferences(t)).toEqual([]);
+	});
+	test('flags a ${{services.…}} reference: instance-prefixed names are unknown when the template is written', () => {
+		const t = ghostLike();
+		t.services[1]!.config.env.push({ key: 'DB_URL', value: 'mysql://${{services.db.host}}:3306' });
+		expect(validateTemplateReferences(t)).toContain(
+			'service "ghost": ${{services.…}} references are not supported in templates (use {{ services.<name>.host }})'
+		);
+	});
+	test('leaves other ${{…}} text alone', () => {
+		const t = ghostLike();
+		t.services[1]!.config.env.push({ key: 'CI', value: '${{ secrets.GITHUB_TOKEN }}' });
 		expect(validateTemplateReferences(t)).toEqual([]);
 	});
 	test('flags an unknown service reference', () => {

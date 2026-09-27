@@ -68,3 +68,9 @@ export class ComposeImportError extends ApiError {
 		super(status, 'compose_import_failed', { message: issues.join('\n'), issues });
 	}
 }
+
+export class InvalidReferenceError extends ApiError {
+	constructor(public readonly issues: string[]) {
+		super(400, 'invalid_reference', { message: issues.join('\n'), issues });
+	}
+}

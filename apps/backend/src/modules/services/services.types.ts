@@ -1,7 +1,5 @@
 import type {
 	DatabaseServiceConfig,
-	DefaultDomainRuntime,
-	DefaultDomainSettings,
 	DockerfileServiceConfig,
 	DockerImageServiceConfig,
 	GithubRepoServiceConfig,
@@ -126,7 +124,4 @@ export interface ServiceRow {
 	updatedAt: Date;
 }
 
-export interface DefaultDomainContext {
-	settings: DefaultDomainSettings;
-	runtime: DefaultDomainRuntime;
-}
+export type { DefaultDomainContext } from '@kubwave/db';

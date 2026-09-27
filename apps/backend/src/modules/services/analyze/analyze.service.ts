@@ -10,7 +10,7 @@ import type { GitAuthOptions } from '../../git/git-auth.js';
 import { giteaCloneUrl } from '../../git/gitea-api.js';
 import { GiteaInstallationsService } from '../../git/gitea-installations.service.js';
 import { ServiceNameTakenError } from '../services.errors.js';
-import { ServicesService } from '../services.service.js';
+import { ServicesService, type ServiceBatch } from '../services.service.js';
 import type { ServiceView } from '../services.types.js';
 import type { AnalyzeRepositoryInput, AnalyzeRepositoryResult, CreateServicesFromPlanInput, RepoSource } from './analyze.dto.js';
 import { AI_SETTINGS_KEY, generateDeploymentPlan, languageModel, parseModelSpec, renderPrompt, type AiSettings } from './llm.js';
@@ -120,8 +120,9 @@ export class ServiceAnalyzeService {
 
 		// ponytail: sequential creates, not one transaction; a DB-level failure midway leaves earlier services in place.
 		const created: ServiceView[] = [];
+		const batch = (name: string): ServiceBatch => ({ id: targets.get(name)!.id, names: [...targets.keys()] });
 		for (const databaseInput of databaseInputs) {
-			created.push(await this.services.createService(actingUserId, environmentId, databaseInput, targets.get(databaseInput.name)!.id));
+			created.push(await this.services.createService(actingUserId, environmentId, databaseInput, batch(databaseInput.name)));
 		}
 
 		const referencedDatabases = new Set(
@@ -135,10 +136,10 @@ export class ServiceAnalyzeService {
 		}
 
 		for (const imageInput of buildImageInputs(input, targets, name => uris.get(name)!)) {
-			created.push(await this.services.createService(actingUserId, environmentId, imageInput, targets.get(imageInput.name)!.id));
+			created.push(await this.services.createService(actingUserId, environmentId, imageInput, batch(imageInput.name)));
 		}
 		for (const appInput of buildAppInputs(input, targets, name => uris.get(name)!)) {
-			created.push(await this.services.createService(actingUserId, environmentId, appInput, targets.get(appInput.name)!.id));
+			created.push(await this.services.createService(actingUserId, environmentId, appInput, batch(appInput.name)));
 		}
 		return created;
 	}

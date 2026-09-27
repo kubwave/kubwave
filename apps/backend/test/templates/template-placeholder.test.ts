@@ -12,6 +12,15 @@ describe('resolveTemplateString', () => {
 	test('throws on unknown reference', () => {
 		expect(() => resolveTemplateString('{{ secrets.nope }}', ctx)).toThrow();
 	});
+	test('leaves ${{ … }} service references for the worker to resolve at deploy', () => {
+		for (const value of [
+			'${{ services.db.host }}',
+			'${{services.api.url}}/v1',
+			'postgres://u:{{ secrets.db_password }}@${{ services.db.host }}:5432/app'
+		]) {
+			expect(resolveTemplateString(value, ctx)).toBe(value.replace('{{ secrets.db_password }}', 'pw123'));
+		}
+	});
 });
 
 describe('resolveTemplateServiceConfig', () => {

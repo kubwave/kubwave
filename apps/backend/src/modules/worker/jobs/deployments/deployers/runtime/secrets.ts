@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { CoreV1Api, V1Secret } from '@kubernetes/client-node';
 import type { DeploymentLogEntry, RegistryAuthConfig, RuntimeConfig } from '@kubwave/db';
-import { decryptSecret } from '@kubwave/crypto';
+import { decryptSecret, secretChecksum } from '@kubwave/crypto';
 import { secretName } from '@kubwave/kube';
 import { convergeManagedSecret } from '../../../../../../shared/cluster/ops.js';
 import { commonLabels, stepEvent } from '../../../../../../shared/cluster/networking.js';
@@ -10,15 +10,16 @@ export function secretList(config: RuntimeConfig): Array<{ key: string; value: s
 	return config.secrets ?? [];
 }
 
-// Hash over the sorted encrypted entries (uses ciphertext from config, no decryption to detect a change); null when no secrets so the annotation is omitted.
+// Keyed hash over the sorted decrypted entries: resolved references are re-encrypted with a fresh IV every pass, so only the plaintext
+// tells whether the pods must roll. Null when no secrets so the annotation is omitted.
 export function secretsChecksum(config: RuntimeConfig): string | null {
 	const secrets = secretList(config);
 	if (secrets.length === 0) return null;
 	const joined = secrets
-		.map(s => `${s.key}=${s.value}`)
+		.map(s => `${s.key}=${decryptSecret(s.value)}`)
 		.sort()
 		.join('\n');
-	return createHash('sha256').update(joined).digest('hex');
+	return secretChecksum(joined);
 }
 
 // Hash over the stored registry credential ciphertext so a credential change rolls the pods (the pull Secret is referenced by name, not content).

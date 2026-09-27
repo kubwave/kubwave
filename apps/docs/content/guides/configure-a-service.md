@@ -12,6 +12,46 @@ that the worker rolls out.
 Plain key/value pairs injected into the container's environment. Use them for non-sensitive
 configuration — feature flags, service URLs, log levels.
 
+### Service references
+
+Instead of hard-coding another service's address, reference it by name with `${{services.<name>.<property>}}`:
+
+```bash
+NUXT_PUBLIC_API_BASE=${{services.api.url}}/api/v1
+DATABASE_URL=postgres://app:<password>@${{services.postgres.host}}:${{services.postgres.port}}/app
+```
+
+In the console, type `${{` in a variable, secret, or config file to get suggestions for every service
+and property in the environment.
+
+The worker resolves references on **every deploy**, separately for each environment. The same
+configuration therefore works in the base environment and in its [PR previews](#pr-previews), and a
+changed domain reaches the services that use it. References work in environment variables,
+[secrets](#secrets), and config files.
+
+| Property      | Resolves to                                                                      |
+| ------------- | -------------------------------------------------------------------------------- |
+| `host`        | Internal hostname `svc-<id>`, reachable only inside the environment              |
+| `port`        | Container port (for databases, the engine port)                                  |
+| `internalUrl` | `http://svc-<id>:<port>`                                                         |
+| `domain`      | Public hostname: the first custom domain, otherwise the generated default domain |
+| `url`         | `https://` + `domain` (`http://` when the platform issues no TLS certificates)   |
+
+- Only services in the same environment can be referenced, by name. Secret values of other services
+  can't be referenced.
+- Saving a reference to an unknown service or property is rejected. If a reference can't be resolved
+  when deploying (the service was deleted, has no container port, or `domain`/`url` is used for a
+  service without a public domain, e.g. because the platform default domain is off), the deployment
+  fails and its log names the reference and the reason.
+- Renaming a service updates the references to it in the same environment.
+- Only `${{services.…}}` is special. Other `${{…}}` text, such as GitHub Actions syntax in a config
+  file, is left as is.
+
+::callout{type="note"}
+A service picks up new values on its own next deploy. After changing a service's domain, redeploy the
+services that reference it.
+::
+
 ## Secrets
 
 Sensitive values — API keys, database passwords — kept separate from plain environment variables.
@@ -97,8 +137,11 @@ With PR previews enabled, each open pull request gets a copy of the base environ
 don't carry over. Every service that is public in the base (custom domain or default domain) is
 served on its own generated **default domain** in the preview. Internal services stay internal.
 
-To make the copy talk to itself instead of the base, the platform rewrites references in environment
-variables, secrets, and config files:
+[Service references](#service-references) resolve inside the preview environment, so they point at the
+preview's own services and URLs without any rewriting. Prefer them over literal hosts.
+
+For literal values, the platform rewrites the base's addresses in environment variables, secrets, and
+config files when it creates the preview:
 
 - internal service hosts (`svc-<id>`) and the environment namespace point at the preview's services,
   so a `DATABASE_URL` reaches the preview database, not the base one;
@@ -111,5 +154,6 @@ rewritten once, when the preview is created. Preview databases start empty.
 
 ::callout{type="caution"}
 Previews need the platform default domain (**Admin → Settings → App domain**). When it is off, public services
-get no preview URL and keep pointing at the base hosts; the preview deployment log shows a warning.
+get no preview URL: literal values keep pointing at the base hosts (the preview deployment log shows a warning),
+and deployments that use `domain` or `url` references of those services fail.
 ::

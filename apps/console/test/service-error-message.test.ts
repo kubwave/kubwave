@@ -14,6 +14,11 @@ describe('serviceErrorMessage', () => {
 		expect(serviceErrorMessage({ error: 'boom' })).toBe('Could not save service.');
 	});
 
+	test('shows a user-facing details.message (e.g. an invalid service reference)', () => {
+		const message = 'env API_URL: ${{ services.web.url }}: no service named "web" in this environment';
+		expect(serviceErrorMessage({ error: 'invalid_reference', details: { message } })).toBe(message);
+	});
+
 	test('falls back for non-object errors', () => {
 		expect(serviceErrorMessage(new Error('network'), 'Could not create service.')).toBe('Could not create service.');
 	});

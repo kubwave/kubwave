@@ -1,14 +1,17 @@
 import { and, desc, eq, lt } from 'drizzle-orm';
-import { CoreV1Api, NetworkingV1Api, type KubeConfig } from '@kubernetes/client-node';
+import { CoreV1Api, NetworkingV1Api } from '@kubernetes/client-node';
 import { db, deployments, type Deployment, type DeploymentLogEntry } from '@kubwave/db';
 import { environmentNamespace, SERVICE_ROLLOUT_MIN_READY_SECONDS } from '@kubwave/kube';
 import { env } from '../../../../shared/config/worker-env.js';
 import { ensureEnvironmentNamespace } from '../../../../shared/cluster/namespaces.js';
 import { tenantIsolation } from '../../../../shared/cluster/isolation.js';
 import { getDeployer } from './deployers/registry.js';
+import type { ReconcileResult } from './deployers/types.js';
 import { ingressOptions } from './ingress-options.js';
 import { deleteBuildArtifactsForDeployment, hasRunningBuildJobForDeployment } from './builds/service.js';
 import { finalize, insertLogs, logEntry, phaseEntry } from './logs.js';
+import { resolveDeployment } from './references.js';
+import type { DeploymentReconcileContext } from './workflow/context.js';
 
 // The budget must outlast minReadySeconds: a rollback pod needs to hold ready for that long before
 // it counts as available, so a fixed low attempt count could exhaust itself before the rollback is
@@ -70,7 +73,8 @@ async function recordRollbackFailure(row: Deployment, error: string, events: Dep
 	if (updated.length > 0) await insertLogs(row.id, entries);
 }
 
-export async function reconcileCanceling(kc: KubeConfig, row: Deployment, environmentId: string, defaultDomainHost: string | null): Promise<void> {
+export async function reconcileCanceling(ctx: DeploymentReconcileContext): Promise<void> {
+	const { kc, deployment: row, environmentId, defaultDomainHost, resolveConfig } = ctx;
 	if (isBuildDeployment(row) && row.phase === 'building' && (await hasRunningBuildJobForDeployment(kc, row.id))) {
 		await deleteBuildArtifactsForDeployment(kc, row.id);
 		await finalize(row.id, 'canceling', { status: 'canceled', phase: 'canceled', lastError: null }, [
@@ -102,15 +106,20 @@ export async function reconcileCanceling(kc: KubeConfig, row: Deployment, enviro
 		isolation: tenantIsolation
 	});
 
-	const result = await getDeployer(previous.type).reconcile({
-		kc,
-		namespace,
-		environmentId,
-		deployment: previous,
-		ingress: ingressOptions,
-		defaultDomainHost,
-		buildMode: 'rollback'
-	});
+	// Resolved only here, after the build-cancel/teardown exits, so a broken reference never blocks a cancel.
+	const resolved = resolveDeployment(previous, resolveConfig);
+	const result: ReconcileResult =
+		'error' in resolved
+			? { state: 'failed', error: resolved.error }
+			: await getDeployer(previous.type).reconcile({
+					kc,
+					namespace,
+					environmentId,
+					deployment: resolved.deployment,
+					ingress: ingressOptions,
+					defaultDomainHost,
+					buildMode: 'rollback'
+				});
 	const events = result.events ?? [];
 	if (result.state === 'ready') {
 		await finalize(row.id, 'canceling', { status: 'canceled', phase: 'canceled', lastError: null }, [

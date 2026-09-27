@@ -25,7 +25,8 @@ export interface ResolvedServiceConfig {
 	resources?: ResourceConfig;
 }
 
-const PLACEHOLDER_RE = /\{\{\s*([a-zA-Z]+)\.([a-zA-Z0-9_]+)(?:\.([a-zA-Z0-9_]+))?\s*\}\}/g;
+// `${{ … }}` is a deploy-time service reference (resolved per environment by the worker), never a template placeholder.
+const PLACEHOLDER_RE = /(?<!\$)\{\{\s*([a-zA-Z]+)\.([a-zA-Z0-9_]+)(?:\.([a-zA-Z0-9_]+))?\s*\}\}/g;
 
 export function resolveTemplateString(value: string, ctx: ResolveContext): string {
 	return value.replace(PLACEHOLDER_RE, (_full, ns: string, key: string, sub: string | undefined) => {

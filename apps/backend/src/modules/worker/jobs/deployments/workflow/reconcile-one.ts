@@ -8,6 +8,7 @@ import { reconcileCanceling } from '../cancel.js';
 import { getDeployer } from '../deployers/registry.js';
 import { RECONCILE_IN_FLIGHT_STATUSES } from '../types.js';
 import { ingressOptions } from '../ingress-options.js';
+import { resolveDeployment } from '../references.js';
 import type { DeploymentReconcileContext } from './context.js';
 import { handleReconcileError } from './errors.js';
 import { applyReconcileResult } from './outcomes.js';
@@ -38,7 +39,15 @@ export async function reconcileOne(ctx: DeploymentReconcileContext): Promise<voi
 
 	try {
 		if (deployment.status === 'canceling') {
-			await reconcileCanceling(ctx.kc, deployment, ctx.environmentId, ctx.defaultDomainHost);
+			await reconcileCanceling(ctx);
+			return;
+		}
+
+		// An unresolvable reference is a config error, not a blip: fail terminally instead of retrying every tick.
+		// ponytail: re-resolved every tick against live siblings, so renaming a referenced sibling mid-rollout fails that rollout; resolve once per deployment if it bites.
+		const resolved = resolveDeployment(deployment, ctx.resolveConfig);
+		if ('error' in resolved) {
+			await applyReconcileResult(deployment, { state: 'failed', error: resolved.error });
 			return;
 		}
 
@@ -48,7 +57,7 @@ export async function reconcileOne(ctx: DeploymentReconcileContext): Promise<voi
 			kc: ctx.kc,
 			namespace,
 			environmentId: ctx.environmentId,
-			deployment,
+			deployment: resolved.deployment,
 			ingress: ingressOptions,
 			defaultDomainHost: ctx.defaultDomainHost
 		});

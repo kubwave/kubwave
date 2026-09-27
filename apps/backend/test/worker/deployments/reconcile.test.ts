@@ -52,8 +52,8 @@ mock.module('~/modules/worker/jobs/deployments/logs', () => ({
 
 const cancelCalls: Array<{ id: string; environmentId: string; host: string | null }> = [];
 mock.module('~/modules/worker/jobs/deployments/cancel', () => ({
-	reconcileCanceling: async (_kc: unknown, row: { id: string }, environmentId: string, host: string | null) => {
-		cancelCalls.push({ id: row.id, environmentId, host });
+	reconcileCanceling: async (ctx: { deployment: { id: string }; environmentId: string; defaultDomainHost: string | null }) => {
+		cancelCalls.push({ id: ctx.deployment.id, environmentId: ctx.environmentId, host: ctx.defaultDomainHost });
 	}
 }));
 
@@ -82,7 +82,16 @@ const defaultDomain = { mode: 'off', base: null, subdomainTemplate: null } as ne
 const runtime = {} as never;
 
 function row(overrides: Record<string, unknown> = {}) {
-	return { id: 'dep-1', serviceId: 'svc-1', type: 'docker-image', status: 'deploying', phase: 'applying', lastError: null, ...overrides };
+	return {
+		id: 'dep-1',
+		serviceId: 'svc-1',
+		type: 'docker-image',
+		status: 'deploying',
+		phase: 'applying',
+		lastError: null,
+		config: { env: [], domains: [], volumes: [] },
+		...overrides
+	};
 }
 
 afterEach(() => {
@@ -136,6 +145,37 @@ describe('reconcileInFlight', () => {
 		reconcileOutcome = { state: 'failed', error: 'image pull error' };
 		await reconcileInFlight(kc, defaultDomain, runtime);
 		expect(finalizeCalls[0]).toMatchObject({ expected: 'deploying', fields: { status: 'failed', phase: 'failed', lastError: 'image pull error' } });
+	});
+
+	test('an unresolvable reference fails terminally with the reason, without running the deployer', async () => {
+		const config = { env: [{ key: 'API_URL', value: '${{ services.api.url }}/v1' }], domains: [], volumes: [] };
+		// in-flight rows, service meta, then the environment's services (no "api")
+		selectResults = [
+			[row({ config })],
+			[{ id: 'svc-1', environmentId: 'env-1', name: 'web' }],
+			[{ id: 'svc-1', environmentId: 'env-1', name: 'web', type: 'docker-image', config }]
+		];
+		await reconcileInFlight(kc, defaultDomain, runtime);
+		expect(deployerReconcileCalls).toEqual([]);
+		expect(finalizeCalls[0]).toMatchObject({
+			expected: 'deploying',
+			fields: {
+				status: 'failed',
+				lastError: 'Cannot resolve ${{ services.api.url }} in env API_URL: no service named "api" in this environment'
+			}
+		});
+	});
+
+	test('hands the deployer a resolved copy of the snapshot', async () => {
+		const config = { containerPort: 3000, env: [{ key: 'API_HOST', value: '${{ services.web.host }}' }], domains: [], volumes: [] };
+		selectResults = [
+			[row({ config })],
+			[{ id: 'svc-1', environmentId: 'env-1', name: 'web' }],
+			[{ id: 'svc-1', environmentId: 'env-1', name: 'web', type: 'docker-image', config }]
+		];
+		reconcileOutcome = { state: 'ready', events: [] };
+		await reconcileInFlight(kc, defaultDomain, runtime);
+		expect(deployerReconcileCalls[0]).toMatchObject({ deployment: { config: { env: [{ key: 'API_HOST', value: 'svc-svc-1' }] } } });
 	});
 
 	test('progressing with a CHANGED phase updates phase + writes the phase log', async () => {

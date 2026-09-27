@@ -25,6 +25,7 @@ import {
 import type { DatabaseServiceConfig, ServiceConfig, ServiceType } from '@kubwave/db';
 import { decryptSecret, encryptSecret } from '@kubwave/crypto';
 import { ApiError } from '../../shared/errors/api-error.js';
+import { mapConfigValues, renameReferences } from '../../shared/service-references.js';
 import { internalServiceName, parseMemoryToBytes } from '@kubwave/kube';
 import { EnvironmentsService } from '../environments/environments.service.js';
 import { GiteaInstallationsService } from '../git/gitea-installations.service.js';
@@ -40,7 +41,9 @@ import {
 	buildStoredPrivateRepoConfig,
 	buildStoredPublicRepoConfig,
 	normalizeDockerConfig,
-	toConfigView
+	referenceIssues,
+	toConfigView,
+	type ReferenceInput
 } from './services.config.js';
 import type { AutoDeployInput, CreateComposeServicesInput, CreateServiceInput, ImageWatchInput, UpdateServiceInput } from './services.dto.js';
 import { updateServiceSchema } from './services.dto.js';
@@ -51,6 +54,7 @@ import {
 	ComposeImportError,
 	GitInstallationNotAvailableError,
 	InvalidDatabaseVersionError,
+	InvalidReferenceError,
 	NotADatabaseServiceError,
 	PortExposureDisabledError,
 	ServiceConfigTypeMismatchError,
@@ -87,6 +91,48 @@ function imageWatchColumns(
 
 function trimDescription(description?: string): string {
 	return description?.trim() ?? '';
+}
+
+type ServicesTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+// Multi-service creators (templates, repo analyze) pre-generate ids and create one service at a time;
+// `names` lists the whole batch so a reference to a sibling created later still validates.
+export interface ServiceBatch {
+	id: string;
+	names: string[];
+}
+
+interface ServiceRename {
+	from: string;
+	to: string;
+}
+
+function withRenamedReferences(config: ServiceConfig, rename: ServiceRename): ServiceConfig {
+	return mapConfigValues(config, value => renameReferences(value, rename.from, rename.to));
+}
+
+// A rename rewrites other services' configs, so it reads them under row locks: a concurrent edit can't be overwritten with a stale
+// config. Locking the whole environment in id order, before this service's own UPDATE, keeps two renames from deadlocking.
+function lockEnvironmentServices(tx: ServicesTx, environmentId: string): Promise<Array<{ id: string; config: ServiceConfig }>> {
+	return tx
+		.select({ id: services.id, config: services.config })
+		.from(services)
+		.where(eq(services.environmentId, environmentId))
+		.orderBy(asc(services.id))
+		.for('update');
+}
+
+// Keeps `${{services.<name>.…}}` in the given services pointing at the renamed service.
+async function renameReferencesIn(
+	tx: ServicesTx,
+	rows: Array<{ id: string; config: ServiceConfig }>,
+	rename: ServiceRename,
+	now: Date
+): Promise<void> {
+	for (const row of rows) {
+		const config = withRenamedReferences(row.config, rename);
+		if (config !== row.config) await tx.update(services).set({ config, updatedAt: now }).where(eq(services.id, row.id));
+	}
 }
 
 function resolveDefaultUrl(ctx: DefaultDomainContext, row: { id: string; name: string; config: ServiceConfig }): string | null {
@@ -158,13 +204,14 @@ export class ServicesService {
 		return rows.map(row => toServiceView(row, defaultDomain));
 	}
 
-	async createService(actingUserId: string, environmentId: string, input: CreateServiceInput, id?: string): Promise<ServiceView> {
+	async createService(actingUserId: string, environmentId: string, input: CreateServiceInput, batch?: ServiceBatch): Promise<ServiceView> {
 		const environment = await this.environmentsService.loadEnvironmentForUser(actingUserId, environmentId);
 		const name = input.name.trim();
 
 		if (await this.serviceNameTaken(environment.id, name)) {
 			throw new ServiceNameTakenError();
 		}
+		await this.assertValidReferences(environment.id, [name, ...(batch?.names ?? [])], input.config);
 
 		if (input.type === 'private-repo') {
 			await this.assertSshKeyForTeam(environment.teamId, input.config.sshKeyId);
@@ -210,7 +257,7 @@ export class ServicesService {
 				.insert(services)
 				.values({
 					// Optional caller-provided id (template instantiation pre-generates ids so cross-references resolve in any order).
-					...(id ? { id } : {}),
+					...(batch ? { id: batch.id } : {}),
 					environmentId: environment.id,
 					name,
 					description: trimDescription(input.description),
@@ -401,7 +448,11 @@ export class ServicesService {
 			values.description = input.description.trim();
 		}
 
+		const rename: ServiceRename | null = values.name !== undefined && values.name !== service.name ? { from: service.name, to: values.name } : null;
+
 		if (input.config !== undefined) {
+			// The current name (still this row's) stays valid for this write: a rename rewrites references to it below.
+			await this.assertValidReferences(service.environmentId, [values.name ?? service.name], input.config);
 			const liveSizes = new Map((service.config.volumes ?? []).map(volume => [volume.name, volume.size]));
 			const incomingVolumes = 'volumes' in input.config ? input.config.volumes : [];
 
@@ -465,6 +516,20 @@ export class ServicesService {
 			} else if (config !== undefined && service.config.exposedPorts?.length) {
 				config = { ...config, exposedPorts: service.config.exposedPorts };
 			}
+			if (rename) {
+				const environmentServices = await lockEnvironmentServices(tx, service.environmentId);
+				const own = environmentServices.find(s => s.id === service.id);
+				if (!own) return undefined;
+				const ownConfig = config ?? own.config;
+				const renamedOwnConfig = withRenamedReferences(ownConfig, rename);
+				if (renamedOwnConfig !== ownConfig) config = renamedOwnConfig;
+				await renameReferencesIn(
+					tx,
+					environmentServices.filter(s => s.id !== service.id),
+					rename,
+					now
+				);
+			}
 			const [row] = await tx
 				.update(services)
 				.set({ ...values, ...(config !== undefined ? { config } : {}) })
@@ -522,6 +587,13 @@ export class ServicesService {
 
 		if (!row) throw new ServiceNotFoundError();
 		return row;
+	}
+
+	// `pendingNames`: services that exist once this write (or its batch) lands, on top of the environment's current ones.
+	private async assertValidReferences(environmentId: string, pendingNames: string[], config: ReferenceInput): Promise<void> {
+		const rows = await db.select({ name: services.name }).from(services).where(eq(services.environmentId, environmentId));
+		const issues = referenceIssues(config, new Set([...pendingNames, ...rows.map(row => row.name)]));
+		if (issues.length > 0) throw new InvalidReferenceError(issues);
 	}
 
 	private async serviceNameTaken(environmentId: string, name: string, exceptServiceId?: string): Promise<boolean> {
