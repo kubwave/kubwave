@@ -90,6 +90,12 @@ The installer prompts whether to install the autoscaler. It creates:
 - Secret `kube-system/upcloud-autoscaler` with your UpCloud API credentials
 - RBAC and Deployment `kube-system/cluster-autoscaler` (`ghcr.io/upcloudltd/autoscaler`)
 
+The CLI picks the image tag from the cluster's Kubernetes minor version: 1.27 → `v1.27.8`,
+1.28 → `v1.28.6`, 1.29 → `v1.29.5`. UpCloud does not publish autoscaler images for newer
+Kubernetes minors yet; those clusters get the newest available image and a warning. Override
+the tag with `--upcloud-autoscaler-image-tag`. `kubwave update` re-resolves the tag, so
+re-running it after a Kubernetes upgrade keeps the autoscaler current.
+
 You need:
 
 - The **UKS cluster UUID** from the UpCloud Control Panel
