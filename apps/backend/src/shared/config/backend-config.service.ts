@@ -62,7 +62,9 @@ export class BackendConfigService {
 			podNamespace: process.env.POD_NAMESPACE ?? 'kubwave',
 			appVersion: process.env.APP_VERSION ?? 'dev',
 			appBaseUrl: process.env.APP_BASE_URL ?? 'http://console.localhost',
-			docsBaseUrl: process.env.DOCS_BASE_URL ?? 'https://docs.kubwave.com'
+			// Prerelease installs read the docs from the "next" channel, matching the docs deploy in release.yml.
+			docsBaseUrl:
+				process.env.DOCS_BASE_URL ?? (/-/.test(process.env.APP_VERSION ?? '') ? 'https://next.docs.kubwave.com' : 'https://docs.kubwave.com')
 		};
 	}
 
