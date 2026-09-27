@@ -190,7 +190,8 @@ export class ClusterUsageDto {
 	series!: ClusterUsageSeriesDto;
 }
 
-// Rejects a malformed name before it reaches the apiserver as a raw path segment.
+// DNS-1123 subdomain, the charset Kubernetes allows for node names. It is also what makes the name safe to interpolate
+// into the apiserver path, field selectors (no `,` `=` `!`) and PromQL matchers (no `"` `\` `}`); keep it no looser.
 export const clusterNodeParamsSchema = z.object({
 	name: z
 		.string()
