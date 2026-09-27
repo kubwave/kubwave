@@ -7,6 +7,9 @@ import type { OpenPr } from './providers.js';
 import { getDefaultDomainRuntime, getDefaultDomainSettings } from '../../../../shared/cluster/default-domain.js';
 import { deploymentLogRows, logEntry } from '../deployments/logs.js';
 
+const NO_PREVIEW_HOST_MESSAGE =
+	'This service is public in the base environment, but the preview got no URL: the platform default domain is off or unresolved (or the service has no container port). Env values referencing its base hosts were left unchanged.';
+
 function slug(repoUrl: string): string {
 	const tail =
 		repoUrl
@@ -52,6 +55,11 @@ export async function clonePreview(base: Environment, pr: OpenPr, prRepoUrl: str
 		defaultDomainHost,
 		newId: randomUUID
 	});
+	if (plan.noPreviewHost.size > 0) {
+		console.warn(
+			`[pr-discovery] PR #${pr.prNumber} preview of env ${base.id}: ${plan.noPreviewHost.size} public service(s) got no preview URL (platform default domain off or unresolved)`
+		);
+	}
 
 	await db.transaction(async tx => {
 		await tx.insert(environments).values({
@@ -81,11 +89,18 @@ export async function clonePreview(base: Environment, pr: OpenPr, prRepoUrl: str
 							triggeredByUserId: null
 						}))
 					)
-					.returning({ id: deployments.id });
+					.returning({ id: deployments.id, serviceId: deployments.serviceId });
 				if (rows.length > 0) {
 					await tx
 						.insert(deploymentLogs)
-						.values(rows.flatMap(row => deploymentLogRows(row.id, [logEntry('info', 'queued', `PR #${pr.prNumber} preview`)])));
+						.values(
+							rows.flatMap(row =>
+								deploymentLogRows(row.id, [
+									logEntry('info', 'queued', `PR #${pr.prNumber} preview`),
+									...(plan.noPreviewHost.has(row.serviceId) ? [logEntry('warn', 'preview-domain', NO_PREVIEW_HOST_MESSAGE)] : [])
+								])
+							)
+						);
 				}
 			}
 		}

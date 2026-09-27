@@ -12,8 +12,9 @@ interface Insert {
 	values: unknown[];
 }
 let inserts: Insert[] = [];
-// Ids handed back from deployments.returning(), one per inserted deployment row.
+// Ids handed back from deployments.returning(), one per inserted deployment row (paired with that row's serviceId).
 let deploymentIds: string[] = [];
+let defaultDomainMode = 'wildcard';
 
 function tableName(t: { __t?: string }): string {
 	return t.__t ?? 'unknown';
@@ -25,7 +26,7 @@ const tx = {
 			const arr = Array.isArray(values) ? values : [values];
 			inserts.push({ table: tableName(table), values: arr });
 			return {
-				returning: () => deploymentIds.map(id => ({ id }))
+				returning: () => deploymentIds.map((id, i) => ({ id, serviceId: (arr[i] as { serviceId?: string } | undefined)?.serviceId }))
 			};
 		}
 	})
@@ -36,8 +37,8 @@ mock.module('@kubwave/db', () => ({
 	services: { __t: 'services', environmentId: 'environmentId' },
 	deployments: { __t: 'deployments', serviceId: 'serviceId', status: 'status', id: 'id' },
 	deploymentLogs: { __t: 'deploymentLogs' },
-	buildDefaultDomainForService: (_settings: unknown, _runtime: unknown, service: { serviceId: string; serviceName: string }) =>
-		`${service.serviceName}-${service.serviceId.replace(/-/g, '').slice(0, 8)}.kubwave.com`,
+	buildDefaultDomainForService: (settings: { mode: string }, _runtime: unknown, service: { serviceId: string; serviceName: string }) =>
+		settings.mode === 'off' ? null : `${service.serviceName}-${service.serviceId.replace(/-/g, '').slice(0, 8)}.kubwave.com`,
 	db: {
 		select: () => ({ from: () => ({ where: async () => selectResults[selectIdx++] ?? [] }) }),
 		transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(tx)
@@ -45,7 +46,7 @@ mock.module('@kubwave/db', () => ({
 }));
 
 mock.module('~/shared/cluster/default-domain', () => ({
-	getDefaultDomainSettings: async () => ({ mode: 'wildcard', base: 'kubwave.com', subdomainTemplate: null }),
+	getDefaultDomainSettings: async () => ({ mode: defaultDomainMode, base: 'kubwave.com', subdomainTemplate: null }),
 	getDefaultDomainRuntime: async () => ({ ingressIp: null, tls: false })
 }));
 
@@ -102,6 +103,7 @@ afterEach(() => {
 	selectIdx = 0;
 	inserts = [];
 	deploymentIds = [];
+	defaultDomainMode = 'wildcard';
 });
 
 describe('clonePreview', () => {
@@ -158,6 +160,25 @@ describe('clonePreview', () => {
 			{ key: '__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS', value: `docs-${serviceRow.id.replace(/-/g, '').slice(0, 8)}.kubwave.com` }
 		]);
 		expect(serviceRow.config.env[0]!.value).not.toBe('docs-0820689f.kubwave.com');
+	});
+
+	test('warns in the deployment log when a base-public service gets no preview host (default domain off)', async () => {
+		const svc = repoService('svc-web', 'web');
+		svc.config = { ...svc.config, domains: [{ host: 'web.example.com', port: 3000 }] };
+		selectResults = [[svc, imageService('svc-internal', 'internal')], [{ serviceId: 'svc-internal' }]];
+		deploymentIds = ['dep-web', 'dep-internal'];
+		defaultDomainMode = 'off';
+
+		await clonePreview(base, pr, prRepoUrl);
+
+		const serviceRows = find('services')!.values as Array<{ id: string; name: string }>;
+		const webId = serviceRows.find(s => s.name === 'web')!.id;
+		const logs = find('deploymentLogs')!.values as Array<{ deploymentId: string; level: string; step: string }>;
+		const warns = logs.filter(l => l.level === 'warn');
+		expect(warns).toHaveLength(1);
+		expect(warns[0]!.step).toBe('preview-domain');
+		expect(warns[0]!.deploymentId).toBe('dep-web');
+		expect((find('deployments')!.values[0] as { serviceId: string }).serviceId).toBe(webId);
 	});
 
 	test('copies services but inserts NO deployments/logs when none are deployable', async () => {
