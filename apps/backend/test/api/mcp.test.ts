@@ -4,7 +4,8 @@ import { pkceChallenge, requestedScopes, validRedirectUri } from '~/modules/mcp/
 
 mock.module('@kubwave/db', () => ({ db: {}, deployments: {}, environments: {}, mcpRequests: {}, projects: {}, services: {}, teamMembers: {} }));
 
-const { assertGrantTarget, assertMcpScopes, redactMcpOutput } = await import('~/modules/mcp/mcp-execution');
+const { assertGrantTarget, assertMcpScopes, mcpError, redactMcpOutput } = await import('~/modules/mcp/mcp-execution');
+const { InvalidReferenceError } = await import('~/modules/services/services.errors');
 
 const teamId = '00000000-0000-4000-8000-000000000001';
 const projectId = '00000000-0000-4000-8000-000000000002';
@@ -43,6 +44,15 @@ describe('mcp', () => {
 			redactMcpOutput({ items: [{ name: 'db', password: 'x', uri: 'postgres://x', configFiles: [{ path: '/a', content: 'secret' }] }] })
 		).toEqual({
 			items: [{ name: 'db', configFiles: [{ path: '/a', hasContent: true }] }]
+		});
+	});
+
+	test('keeps API error details so agents can fix invalid references', () => {
+		const issue = 'env A: ${{services.x.host}}: no service named "x" in this environment';
+		expect(mcpError(new InvalidReferenceError([issue])).structuredContent).toEqual({
+			error: 'invalid_reference',
+			status: 400,
+			details: { message: issue, issues: [issue] }
 		});
 	});
 });

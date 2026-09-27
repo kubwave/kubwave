@@ -106,7 +106,8 @@ function result(value: unknown, isError = false): McpToolResult {
 export function mcpError(error: unknown): McpToolResult {
 	if (error instanceof z.ZodError)
 		return result({ error: 'invalid_input', details: error.issues.map(issue => ({ path: issue.path, message: issue.message })) }, true);
-	if (error instanceof ApiError) return result({ error: error.code, status: error.status }, true);
+	if (error instanceof ApiError)
+		return result({ error: error.code, status: error.status, ...(error.details !== undefined ? { details: error.details } : {}) }, true);
 	console.error('[mcp] tool failed', error);
 	return result({ error: 'internal_error' }, true);
 }
