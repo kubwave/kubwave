@@ -22,6 +22,11 @@ export interface DefaultDomainRuntime {
 	tls: boolean;
 }
 
+export interface DefaultDomainContext {
+	settings: DefaultDomainSettings;
+	runtime: DefaultDomainRuntime;
+}
+
 export const DEFAULT_DOMAIN_RUNTIME_DEFAULTS: DefaultDomainRuntime = {
 	ingressIp: null,
 	tls: false

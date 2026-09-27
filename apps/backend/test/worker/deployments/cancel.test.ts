@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { KubeConfig } from '@kubernetes/client-node';
 import type { Deployment } from '@kubwave/db';
+import type { ConfigResolver } from '~/modules/worker/jobs/deployments/references';
 
 // reconcileCanceling rolls a service back to its previous successful deployment. Two branches:
 // (a) NO previous → teardown + finalize canceled; (b) a previous exists → re-reconcile it and
@@ -29,6 +30,8 @@ mock.module('@kubwave/db', () => ({
 		phase: 'phase',
 		rollbackAttempts: 'rollbackAttempts'
 	},
+	services: {},
+	buildDefaultDomainForService: () => null,
 	db: {
 		select: () => ({
 			from: () => ({ where: () => ({ orderBy: () => ({ limit: async () => previousRow }) }) })
@@ -77,8 +80,12 @@ mock.module('~/modules/worker/jobs/deployments/deployers/registry', () => ({
 }));
 
 const { reconcileCanceling } = await import('~/modules/worker/jobs/deployments/cancel');
+const { ReferenceResolutionError } = await import('~/modules/worker/jobs/deployments/references');
 
 const kc = { makeApiClient: () => ({}) } as unknown as KubeConfig;
+const keepConfig = <T>(config: T): T => config;
+const cancel = (deployment: Deployment, resolveConfig: ConfigResolver = keepConfig) =>
+	reconcileCanceling({ kc, deployment, environmentId: 'env-1', defaultDomainHost: 'svc.example.com', resolveConfig });
 const cancelingRow = {
 	id: 'dep-2',
 	serviceId: 'svc-1',
@@ -104,7 +111,7 @@ afterEach(() => {
 describe('reconcileCanceling', () => {
 	test('build-phase cancel with a running build job deletes only build artifacts and finalizes canceled', async () => {
 		hasRunningBuildJob = true;
-		await reconcileCanceling(kc, { ...cancelingRow, type: 'dockerfile', phase: 'building' } as never, 'env-1', 'svc.example.com');
+		await cancel({ ...cancelingRow, type: 'dockerfile', phase: 'building' } as never);
 		expect(deletedBuildArtifacts).toEqual(['dep-2']);
 		expect(teardownCalls).toEqual([]);
 		expect(reconcileCalls).toEqual([]);
@@ -118,7 +125,7 @@ describe('reconcileCanceling', () => {
 	test('build-phase cancel without a running build job falls through to rollback', async () => {
 		previousRow = [{ id: 'dep-1', serviceId: 'svc-1', type: 'dockerfile', status: 'succeeded' }];
 		reconcileOutcome = { state: 'ready', events: [] };
-		await reconcileCanceling(kc, { ...cancelingRow, type: 'dockerfile', phase: 'building' } as never, 'env-1', 'svc.example.com');
+		await cancel({ ...cancelingRow, type: 'dockerfile', phase: 'building' } as never);
 		expect(deletedBuildArtifacts).toEqual([]);
 		expect(reconcileCalls).toHaveLength(1);
 		expect(reconcileCalls[0]).toMatchObject({ buildMode: 'rollback' });
@@ -127,7 +134,7 @@ describe('reconcileCanceling', () => {
 
 	test('with no previous deployment: tears the service down and finalizes canceled', async () => {
 		previousRow = []; // nothing to roll back to
-		await reconcileCanceling(kc, cancelingRow, 'env-1', 'svc.example.com');
+		await cancel(cancelingRow);
 		expect(teardownCalls).toEqual([{ serviceId: 'svc-1', namespace: 'kubwave-env-env-1' }]);
 		expect(reconcileCalls).toEqual([]); // no rollback reconcile
 		expect(finalizeCalls).toHaveLength(1);
@@ -141,7 +148,7 @@ describe('reconcileCanceling', () => {
 	test('with a previous deployment that re-reconciles ready: finalizes canceled (restored)', async () => {
 		previousRow = [{ id: 'dep-1', serviceId: 'svc-1', type: 'docker-image', status: 'succeeded' }];
 		reconcileOutcome = { state: 'ready', events: [] };
-		await reconcileCanceling(kc, cancelingRow, 'env-1', 'svc.example.com');
+		await cancel(cancelingRow);
 		expect(teardownCalls).toEqual([]); // rolled forward, not torn down
 		expect(reconcileCalls).toHaveLength(1);
 		expect(reconcileCalls[0]).toMatchObject({ buildMode: 'rollback' });
@@ -151,7 +158,7 @@ describe('reconcileCanceling', () => {
 	test('with a previous whose rollback fails: records a retry before the hard limit', async () => {
 		previousRow = [{ id: 'dep-1', serviceId: 'svc-1', type: 'docker-image', status: 'succeeded' }];
 		reconcileOutcome = { state: 'failed', error: 'bad image' };
-		await reconcileCanceling(kc, cancelingRow, 'env-1', 'svc.example.com');
+		await cancel(cancelingRow);
 		expect(finalizeCalls).toEqual([]);
 		expect(updateSets[0]).toMatchObject({
 			rollbackAttempts: 1,
@@ -161,10 +168,24 @@ describe('reconcileCanceling', () => {
 		expect(insertLogsCalls).toHaveLength(1);
 	});
 
+	test('an unresolvable reference in the rollback target counts as a rollback failure without running the deployer', async () => {
+		previousRow = [{ id: 'dep-1', serviceId: 'svc-1', type: 'docker-image', status: 'succeeded' }];
+		const unresolvable = () => {
+			throw new ReferenceResolutionError('Cannot resolve ${{ services.db.host }} in env DB_HOST: no service named "db" in this environment');
+		};
+		await cancel(cancelingRow, unresolvable);
+		expect(reconcileCalls).toEqual([]);
+		expect(updateSets[0]).toMatchObject({
+			rollbackAttempts: 1,
+			phase: 'rollback-retrying',
+			lastError: 'Cancel rollback failed: Cannot resolve ${{ services.db.host }} in env DB_HOST: no service named "db" in this environment'
+		});
+	});
+
 	test('failed rollback with an empty error still records a retry (does not stay canceling forever)', async () => {
 		previousRow = [{ id: 'dep-1', serviceId: 'svc-1', type: 'docker-image', status: 'succeeded' }];
 		reconcileOutcome = { state: 'failed', error: '' };
-		await reconcileCanceling(kc, cancelingRow, 'env-1', 'svc.example.com');
+		await cancel(cancelingRow);
 		expect(finalizeCalls).toEqual([]);
 		expect(updateSets[0]).toMatchObject({
 			rollbackAttempts: 1,
@@ -176,7 +197,7 @@ describe('reconcileCanceling', () => {
 	test('with a previous whose rollback fails one short of the limit: still records a retry', async () => {
 		previousRow = [{ id: 'dep-1', serviceId: 'svc-1', type: 'docker-image', status: 'succeeded' }];
 		reconcileOutcome = { state: 'failed', error: 'bad image' };
-		await reconcileCanceling(kc, { ...cancelingRow, rollbackAttempts: 4 } as never, 'env-1', 'svc.example.com');
+		await cancel({ ...cancelingRow, rollbackAttempts: 4 } as never);
 		expect(finalizeCalls).toEqual([]);
 		expect(updateSets[0]).toMatchObject({ rollbackAttempts: 5, phase: 'rollback-retrying' });
 	});
@@ -184,7 +205,7 @@ describe('reconcileCanceling', () => {
 	test('with a previous whose rollback fails on the final attempt: finalizes failed', async () => {
 		previousRow = [{ id: 'dep-1', serviceId: 'svc-1', type: 'docker-image', status: 'succeeded' }];
 		reconcileOutcome = { state: 'failed', error: 'bad image' };
-		await reconcileCanceling(kc, { ...cancelingRow, rollbackAttempts: 5 } as never, 'env-1', 'svc.example.com');
+		await cancel({ ...cancelingRow, rollbackAttempts: 5 } as never);
 		expect(finalizeCalls[0]).toMatchObject({
 			fields: { status: 'failed', phase: 'failed', lastError: 'Cancel rollback failed: bad image', rollbackAttempts: 6 }
 		});
@@ -194,7 +215,7 @@ describe('reconcileCanceling', () => {
 		previousRow = [{ id: 'dep-1', serviceId: 'svc-1', type: 'docker-image', status: 'succeeded' }];
 		reconcileOutcome = { state: 'progressing', phase: 'rolling-out', events: [] };
 		phaseReturning = [{ id: 'dep-2' }]; // phase update matched
-		await reconcileCanceling(kc, cancelingRow, 'env-1', 'svc.example.com');
+		await cancel(cancelingRow);
 		expect(finalizeCalls).toEqual([]); // not terminal yet
 		expect(updateSets.some(s => s.phase === 'rolling-out')).toBe(true);
 		expect(insertLogsCalls).toHaveLength(1);
@@ -204,14 +225,14 @@ describe('reconcileCanceling', () => {
 		previousRow = [{ id: 'dep-1', serviceId: 'svc-1', type: 'docker-image', status: 'succeeded' }];
 		reconcileOutcome = { state: 'progressing', phase: 'rolling-out', events: [] };
 		phaseReturning = []; // row moved on between select and update
-		await reconcileCanceling(kc, cancelingRow, 'env-1', 'svc.example.com');
+		await cancel(cancelingRow);
 		expect(insertLogsCalls).toEqual([]);
 	});
 
 	test('unhealthy progressing (error: CrashLoopBackOff) counts as a rollback failure, not endless progress', async () => {
 		previousRow = [{ id: 'dep-1', serviceId: 'svc-1', type: 'docker-image', status: 'succeeded' }];
 		reconcileOutcome = { state: 'progressing', phase: 'error: CrashLoopBackOff: boom', events: [] };
-		await reconcileCanceling(kc, cancelingRow, 'env-1', 'svc.example.com');
+		await cancel(cancelingRow);
 		expect(finalizeCalls).toEqual([]);
 		expect(updateSets[0]).toMatchObject({
 			rollbackAttempts: 1,
@@ -223,7 +244,7 @@ describe('reconcileCanceling', () => {
 	test('unhealthy progressing on the final rollback attempt finalizes failed and unblocks the service', async () => {
 		previousRow = [{ id: 'dep-1', serviceId: 'svc-1', type: 'docker-image', status: 'succeeded' }];
 		reconcileOutcome = { state: 'progressing', phase: 'error: CrashLoopBackOff: boom', events: [] };
-		await reconcileCanceling(kc, { ...cancelingRow, rollbackAttempts: 5 } as never, 'env-1', 'svc.example.com');
+		await cancel({ ...cancelingRow, rollbackAttempts: 5 } as never);
 		expect(finalizeCalls[0]).toMatchObject({
 			fields: {
 				status: 'failed',
@@ -236,7 +257,7 @@ describe('reconcileCanceling', () => {
 
 	test('github-repo build-phase cancel with a running build job deletes artifacts like other build types', async () => {
 		hasRunningBuildJob = true;
-		await reconcileCanceling(kc, { ...cancelingRow, type: 'github-repo', phase: 'building' } as never, 'env-1', 'svc.example.com');
+		await cancel({ ...cancelingRow, type: 'github-repo', phase: 'building' } as never);
 		expect(deletedBuildArtifacts).toEqual(['dep-2']);
 		expect(finalizeCalls[0]).toMatchObject({
 			fields: { status: 'canceled', phase: 'canceled', lastError: null }

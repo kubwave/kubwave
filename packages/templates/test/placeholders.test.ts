@@ -65,6 +65,12 @@ describe('findPlaceholders', () => {
 	});
 });
 
+describe('findPlaceholders ignores deploy-time references', () => {
+	test('skips ${{ services.<name>.<prop> }}', () => {
+		expect(findPlaceholders('${{ services.api.url }} {{ services.db.host }}')).toEqual([{ ns: 'services', key: 'db', sub: 'host' }]);
+	});
+});
+
 describe('validateTemplateReferences', () => {
 	test('valid ghost template has no errors', () => {
 		expect(validateTemplateReferences(ghostLike())).toEqual([]);

@@ -17,6 +17,7 @@ import { DATABASE_ENGINE_CATALOG } from '@kubwave/db/database-engines';
 import { decryptSecret, encryptSecret, generatePassword } from '@kubwave/crypto';
 import { ApiError } from '../../shared/errors/api-error';
 import { normalizeRepoRelativePath, normalizeWatchPaths } from '../../shared/git/repo-relative-path.js';
+import { invalidReferences } from '../../shared/service-references.js';
 import { giteaCloneUrl } from '../git/gitea-api.js';
 import type {
 	DatabaseUpdateConfigInput,
@@ -380,4 +381,20 @@ export function buildStoredDatabaseConfig(
 ): DatabaseServiceConfig {
 	const password = existing?.password ?? encryptSecret(generatePassword());
 	return normalizeDatabaseConfig(engine, input, password, existing?.secrets);
+}
+
+// The plaintext fields of a service write that may carry `${{services.…}}` references.
+export interface ReferenceInput {
+	env?: Array<{ key: string; value: string }>;
+	secrets?: Array<{ key: string; value: string | null }>;
+	configFiles?: Array<{ path: string; content: string }>;
+}
+
+// A null secret keeps its stored value, which was checked when it was set.
+export function referenceIssues(config: ReferenceInput, names: ReadonlySet<string>): string[] {
+	return [
+		...(config.env ?? []).flatMap(e => invalidReferences(e.value, names).map(issue => `env ${e.key}: ${issue}`)),
+		...(config.secrets ?? []).flatMap(s => (s.value === null ? [] : invalidReferences(s.value, names).map(issue => `secret ${s.key}: ${issue}`))),
+		...(config.configFiles ?? []).flatMap(f => invalidReferences(f.content, names).map(issue => `config file ${f.path}: ${issue}`))
+	];
 }

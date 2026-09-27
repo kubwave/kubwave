@@ -1,7 +1,6 @@
-import { createHash } from 'node:crypto';
 import type { CoreV1Api, V1Secret } from '@kubernetes/client-node';
 import type { DeploymentLogEntry, RuntimeConfig, ServiceConfigFile } from '@kubwave/db';
-import { decryptSecret } from '@kubwave/crypto';
+import { decryptSecret, secretChecksum } from '@kubwave/crypto';
 import { fileKey, resourceName } from '@kubwave/kube';
 import { convergeManagedSecret } from '../../../../../../shared/cluster/ops.js';
 import { commonLabels, stepEvent } from '../../../../../../shared/cluster/networking.js';
@@ -16,15 +15,15 @@ export function filesSecretName(serviceId: string): string {
 	return `${resourceName(serviceId)}-files`;
 }
 
-// Hash over sorted path=ciphertext entries (no decryption); null when no files so the annotation is omitted.
+// Keyed hash over sorted path=plaintext entries (same reasoning as secretsChecksum); null when no files so the annotation is omitted.
 export function filesChecksum(config: RuntimeConfig): string | null {
 	const files = filesList(config);
 	if (files.length === 0) return null;
 	const joined = files
-		.map(f => `${f.path}=${f.content}`)
+		.map(f => `${f.path}=${decryptSecret(f.content)}`)
 		.sort()
 		.join('\n');
-	return createHash('sha256').update(joined).digest('hex');
+	return secretChecksum(joined);
 }
 
 // The K8s Secret projecting decrypted file content (worker holds SECRETS_KEY); mounted via subPath.

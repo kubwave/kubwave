@@ -7,8 +7,10 @@ export function errorCode(err: unknown): string {
 	return 'unknown';
 }
 
-// Shared service create/save error message: the duplicate-name case gets a specific message, everything
-// else gets the caller's fallback. Centralised so the wording lives in one place across the service forms.
+// Shared service create/save error message: the duplicate-name case gets a specific message, errors with a
+// user-facing `details.message` (e.g. an invalid service reference) show it, everything else gets the caller's fallback.
 export function serviceErrorMessage(err: unknown, fallback = 'Could not save service.'): string {
-	return errorCode(err) === 'service_name_taken' ? 'A service with that name already exists.' : fallback;
+	if (errorCode(err) === 'service_name_taken') return 'A service with that name already exists.';
+	const details = err && typeof err === 'object' ? (err as { details?: { message?: unknown } }).details : undefined;
+	return typeof details?.message === 'string' ? details.message : fallback;
 }

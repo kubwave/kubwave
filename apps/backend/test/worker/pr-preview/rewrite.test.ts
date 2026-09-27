@@ -34,6 +34,16 @@ describe('rewriteCrossRefs', () => {
 			expect(rewriteCrossRefs(value, mapping)).toBe(value);
 		}
 	});
+	it('leaves ${{ … }} service references untouched (they resolve per environment at deploy)', () => {
+		for (const value of [
+			'${{ services.api.url }}',
+			'${{services.web.domain}}/api/v1',
+			'postgres://u:p@${{ services.db.host }}:${{ services.db.port }}/app',
+			'https://${{ services.example.domain }}'
+		]) {
+			expect(rewriteCrossRefs(value, mapping)).toBe(value);
+		}
+	});
 	it('rewrites multiple service ids in one value', () => {
 		const m = {
 			namespace: mapping.namespace,
