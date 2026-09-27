@@ -19,6 +19,18 @@ mock.module('@kubwave/kube', () => ({
 		if (q.endsWith('Mi')) return Number(q.slice(0, -2)) * 1024 ** 2;
 		return Number(q);
 	},
+	nodeUsageFromSummary: (summary: {
+		node: { cpu: { usageNanoCores: number }; memory: { workingSetBytes: number }; fs: { usedBytes: number; capacityBytes: number } };
+	}) => ({
+		nodeName: 'node-1',
+		available: true,
+		cpuMillicores: summary.node.cpu.usageNanoCores / 1e6,
+		memoryBytes: summary.node.memory.workingSetBytes,
+		fsUsedBytes: summary.node.fs.usedBytes,
+		fsCapacityBytes: summary.node.fs.capacityBytes
+	}),
+	podStatsByKey: (summaries: Array<{ pods: Array<{ podRef: { name: string; namespace: string } }> }>) =>
+		new Map(summaries.flatMap(summary => summary.pods).map(pod => [`${pod.podRef.namespace}/${pod.podRef.name}`, pod])),
 	nodeStatsSummary: async () => {
 		if (summaryThrows) throw new Error('node proxy unavailable');
 		return {
@@ -90,7 +102,7 @@ beforeEach(() => {
 describe('ClusterNodeService', () => {
 	test('scopes the pod and event queries to the node', async () => {
 		await new ClusterNodeService().getNode('node-1');
-		expect(capturedPodSelector).toBe('spec.nodeName=node-1');
+		expect(capturedPodSelector).toBe('spec.nodeName=node-1,status.phase!=Succeeded,status.phase!=Failed');
 		expect(capturedEventSelector).toBe('type=Warning,involvedObject.kind=Node,involvedObject.name=node-1');
 	});
 
@@ -113,7 +125,23 @@ describe('ClusterNodeService', () => {
 
 	test('joins pod usage from the kubelet summary', async () => {
 		const detail = await new ClusterNodeService().getNode('node-1');
-		expect(detail.pods).toEqual([{ namespace: 'kubwave', name: 'api-1', phase: 'Running', cpuMillicores: 500, memoryBytes: 512 }]);
+		expect(detail.pods).toEqual([{ namespace: 'kubwave', name: 'api-1', status: 'Running', restarts: 0, cpuMillicores: 500, memoryBytes: 512 }]);
+	});
+
+	test('reports a stuck container reason and restarts instead of the bare phase', async () => {
+		pods = [
+			{
+				metadata: { namespace: 'kubwave', name: 'api-1' },
+				spec: { containers: [{}] },
+				status: {
+					phase: 'Running',
+					initContainerStatuses: [{ restartCount: 0, state: { terminated: { reason: 'Completed' } } }],
+					containerStatuses: [{ restartCount: 7, state: { waiting: { reason: 'CrashLoopBackOff' } } }]
+				}
+			}
+		];
+		const detail = await new ClusterNodeService().getNode('node-1');
+		expect(detail.pods[0]).toMatchObject({ status: 'CrashLoopBackOff', restarts: 7 });
 	});
 
 	test('excludes terminated pods from the pod table, matching the header meter', async () => {

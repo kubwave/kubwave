@@ -4,9 +4,10 @@ interface EventItem {
 	metadata?: { uid?: string; name?: string; namespace?: string; creationTimestamp?: string };
 	reason?: string;
 	message?: string;
-	involvedObject?: { kind?: string; name?: string };
+	involvedObject?: { kind?: string; name?: string; namespace?: string };
 	count?: number;
 	lastTimestamp?: string;
+	series?: { count?: number; lastObservedTime?: string };
 }
 
 let events: EventItem[] = [];
@@ -18,7 +19,7 @@ function warning(reason: string, lastTimestamp: string, overrides: Partial<Event
 		metadata: { uid: `uid-${reason}`, name: `event-${reason}`, namespace: 'kubwave' },
 		reason,
 		message: `${reason} happened`,
-		involvedObject: { kind: 'Pod', name: 'api-1' },
+		involvedObject: { kind: 'Pod', name: 'api-1', namespace: 'kubwave' },
 		count: 1,
 		lastTimestamp,
 		...overrides
@@ -101,6 +102,33 @@ describe('ClusterEventsService', () => {
 		];
 		const result = await new ClusterEventsService().getEvents();
 		expect(result.events[0]!.lastSeen).toBe('2026-07-29T08:00:00.000Z');
+	});
+
+	test('prefers the events.k8s.io series count and last observation', async () => {
+		events = [
+			warning('FailedScheduling', '2026-07-30T08:00:00Z', {
+				count: undefined,
+				lastTimestamp: undefined,
+				series: { count: 12, lastObservedTime: '2026-07-30T11:00:00Z' }
+			})
+		];
+		const result = await new ClusterEventsService().getEvents();
+		expect(result.events[0]).toMatchObject({ count: 12, lastSeen: '2026-07-30T11:00:00.000Z' });
+	});
+
+	test('leaves the namespace empty for cluster-scoped objects', async () => {
+		events = [warning('InvalidDiskCapacity', '2026-07-30T10:00:00Z', { involvedObject: { kind: 'Node', name: 'node-1' } })];
+		const result = await new ClusterEventsService().getEvents();
+		expect(result.events[0]!.namespace).toBeNull();
+	});
+
+	test('serves cached events within the ttl', async () => {
+		const service = new ClusterEventsService();
+		events = [warning('first', '2026-07-30T10:00:00Z')];
+		await service.getEvents();
+		events = [];
+		const result = await service.getEvents();
+		expect(result.events).toHaveLength(1);
 	});
 
 	test('returns unavailable when the events read fails', async () => {

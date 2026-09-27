@@ -12,7 +12,7 @@ defineProps<{ events: ClusterEvent[] }>();
 			v-if="events.length === 0"
 			:icon="CheckCircle2"
 			title="No warnings"
-			description="This node reported no warning events in the window Kubernetes still retains."
+			description="No warning events in the window Kubernetes still retains."
 		/>
 
 		<div v-else class="overflow-hidden rounded-xl border bg-card shadow-xs">
@@ -27,8 +27,11 @@ defineProps<{ events: ClusterEvent[] }>();
 							{{ event.reason || 'Warning' }}
 						</span>
 						<span v-if="event.count > 1" class="text-xs text-muted-subtle tabular-nums">×{{ event.count }}</span>
+						<span v-if="event.objectKind && event.objectName" class="truncate font-mono text-xs text-muted-foreground">
+							<template v-if="event.namespace">{{ event.namespace }}/</template>{{ event.objectKind }}/{{ event.objectName }}
+						</span>
 					</div>
-					<p class="mt-1.5 text-sm">{{ event.message }}</p>
+					<p class="mt-1.5 text-sm break-words">{{ event.message }}</p>
 				</div>
 				<p class="shrink-0 text-xs text-muted-foreground">{{ formatRelative(event.lastSeen, '—') }}</p>
 			</div>

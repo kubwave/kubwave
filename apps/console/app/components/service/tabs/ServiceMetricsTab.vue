@@ -8,8 +8,6 @@ import { deployMarkers, seriesDomain, type MetricsRange } from '~/utils/metrics-
 // CPU/Memory/Network/PV cards with a live (kubelet snapshot) vs historical (Prometheus) mode and a 1h/24h/7d range switcher.
 const props = defineProps<{ service: Service; active: boolean }>();
 
-const RANGES: MetricsRange[] = ['1h', '24h', '7d'];
-
 const range = ref<MetricsRange>('1h');
 const serviceId = computed(() => props.service.id);
 const { metrics, isLoading, liveSeries, liveRxRate, liveTxRate } = useServiceMetrics(serviceId, () => props.active, range);
@@ -44,20 +42,7 @@ const replicaWord = computed(() => (metrics.value && 'replicas' in metrics.value
 	<div v-else-if="!metrics || !metrics.available" class="flex flex-col gap-4">
 		<!-- Live mode returns one snapshot regardless of range, so the switcher is pointless there. -->
 		<div v-if="metrics?.mode !== 'live'" class="flex justify-end">
-			<div class="flex items-center gap-1 rounded-lg bg-muted/50 p-0.5">
-				<button
-					v-for="r in RANGES"
-					:key="r"
-					type="button"
-					:class="[
-						'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
-						range === r ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'
-					]"
-					@click="range = r"
-				>
-					{{ r }}
-				</button>
-			</div>
+			<MetricsRangeTabs v-model="range" />
 		</div>
 		<EmptyState
 			:icon="Activity"
@@ -76,20 +61,7 @@ const replicaWord = computed(() => (metrics.value && 'replicas' in metrics.value
 				</span>
 			</div>
 			<!-- No range switcher in live mode — a single snapshot is range-independent. -->
-			<div v-if="!live" class="flex items-center gap-1 rounded-lg bg-muted/50 p-0.5">
-				<button
-					v-for="r in RANGES"
-					:key="r"
-					type="button"
-					:class="[
-						'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
-						range === r ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'
-					]"
-					@click="range = r"
-				>
-					{{ r }}
-				</button>
-			</div>
+			<MetricsRangeTabs v-if="!live" v-model="range" />
 		</div>
 
 		<p v-if="live" class="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">

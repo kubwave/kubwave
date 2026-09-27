@@ -15,7 +15,7 @@ import { createComposeServicesSchema, createServiceSchema, autoDeployInputSchema
 import { ServiceStatusService } from '../services/status/status.service.js';
 import { ServiceLogsService } from '../services/logs/logs.service.js';
 import { ServiceMetricsService } from '../services/metrics/metrics.service.js';
-import { metricsRangeSchema } from '../services/metrics/metrics.dto.js';
+import { metricsRangeSchema } from '../../shared/metrics/prometheus.types.js';
 import { DeploymentsService } from '../deployments/deployments.service.js';
 import { TemplateCatalogService } from '../templates/template-catalog.service.js';
 import { TemplatesService } from '../templates/templates.service.js';

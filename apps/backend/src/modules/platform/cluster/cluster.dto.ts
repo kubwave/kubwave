@@ -1,11 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { z } from 'zod';
 import { MetricPointDto } from '../../../shared/metrics/metric-point.dto.js';
-import { metricsRangeSchema, type MetricsRange } from '../../../shared/metrics/prometheus.types.js';
-
-export const clusterUsageQuerySchema = z.object({ range: metricsRangeSchema.optional() });
-
-export type ClusterUsageQuery = z.infer<typeof clusterUsageQuerySchema>;
+import type { MetricsRange } from '../../../shared/metrics/prometheus.types.js';
 
 export class ClusterMeterDto {
 	@ApiProperty({ type: Number })
@@ -174,6 +170,10 @@ export class ClusterUsageSeriesDto {
 
 	@ApiProperty({ type: [MetricPointDto] })
 	memoryBytes!: MetricPointDto[];
+
+	// Node history only; empty for the cluster-wide series, or when cAdvisor exposes no machine-level filesystem series.
+	@ApiProperty({ type: [MetricPointDto] })
+	diskBytes!: MetricPointDto[];
 }
 
 export class ClusterUsageDto {
@@ -222,8 +222,12 @@ export class ClusterNodePodDto {
 	@ApiProperty({ type: String })
 	name!: string;
 
+	// kubectl-style: a stuck container's reason (CrashLoopBackOff, ImagePullBackOff) when there is one, else the pod phase.
 	@ApiProperty({ type: String })
-	phase!: string;
+	status!: string;
+
+	@ApiProperty({ type: Number })
+	restarts!: number;
 
 	// null when the kubelet Summary API had nothing for this pod, so the console shows "unknown" rather than zero.
 	@ApiProperty({ type: Number, nullable: true })
@@ -257,30 +261,4 @@ export class ClusterNodeDetailDto {
 
 	@ApiProperty({ type: [ClusterEventDto] })
 	events!: ClusterEventDto[];
-}
-
-export class ClusterNodeUsageSeriesDto {
-	@ApiProperty({ type: [MetricPointDto] })
-	cpuMillicores!: MetricPointDto[];
-
-	@ApiProperty({ type: [MetricPointDto] })
-	memoryBytes!: MetricPointDto[];
-
-	// Empty when cAdvisor exposes no machine-level filesystem series; the console then omits the disk chart.
-	@ApiProperty({ type: [MetricPointDto] })
-	diskBytes!: MetricPointDto[];
-}
-
-export class ClusterNodeUsageDto {
-	@ApiProperty({ type: Boolean })
-	available!: boolean;
-
-	@ApiProperty({ enum: ['1h', '24h', '7d'] })
-	range!: MetricsRange;
-
-	@ApiProperty({ type: String })
-	sampledAt!: string;
-
-	@ApiProperty({ type: ClusterNodeUsageSeriesDto })
-	series!: ClusterNodeUsageSeriesDto;
 }

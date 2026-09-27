@@ -6,7 +6,6 @@ import type {
 	PlatformClusterEventsGetResponse,
 	PlatformClusterGetResponse,
 	PlatformClusterNodeGetResponse,
-	PlatformClusterNodeUsageGetResponse,
 	PlatformClusterUsageGetResponse,
 	ProjectDetailDto,
 	ServiceDeploymentsListResponse,
@@ -47,4 +46,3 @@ export type ClusterUsage = PlatformClusterUsageGetResponse;
 export type ClusterNodeDetail = PlatformClusterNodeGetResponse;
 export type ClusterNodeCondition = ClusterNodeDetail['conditions'][number];
 export type ClusterNodePod = ClusterNodeDetail['pods'][number];
-export type ClusterNodeUsage = PlatformClusterNodeUsageGetResponse;

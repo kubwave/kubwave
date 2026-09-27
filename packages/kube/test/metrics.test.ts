@@ -54,6 +54,10 @@ describe('parseMemoryToBytes', () => {
 		expect(parseMemoryToBytes('1G')).toBe(1_000_000_000);
 	});
 
+	test('milli-bytes the apiserver stores for fractional quantities', () => {
+		expect(parseMemoryToBytes('107374182400m')).toBe(107_374_182);
+	});
+
 	test('plain bytes (rounded)', () => {
 		expect(parseMemoryToBytes('1024')).toBe(1024);
 		expect(parseMemoryToBytes('100.6')).toBe(101);
@@ -343,6 +347,24 @@ describe('aggregateClusterUsage', () => {
 		});
 		expect(result.volumeUsedBytes).toBe(70);
 		expect(result.volumeCapacityBytes).toBe(700);
+	});
+
+	test('skips host-path claims that report the node filesystem itself', () => {
+		const hostBacked = (name: string) => ({ pvcRef: { namespace: 'kubwave', name }, usedBytes: 800, capacityBytes: 1000 });
+		const result = aggregateClusterUsage({
+			summaries: [
+				{
+					node: { nodeName: 'n', fs: { usedBytes: 800, capacityBytes: 1000 } },
+					pods: [
+						{ podRef: { namespace: 'kubwave', name: 'postgres-1' }, volume: [hostBacked('postgres-1')] },
+						{ podRef: { namespace: 'kubwave', name: 'registry' }, volume: [hostBacked('registry-data')] }
+					]
+				}
+			],
+			platformNamespace: 'kubwave'
+		});
+		expect(result.volumeUsedBytes).toBe(0);
+		expect(result.volumeCapacityBytes).toBe(0);
 	});
 
 	test('skips pods without a namespace', () => {

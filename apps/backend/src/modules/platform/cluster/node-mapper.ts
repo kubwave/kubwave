@@ -1,6 +1,6 @@
-import { parseCpuToMillicores, parseMemoryToBytes } from '@kubwave/kube';
-import type { V1Node, V1Pod } from '@kubernetes/client-node';
-import type { ClusterMeterDto, ClusterNodeConditionsDto, ClusterNodeDto } from './cluster.dto.js';
+import { parseCpuToMillicores, parseMemoryToBytes, type ClusterNodeUsage } from '@kubwave/kube';
+import type { V1Container, V1Node, V1Pod } from '@kubernetes/client-node';
+import type { ClusterNodeConditionsDto, ClusterNodeDto } from './cluster.dto.js';
 
 const NODE_ROLE_LABEL_PREFIX = 'node-role.kubernetes.io/';
 
@@ -8,13 +8,6 @@ export interface PodRequests {
 	cpuMillicores: number;
 	memoryBytes: number;
 	count: number;
-}
-
-export interface NodeUsage {
-	cpuMillicores: number;
-	memoryBytes: number;
-	fsUsedBytes: number;
-	fsCapacityBytes: number;
 }
 
 function conditionIsTrue(node: V1Node, type: string): boolean {
@@ -38,10 +31,27 @@ export function nodeRoles(node: V1Node): string[] {
 		.sort();
 }
 
+// Completed build Jobs pile up; letting the apiserver drop terminated pods keeps pod lists small.
+export const ACTIVE_POD_FIELD_SELECTOR = 'status.phase!=Succeeded,status.phase!=Failed';
+
 // Terminated pods no longer hold a scheduler reservation, so they must not count toward requests or the pod tally.
 export function isActive(pod: V1Pod): boolean {
 	const phase = pod.status?.phase;
 	return phase !== 'Succeeded' && phase !== 'Failed';
+}
+
+// The scheduler's effective request: init containers run one at a time before the app containers, native sidecars
+// (restartPolicy Always) keep running alongside everything declared after them, and RuntimeClass overhead sits on top.
+function effectiveRequest(pod: V1Pod, parse: (container: Pick<V1Container, 'resources'>) => number): number {
+	let sidecars = 0;
+	let initPeak = 0;
+	for (const container of pod.spec?.initContainers ?? []) {
+		if (container.restartPolicy === 'Always') sidecars += parse(container);
+		else initPeak = Math.max(initPeak, parse(container) + sidecars);
+	}
+
+	const app = (pod.spec?.containers ?? []).reduce((sum, container) => sum + parse(container), 0);
+	return Math.max(app + sidecars, initPeak) + parse({ resources: { requests: pod.spec?.overhead } });
 }
 
 export function sumRequests(pods: V1Pod[]): PodRequests {
@@ -50,21 +60,16 @@ export function sumRequests(pods: V1Pod[]): PodRequests {
 	for (const pod of pods) {
 		if (!isActive(pod)) continue;
 		totals.count++;
-		for (const container of pod.spec?.containers ?? []) {
-			totals.cpuMillicores += parseCpuToMillicores(container.resources?.requests?.cpu) ?? 0;
-			totals.memoryBytes += parseMemoryToBytes(container.resources?.requests?.memory) ?? 0;
-		}
+		totals.cpuMillicores += effectiveRequest(pod, container => parseCpuToMillicores(container.resources?.requests?.cpu) ?? 0);
+		totals.memoryBytes += effectiveRequest(pod, container => parseMemoryToBytes(container.resources?.requests?.memory) ?? 0);
 	}
 
 	return totals;
 }
 
-export function meter(capacity: number, requested: number | null, used: number | null): ClusterMeterDto {
-	return { capacity, requested, used };
-}
-
-export function toNodeDto(node: V1Node, usage: NodeUsage | undefined, requests: PodRequests | undefined): ClusterNodeDto {
+export function toNodeDto(node: V1Node, usage: ClusterNodeUsage | null | undefined, requests: PodRequests | undefined): ClusterNodeDto {
 	const allocatable = node.status?.allocatable ?? {};
+	const measured = usage?.available ? usage : null;
 
 	return {
 		name: node.metadata?.name ?? '',
@@ -72,9 +77,9 @@ export function toNodeDto(node: V1Node, usage: NodeUsage | undefined, requests: 
 		cordoned: node.spec?.unschedulable === true,
 		kubeletVersion: node.status?.nodeInfo?.kubeletVersion ?? '',
 		conditions: nodeConditions(node),
-		cpu: meter(parseCpuToMillicores(allocatable.cpu) ?? 0, requests?.cpuMillicores ?? 0, usage?.cpuMillicores ?? null),
-		memory: meter(parseMemoryToBytes(allocatable.memory) ?? 0, requests?.memoryBytes ?? 0, usage?.memoryBytes ?? null),
-		disk: meter(usage?.fsCapacityBytes ?? 0, null, usage?.fsUsedBytes ?? null),
-		pods: meter(Number(allocatable.pods ?? 0), null, requests?.count ?? 0)
+		cpu: { capacity: parseCpuToMillicores(allocatable.cpu) ?? 0, requested: requests?.cpuMillicores ?? 0, used: measured?.cpuMillicores ?? null },
+		memory: { capacity: parseMemoryToBytes(allocatable.memory) ?? 0, requested: requests?.memoryBytes ?? 0, used: measured?.memoryBytes ?? null },
+		disk: { capacity: usage?.fsCapacityBytes ?? 0, requested: null, used: usage ? usage.fsUsedBytes : null },
+		pods: { capacity: Number(allocatable.pods ?? 0), requested: null, used: requests?.count ?? 0 }
 	};
 }

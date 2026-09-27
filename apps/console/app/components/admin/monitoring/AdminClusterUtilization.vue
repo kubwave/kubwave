@@ -47,18 +47,14 @@ const split = computed(() => {
 
 		<div class="grid gap-3 lg:grid-cols-2">
 			<div class="rounded-xl border bg-card p-4 shadow-xs">
-				<p class="text-sm font-medium">Workload CPU</p>
+				<p class="text-sm font-medium">CPU</p>
 				<UiTimeSeriesChart class="mt-3 text-primary" :points="cpuPoints" :format="formatCpu" :format-time="formatTime" large />
 			</div>
 			<div class="rounded-xl border bg-card p-4 shadow-xs">
-				<p class="text-sm font-medium">Workload memory</p>
+				<p class="text-sm font-medium">Memory</p>
 				<UiTimeSeriesChart class="mt-3 text-indigo-500" :points="memoryPoints" :format="formatBytes" :format-time="formatTime" large />
 			</div>
 		</div>
-
-		<p class="text-xs text-muted-subtle">
-			History covers container usage only, so it reads below the node totals in the strip above, which include system-daemon overhead.
-		</p>
 
 		<div v-if="split" class="rounded-xl border bg-card p-4 shadow-xs">
 			<p class="text-sm font-medium">Platform vs. tenants</p>

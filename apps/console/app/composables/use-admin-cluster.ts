@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/vue-query';
 import type { ApiClient } from '~/utils/api-client';
 import { queryKeys } from '~/utils/query-keys';
 import { pollIntervalForRange, type MetricPoint, type MetricsRange } from '~/utils/metrics-chart';
-import type { ClusterEvents, ClusterNodeDetail, ClusterNodeUsage, ClusterSnapshot, ClusterUsage } from '~/utils/types';
+import type { ClusterEvents, ClusterNodeDetail, ClusterSnapshot, ClusterUsage } from '~/utils/types';
 
 // ~22 min of history at the 15s snapshot poll; a live install has no stored series, so the Utilization tab buffers one in-session.
 const MAX_SAMPLES = 90;
@@ -39,11 +39,10 @@ export function useClusterSnapshot() {
 	return { snapshot: snapshot as Ref<ClusterSnapshot | undefined>, isLoading };
 }
 
-export function useClusterEvents(active: MaybeRefOrGetter<boolean>) {
+export function useClusterEvents() {
 	const api = useApi();
 	const { data: events, isLoading } = useQuery({
 		...clusterEventsQuery(api),
-		enabled: computed(() => toValue(active)),
 		refetchInterval: 30_000
 	});
 
@@ -99,7 +98,7 @@ export function useClusterNodeUsage(name: MaybeRefOrGetter<string>, range: Maybe
 		queryFn: () => apiData(api.platform.cluster.nodes(toValue(name)).usage.get({ range: toValue(range) }))
 	});
 
-	return { usage: usage as Ref<ClusterNodeUsage | undefined>, isLoading };
+	return { usage: usage as Ref<ClusterUsage | undefined>, isLoading };
 }
 
 // Owned above the tab switcher: the buffer is the only copy of this history, so unmounting the chart must not discard it.
@@ -107,7 +106,6 @@ export function useClusterLiveSamples(snapshot: MaybeRefOrGetter<ClusterSnapshot
 	const samples = ref<ClusterLiveSeries>({ cpuMillicores: [], memoryBytes: [] });
 	let lastSampledAt: string | null = null;
 
-	// Only buffer while Prometheus has nothing to offer; otherwise the server series is authoritative.
 	watch(
 		() => toValue(snapshot),
 		value => {

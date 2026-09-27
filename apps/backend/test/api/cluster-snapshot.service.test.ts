@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { BackendConfigService } from '~/shared/config/backend-config.service';
-import type { MetricsConfigService } from '~/shared/metrics/metrics-config.service';
 
 type NodeItem = {
 	metadata?: { name?: string; labels?: Record<string, string> };
@@ -15,8 +14,6 @@ type NodeItem = {
 let nodes: NodeItem[] = [];
 let pods: unknown[] = [];
 let deployments: unknown[] = [];
-let cnpgPods: unknown[] = [];
-let provider = 'live';
 let listNodeThrows = false;
 let summaryThrows = false;
 
@@ -32,23 +29,32 @@ function node(name: string, overrides: { unschedulable?: boolean; conditions?: A
 	};
 }
 
-function pod(namespace: string, name: string, cpu: string, memory: string, phase = 'Running') {
+function pod(namespace: string, name: string, cpu: string, memory: string, phase = 'Running', nodeName: string | null = 'node-1') {
 	return {
 		metadata: { namespace, name },
-		spec: { nodeName: 'node-1', containers: [{ resources: { requests: { cpu, memory } } }] },
+		spec: { nodeName: nodeName ?? undefined, containers: [{ resources: { requests: { cpu, memory } } }] },
 		status: { phase }
 	};
+}
+
+function postgresPod(name: string, labels: Record<string, string>, ready: boolean) {
+	return {
+		metadata: { namespace: 'kubwave', name, labels },
+		spec: { nodeName: 'node-1', containers: [] },
+		status: { phase: 'Running', conditions: [{ type: 'Ready', status: ready ? 'True' : 'False' }] }
+	};
+}
+
+function component(name: string, desired: number, ready: number, labels: Record<string, string> = { 'app.kubernetes.io/part-of': 'kubwave' }) {
+	return { metadata: { name, labels }, spec: { replicas: desired }, status: { readyReplicas: ready } };
 }
 
 mock.module('@kubwave/db', () => ({ db: {}, settings: {} }));
 
 mock.module('@kubwave/kube', () => ({
 	WORKLOADS_NAMESPACE_PREFIX: 'kubwave-env-',
-	CNPG_POD_SELECTOR: 'cnpg.io/cluster=postgres',
+	CNPG_CLUSTER_NAME: 'postgres',
 	PROMETHEUS_NAME: 'kubwave-prometheus',
-	PROMETHEUS_POD_SELECTOR: 'app.kubernetes.io/name=kubwave-prometheus',
-	DEFAULT_METRICS_PROVIDER: 'live',
-	METRICS_SETTINGS_KEY: 'metrics-provider',
 	parseCpuToMillicores: (q?: string | null) => (q == null ? null : q.endsWith('m') ? Number(q.slice(0, -1)) : Math.round(Number(q) * 1000)),
 	parseMemoryToBytes: (q?: string | null) => {
 		if (q == null) return null;
@@ -85,7 +91,6 @@ mock.module('@kubwave/kube', () => ({
 				return { items: nodes };
 			},
 			listPodForAllNamespaces: async () => ({ items: pods }),
-			listNamespacedPod: async () => ({ items: cnpgPods }),
 			listNamespacedDeployment: async () => ({ items: deployments })
 		})
 	})
@@ -95,10 +100,7 @@ const { ClusterSnapshotService } = await import('~/modules/platform/cluster/clus
 
 function makeService() {
 	const config = { api: { podNamespace: 'kubwave' } } as unknown as BackendConfigService;
-	const metricsConfig = {
-		getMetricsProviderSettings: async () => ({ provider, prometheusUrl: null })
-	} as unknown as MetricsConfigService;
-	return new ClusterSnapshotService(config, metricsConfig);
+	return new ClusterSnapshotService(config);
 }
 
 beforeEach(() => {
@@ -108,9 +110,7 @@ beforeEach(() => {
 		pod('kubwave-env-abc', 'svc-1', '250m', '512Mi'),
 		pod('kubwave-env-abc', 'finished', '4', '8Gi', 'Succeeded')
 	];
-	deployments = [{ metadata: { name: 'api' }, spec: { replicas: 1 }, status: { readyReplicas: 1 } }];
-	cnpgPods = [];
-	provider = 'live';
+	deployments = [component('api', 1, 1)];
 	listNodeThrows = false;
 	summaryThrows = false;
 });
@@ -178,7 +178,7 @@ describe('ClusterSnapshotService', () => {
 	});
 
 	test('is degraded when a component has fewer ready than desired replicas', async () => {
-		deployments = [{ metadata: { name: 'api' }, spec: { replicas: 2 }, status: { readyReplicas: 1 } }];
+		deployments = [component('api', 2, 1)];
 		const snapshot = await makeService().getSnapshot();
 		expect(snapshot.state).toBe('degraded');
 		expect(snapshot.components).toContainEqual({ name: 'api', ready: 1, desired: 2 });
@@ -192,13 +192,34 @@ describe('ClusterSnapshotService', () => {
 	});
 
 	test('includes a postgres component derived from cnpg pods', async () => {
-		cnpgPods = [
-			{ metadata: { name: 'postgres-1' }, status: { conditions: [{ type: 'Ready', status: 'True' }] } },
-			{ metadata: { name: 'postgres-2' }, status: { conditions: [{ type: 'Ready', status: 'False' }] } }
-		];
+		pods = [postgresPod('postgres-1', { 'cnpg.io/cluster': 'postgres' }, true), postgresPod('postgres-2', { 'cnpg.io/cluster': 'postgres' }, false)];
 		const snapshot = await makeService().getSnapshot();
 		expect(snapshot.components).toContainEqual({ name: 'postgres', ready: 1, desired: 2 });
 		expect(snapshot.state).toBe('degraded');
+	});
+
+	test('includes a postgres component for the legacy statefulset', async () => {
+		pods = [postgresPod('postgres-0', { 'app.kubernetes.io/name': 'postgres' }, false)];
+		const snapshot = await makeService().getSnapshot();
+		expect(snapshot.components).toContainEqual({ name: 'postgres', ready: 0, desired: 1 });
+		expect(snapshot.state).toBe('degraded');
+	});
+
+	test('ignores deployments that are neither chart components nor the managed prometheus', async () => {
+		deployments = [
+			component('api', 1, 1),
+			component('kubwave-prometheus', 1, 0, { 'app.kubernetes.io/name': 'kubwave-prometheus' }),
+			component('stray', 1, 0, {})
+		];
+		const snapshot = await makeService().getSnapshot();
+		expect(snapshot.components.map(c => c.name)).toEqual(['api', 'kubwave-prometheus']);
+	});
+
+	test('does not count pending pods without a node as reservations', async () => {
+		pods = [pod('kubwave', 'api-1', '500m', '1Gi'), pod('kubwave', 'pending', '2', '4Gi', 'Pending', null)];
+		const snapshot = await makeService().getSnapshot();
+		expect(snapshot.cpu.requested).toBe(500);
+		expect(snapshot.pods.used).toBe(1);
 	});
 
 	test('omits postgres entirely when no cnpg pods exist', async () => {

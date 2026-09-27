@@ -5,6 +5,9 @@ import { formatCpu } from '~/utils/metrics-format';
 import type { ClusterNodePod } from '~/utils/types';
 
 defineProps<{ pods: ClusterNodePod[] }>();
+
+// Anything but a settled phase is a container stuck in a waiting or terminated reason (CrashLoopBackOff, ImagePullBackOff…).
+const SETTLED = new Set(['Running', 'Succeeded']);
 </script>
 
 <template>
@@ -17,7 +20,8 @@ defineProps<{ pods: ClusterNodePod[] }>();
 					<TableRow>
 						<TableHead class="text-xs">Namespace</TableHead>
 						<TableHead class="text-xs">Pod</TableHead>
-						<TableHead class="text-xs">Phase</TableHead>
+						<TableHead class="text-xs">Status</TableHead>
+						<TableHead class="text-xs">Restarts</TableHead>
 						<TableHead class="text-xs">CPU</TableHead>
 						<TableHead class="text-xs">Memory</TableHead>
 					</TableRow>
@@ -26,7 +30,10 @@ defineProps<{ pods: ClusterNodePod[] }>();
 					<TableRow v-for="pod in pods" :key="`${pod.namespace}/${pod.name}`">
 						<TableCell class="py-3 font-mono text-xs text-muted-foreground">{{ pod.namespace }}</TableCell>
 						<TableCell class="py-3 font-mono text-xs">{{ pod.name }}</TableCell>
-						<TableCell class="py-3 text-sm">{{ pod.phase }}</TableCell>
+						<TableCell :class="['py-3 text-sm', SETTLED.has(pod.status) ? '' : 'font-medium text-warning-foreground']">{{ pod.status }}</TableCell>
+						<TableCell :class="['py-3 text-sm tabular-nums', pod.restarts > 0 ? 'text-warning-foreground' : 'text-muted-foreground']">{{
+							pod.restarts
+						}}</TableCell>
 						<TableCell class="py-3 text-sm tabular-nums">{{ pod.cpuMillicores == null ? '—' : formatCpu(pod.cpuMillicores) }}</TableCell>
 						<TableCell class="py-3 text-sm tabular-nums">{{ pod.memoryBytes == null ? '—' : formatBytes(pod.memoryBytes) }}</TableCell>
 					</TableRow>

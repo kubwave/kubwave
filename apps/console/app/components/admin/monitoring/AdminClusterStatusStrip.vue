@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { Boxes, Cpu, HardDrive, MemoryStick } from 'lucide-vue-next';
-import { formatBytes } from '~/utils/format';
-import { formatCpu } from '~/utils/metrics-format';
 import type { ClusterSnapshot } from '~/utils/types';
 
 const props = defineProps<{ snapshot: ClusterSnapshot | undefined; pending: boolean }>();
+
+const PRESSURES = [
+	['memoryPressure', 'MemoryPressure'],
+	['diskPressure', 'DiskPressure'],
+	['pidPressure', 'PIDPressure']
+] as const;
+const MAX_PROBLEMS = 3;
 
 const state = computed(() => props.snapshot?.state ?? 'unknown');
 
@@ -27,24 +31,32 @@ const nodesText = computed(() => {
 	return `${snapshot.nodesReady} of ${snapshot.nodesTotal} ${snapshot.nodesTotal === 1 ? 'node' : 'nodes'} ready`;
 });
 
-const tiles = computed(() => {
+// Mirrors the backend's degraded rule, so the strip names what tipped it instead of sending the admin hunting through tabs.
+const problemsText = computed(() => {
 	const snapshot = props.snapshot;
-	if (!snapshot) return [];
-	return [
-		{ key: 'cpu', label: 'CPU', icon: Cpu, meter: snapshot.cpu, format: formatCpu },
-		{ key: 'memory', label: 'Memory', icon: MemoryStick, meter: snapshot.memory, format: formatBytes },
-		{ key: 'storage', label: 'Storage', icon: HardDrive, meter: snapshot.storage, format: formatBytes },
-		{ key: 'pods', label: 'Pods', icon: Boxes, meter: snapshot.pods, format: (value: number) => String(Math.round(value)) }
+	if (snapshot?.state !== 'degraded') return '';
+
+	const problems = [
+		...snapshot.nodes.flatMap(node => [
+			...(node.conditions.ready ? [] : [`${node.name} NotReady`]),
+			...PRESSURES.filter(([key]) => node.conditions[key]).map(([, label]) => `${node.name} ${label}`)
+		]),
+		...snapshot.components
+			.filter(component => component.ready < component.desired)
+			.map(component => `${component.name} ${component.ready}/${component.desired} ready`)
 	];
+	const more = problems.length - MAX_PROBLEMS;
+	return problems.slice(0, MAX_PROBLEMS).join(', ') + (more > 0 ? ` +${more} more` : '');
 });
 </script>
 
 <template>
 	<div :class="['flex flex-col gap-4 rounded-xl border p-4 shadow-xs', tone.border, tone.bg]">
-		<div class="flex items-center gap-2.5">
+		<div class="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
 			<span :class="['size-2 shrink-0 rounded-full', tone.dot]" aria-hidden="true" />
 			<p class="text-sm font-semibold">{{ headline }}</p>
-			<p class="truncate text-sm text-muted-foreground">· {{ nodesText }}</p>
+			<p class="text-sm text-muted-foreground">· {{ nodesText }}</p>
+			<p v-if="problemsText" class="text-sm text-warning-foreground">· {{ problemsText }}</p>
 		</div>
 
 		<div v-if="pending && !snapshot" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -54,14 +66,13 @@ const tiles = computed(() => {
 			</div>
 		</div>
 
-		<div v-else class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-			<div v-for="tile in tiles" :key="tile.key" class="rounded-lg border bg-card p-3">
-				<div class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-					<component :is="tile.icon" class="size-3.5 shrink-0" />
-					{{ tile.label }}
-				</div>
-				<AdminClusterResourceMeter class="mt-2" :meter="tile.meter" :format="tile.format" />
-			</div>
-		</div>
+		<AdminClusterMeterTiles
+			v-else-if="snapshot"
+			:cpu="snapshot.cpu"
+			:memory="snapshot.memory"
+			:disk="snapshot.storage"
+			disk-label="Volumes"
+			:pods="snapshot.pods"
+		/>
 	</div>
 </template>

@@ -4,7 +4,8 @@ import { AuthGuard } from '../../../shared/auth/auth.guard.js';
 import { CurrentUserId } from '../../../shared/auth/current-user.decorator.js';
 import { ZodValidationPipe } from '../../../shared/validation/zod-validation.pipe.js';
 import { serviceIdParamSchema, type ServiceIdParam } from '../services.dto.js';
-import { ServiceMetricsDto, serviceMetricsQuerySchema, type ServiceMetricsQuery } from './metrics.dto.js';
+import { metricsQuerySchema, type MetricsQuery } from '../../../shared/metrics/prometheus.types.js';
+import { ServiceMetricsDto } from './metrics.dto.js';
 import { ServiceMetricsService } from './metrics.service.js';
 
 @ApiTags('services')
@@ -21,7 +22,7 @@ export class ServiceMetricsController {
 	getServiceMetrics(
 		@CurrentUserId() userId: string,
 		@Param(new ZodValidationPipe(serviceIdParamSchema)) params: ServiceIdParam,
-		@Query(new ZodValidationPipe(serviceMetricsQuerySchema)) query: ServiceMetricsQuery
+		@Query(new ZodValidationPipe(metricsQuerySchema)) query: MetricsQuery
 	): Promise<ServiceMetricsDto> {
 		return this.metrics.getServiceMetrics(userId, params.serviceId, query.range);
 	}

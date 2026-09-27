@@ -32,10 +32,26 @@ describe('node-mapper', () => {
 		expect(sumRequests(pods)).toEqual({ cpuMillicores: 500, memoryBytes: 1024 ** 3, count: 1 });
 	});
 
+	test('counts init containers, native sidecars and overhead the way the scheduler does', () => {
+		const requests = (cpu: string) => ({ resources: { requests: { cpu } } });
+		const pods = [
+			{
+				spec: {
+					initContainers: [requests('100m'), { ...requests('50m'), restartPolicy: 'Always' }, requests('800m')],
+					containers: [requests('200m'), requests('300m')],
+					overhead: { cpu: '10m' }
+				},
+				status: { phase: 'Running' }
+			}
+		] as unknown as V1Pod[];
+		// max(app 500 + sidecar 50, init 800 + sidecar 50 started before it) + overhead 10
+		expect(sumRequests(pods).cpuMillicores).toBe(860);
+	});
+
 	test('builds the meters from allocatable, requests and usage', () => {
 		const dto = toNodeDto(
 			node(),
-			{ cpuMillicores: 1000, memoryBytes: 1024 ** 3, fsUsedBytes: 100, fsCapacityBytes: 1000 },
+			{ nodeName: 'node-1', available: true, cpuMillicores: 1000, memoryBytes: 1024 ** 3, fsUsedBytes: 100, fsCapacityBytes: 1000 },
 			{ cpuMillicores: 750, memoryBytes: 512, count: 13 }
 		);
 		expect(dto.cpu).toEqual({ capacity: 4000, requested: 750, used: 1000 });

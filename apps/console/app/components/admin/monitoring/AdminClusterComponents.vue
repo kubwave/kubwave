@@ -4,7 +4,12 @@ import type { ClusterComponent } from '~/utils/types';
 
 const props = defineProps<{ components: ClusterComponent[] }>();
 
-const rows = computed(() => props.components.map(component => ({ ...component, healthy: component.ready >= component.desired })));
+// Unhealthy first; the sort is stable, so the backend's name order holds within each group.
+const rows = computed(() =>
+	props.components
+		.map(component => ({ ...component, healthy: component.ready >= component.desired }))
+		.sort((a, b) => Number(a.healthy) - Number(b.healthy))
+);
 </script>
 
 <template>

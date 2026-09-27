@@ -173,8 +173,6 @@ export type {
 	ClusterNodeDetailDto,
 	ClusterNodeDto,
 	ClusterNodePodDto,
-	ClusterNodeUsageDto,
-	ClusterNodeUsageSeriesDto,
 	ClusterSnapshotDto,
 	ClusterSplitDto,
 	ClusterUsageDto,

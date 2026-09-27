@@ -1084,6 +1084,7 @@ export type ClusterEventsDto = {
 export type ClusterUsageSeriesDto = {
 	cpuMillicores: Array<MetricPointDto>;
 	memoryBytes: Array<MetricPointDto>;
+	diskBytes: Array<MetricPointDto>;
 };
 
 export type ClusterUsageDto = {
@@ -1103,7 +1104,8 @@ export type ClusterNodeConditionDetailDto = {
 export type ClusterNodePodDto = {
 	namespace: string;
 	name: string;
-	phase: string;
+	status: string;
+	restarts: number;
 	cpuMillicores: number | null;
 	memoryBytes: number | null;
 };
@@ -1117,19 +1119,6 @@ export type ClusterNodeDetailDto = {
 	taints: Array<string>;
 	pods: Array<ClusterNodePodDto>;
 	events: Array<ClusterEventDto>;
-};
-
-export type ClusterNodeUsageSeriesDto = {
-	cpuMillicores: Array<MetricPointDto>;
-	memoryBytes: Array<MetricPointDto>;
-	diskBytes: Array<MetricPointDto>;
-};
-
-export type ClusterNodeUsageDto = {
-	available: boolean;
-	range: '1h' | '24h' | '7d';
-	sampledAt: string;
-	series: ClusterNodeUsageSeriesDto;
 };
 
 export type TemplateInputDto = {
@@ -2917,7 +2906,7 @@ export type PlatformClusterNodeUsageGetData = {
 };
 
 export type PlatformClusterNodeUsageGetResponses = {
-	200: ClusterNodeUsageDto;
+	200: ClusterUsageDto;
 };
 
 export type PlatformClusterNodeUsageGetResponse = PlatformClusterNodeUsageGetResponses[keyof PlatformClusterNodeUsageGetResponses];

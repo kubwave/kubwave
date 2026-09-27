@@ -22,7 +22,7 @@ const barTone = computed(() => {
 	<div class="flex flex-col gap-1">
 		<div v-if="!compact" class="flex items-baseline justify-between gap-2 text-sm">
 			<span class="font-semibold tabular-nums">{{ usedText }}</span>
-			<span class="text-xs text-muted-foreground tabular-nums">of {{ capacityText }}</span>
+			<span v-if="meter.capacity > 0" class="text-xs text-muted-foreground tabular-nums">of {{ capacityText }}</span>
 		</div>
 
 		<div class="relative h-1.5 overflow-hidden rounded-full bg-muted">

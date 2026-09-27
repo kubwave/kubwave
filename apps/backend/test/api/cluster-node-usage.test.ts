@@ -3,7 +3,7 @@ import type { MetricsConfigService } from '~/shared/metrics/metrics-config.servi
 
 mock.module('@kubwave/db', () => ({ db: {}, settings: {} }));
 
-const { ClusterNodeUsageService } = await import('~/modules/platform/cluster/cluster-node-usage.service');
+const { ClusterUsageService } = await import('~/modules/platform/cluster/cluster-usage.service');
 
 const originalFetch = globalThis.fetch;
 let capturedQueries: string[] = [];
@@ -14,7 +14,7 @@ function makeService() {
 		getMetricsProviderSettings: async () => ({ provider: 'prometheus-managed', prometheusUrl }),
 		resolvePrometheusUrl: () => prometheusUrl
 	} as unknown as MetricsConfigService;
-	return new ClusterNodeUsageService(metricsConfig);
+	return new ClusterUsageService(metricsConfig);
 }
 
 // A distinct value per metric name so a query wired to the wrong metric surfaces as a wrong value, not a coincidentally-matching one.
@@ -54,15 +54,15 @@ afterEach(() => {
 	globalThis.fetch = originalFetch;
 });
 
-describe('ClusterNodeUsageService', () => {
+describe('ClusterUsageService for one node', () => {
 	test('scopes every query to the node and targets the right metric per series', async () => {
-		await makeService().getUsage('node-1', '1h');
+		await makeService().getUsage('1h', 'node-1');
 		expect(capturedQueries.length).toBe(3);
 		expect(capturedQueries[0]).toContain('container_cpu_usage_seconds_total');
 		expect(capturedQueries[1]).toContain('container_memory_working_set_bytes');
 		expect(capturedQueries[2]).toContain('container_fs_usage_bytes');
 		for (const query of capturedQueries) {
-			expect(query).toContain('instance="node-1"');
+			expect(query).toContain('id="/",node="node-1"');
 		}
 	});
 
@@ -70,13 +70,13 @@ describe('ClusterNodeUsageService', () => {
 	// them to one value, sum() would double-count.
 	test('aggregates the disk series with max, not sum, to avoid double-counting the rootfs device', async () => {
 		expect(capturedQueries).toEqual([]);
-		await makeService().getUsage('node-1', '1h');
+		await makeService().getUsage('1h', 'node-1');
 		expect(capturedQueries[2]).toMatch(/^max\(container_fs_usage_bytes\{/);
 		expect(capturedQueries[2]).not.toContain('sum(container_fs_usage_bytes');
 	});
 
 	test('parses the returned matrix into points', async () => {
-		const usage = await makeService().getUsage('node-1', '1h');
+		const usage = await makeService().getUsage('1h', 'node-1');
 		expect(usage.available).toBe(true);
 		expect(usage.range).toBe('1h');
 		expect(usage.series.cpuMillicores).toEqual([{ t: 100, v: 250 }]);
@@ -85,13 +85,13 @@ describe('ClusterNodeUsageService', () => {
 	});
 
 	test('defaults to the 1h range', async () => {
-		const usage = await makeService().getUsage('node-1');
+		const usage = await makeService().getUsage(undefined, 'node-1');
 		expect(usage.range).toBe('1h');
 	});
 
 	test('reports unavailable with empty series when no prometheus is configured', async () => {
 		prometheusUrl = null;
-		const usage = await makeService().getUsage('node-1', '24h');
+		const usage = await makeService().getUsage('24h', 'node-1');
 		expect(usage).toEqual({
 			available: false,
 			range: '24h',
@@ -103,7 +103,7 @@ describe('ClusterNodeUsageService', () => {
 
 	test('reports unavailable when prometheus errors', async () => {
 		globalThis.fetch = (async () => new Response('boom', { status: 500 })) as unknown as typeof fetch;
-		const usage = await makeService().getUsage('node-1', '1h');
+		const usage = await makeService().getUsage('1h', 'node-1');
 		expect(usage.available).toBe(false);
 	});
 });

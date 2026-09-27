@@ -54,12 +54,11 @@ describe('ClusterUsageService', () => {
 		expect(usage.series.memoryBytes).toEqual([{ t: 1000, v: 1_048_576 }]);
 	});
 
-	test('queries container sums for cpu and memory', async () => {
+	test('queries the root cgroup for cpu and memory and skips disk cluster-wide', async () => {
 		await makeService('http://prometheus:9090').getUsage('24h');
 		expect(queries).toHaveLength(2);
-		expect(queries[0]).toContain('container_cpu_usage_seconds_total');
-		expect(queries[0]).toContain('[30m]');
-		expect(queries[1]).toContain('container_memory_working_set_bytes');
+		expect(queries[0]).toBe('sum(rate(container_cpu_usage_seconds_total{id="/"}[30m])) * 1000');
+		expect(queries[1]).toBe('sum(container_memory_working_set_bytes{id="/"})');
 	});
 
 	test('is unavailable when both series are empty', async () => {
@@ -71,7 +70,7 @@ describe('ClusterUsageService', () => {
 	test('skips prometheus entirely when no url resolves', async () => {
 		const usage = await makeService(null).getUsage('1h');
 		expect(usage.available).toBe(false);
-		expect(usage.series).toEqual({ cpuMillicores: [], memoryBytes: [] });
+		expect(usage.series).toEqual({ cpuMillicores: [], memoryBytes: [], diskBytes: [] });
 		expect(queries).toEqual([]);
 	});
 

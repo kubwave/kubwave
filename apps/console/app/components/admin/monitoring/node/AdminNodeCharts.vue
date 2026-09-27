@@ -15,19 +15,19 @@ const diskPoints = computed(() => usage.value?.series.diskBytes ?? []);
 
 <template>
 	<div class="flex flex-col gap-4">
-		<div v-if="!isLoading" class="flex items-center justify-between gap-3">
-			<p class="text-xs text-muted-foreground">{{ available ? 'Historical · Prometheus' : 'No stored history' }}</p>
-			<MetricsRangeTabs v-if="available" v-model="range" />
+		<div v-if="available" class="flex items-center justify-between gap-3">
+			<p class="text-xs text-muted-foreground">Historical · Prometheus</p>
+			<MetricsRangeTabs v-model="range" />
 		</div>
 
 		<p v-if="!isLoading && !available" class="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-			Enable the managed Prometheus to see this node's usage across the 1h/24h/7d ranges. Conditions, pods and events below do not need it.
+			No stored history. Enable the managed Prometheus to see this node's usage across the 1h/24h/7d ranges.
 		</p>
 
 		<template v-if="available">
 			<div class="grid gap-3 lg:grid-cols-3">
 				<div class="rounded-xl border bg-card p-4 shadow-xs">
-					<p class="text-sm font-medium">Workload CPU</p>
+					<p class="text-sm font-medium">CPU</p>
 					<UiTimeSeriesChart
 						class="mt-3 text-primary"
 						:points="usage?.series.cpuMillicores ?? []"
@@ -37,7 +37,7 @@ const diskPoints = computed(() => usage.value?.series.diskBytes ?? []);
 					/>
 				</div>
 				<div class="rounded-xl border bg-card p-4 shadow-xs">
-					<p class="text-sm font-medium">Workload memory</p>
+					<p class="text-sm font-medium">Memory</p>
 					<UiTimeSeriesChart
 						class="mt-3 text-indigo-500"
 						:points="usage?.series.memoryBytes ?? []"
@@ -51,10 +51,6 @@ const diskPoints = computed(() => usage.value?.series.diskBytes ?? []);
 					<UiTimeSeriesChart class="mt-3 text-amber-500" :points="diskPoints" :format="formatBytes" :format-time="formatTime" large />
 				</div>
 			</div>
-
-			<p class="text-xs text-muted-subtle">
-				History covers container usage only, so it reads below this node's totals on the Nodes tab, which include system-daemon overhead.
-			</p>
 		</template>
 	</div>
 </template>

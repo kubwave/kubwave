@@ -4046,7 +4046,7 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ClusterNodeUsageDto"
+									"$ref": "#/components/schemas/ClusterUsageDto"
 								}
 							}
 						}
@@ -7452,9 +7452,15 @@
 						"items": {
 							"$ref": "#/components/schemas/MetricPointDto"
 						}
+					},
+					"diskBytes": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/MetricPointDto"
+						}
 					}
 				},
-				"required": ["cpuMillicores", "memoryBytes"]
+				"required": ["cpuMillicores", "memoryBytes", "diskBytes"]
 			},
 			"ClusterUsageDto": {
 				"type": "object",
@@ -7504,8 +7510,11 @@
 					"name": {
 						"type": "string"
 					},
-					"phase": {
+					"status": {
 						"type": "string"
+					},
+					"restarts": {
+						"type": "number"
 					},
 					"cpuMillicores": {
 						"type": "number",
@@ -7516,7 +7525,7 @@
 						"nullable": true
 					}
 				},
-				"required": ["namespace", "name", "phase", "cpuMillicores", "memoryBytes"]
+				"required": ["namespace", "name", "status", "restarts", "cpuMillicores", "memoryBytes"]
 			},
 			"ClusterNodeDetailDto": {
 				"type": "object",
@@ -7565,49 +7574,6 @@
 					}
 				},
 				"required": ["available", "unavailableReason", "sampledAt", "node", "conditions", "taints", "pods", "events"]
-			},
-			"ClusterNodeUsageSeriesDto": {
-				"type": "object",
-				"properties": {
-					"cpuMillicores": {
-						"type": "array",
-						"items": {
-							"$ref": "#/components/schemas/MetricPointDto"
-						}
-					},
-					"memoryBytes": {
-						"type": "array",
-						"items": {
-							"$ref": "#/components/schemas/MetricPointDto"
-						}
-					},
-					"diskBytes": {
-						"type": "array",
-						"items": {
-							"$ref": "#/components/schemas/MetricPointDto"
-						}
-					}
-				},
-				"required": ["cpuMillicores", "memoryBytes", "diskBytes"]
-			},
-			"ClusterNodeUsageDto": {
-				"type": "object",
-				"properties": {
-					"available": {
-						"type": "boolean"
-					},
-					"range": {
-						"type": "string",
-						"enum": ["1h", "24h", "7d"]
-					},
-					"sampledAt": {
-						"type": "string"
-					},
-					"series": {
-						"$ref": "#/components/schemas/ClusterNodeUsageSeriesDto"
-					}
-				},
-				"required": ["available", "range", "sampledAt", "series"]
 			},
 			"TemplateInputDto": {
 				"type": "object",

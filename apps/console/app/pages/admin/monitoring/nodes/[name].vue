@@ -31,7 +31,7 @@ useHead({ title: computed(() => `${name} · Monitoring`) });
 	<div v-if="!isLoading && (!detail || detail.available === false)" class="rounded-xl border px-4 py-16 text-center">
 		<p class="text-sm text-muted-foreground">{{ unavailableMessage }}</p>
 		<Button as-child variant="outline" size="sm" class="mt-4">
-			<NuxtLink to="/admin/monitoring">Back to monitoring</NuxtLink>
+			<NuxtLink to="/admin/monitoring?tab=nodes">Back to monitoring</NuxtLink>
 		</Button>
 	</div>
 
@@ -42,7 +42,7 @@ useHead({ title: computed(() => `${name} · Monitoring`) });
 					<BreadcrumbList>
 						<BreadcrumbItem>
 							<BreadcrumbLink as-child>
-								<NuxtLink to="/admin/monitoring">Monitoring</NuxtLink>
+								<NuxtLink to="/admin/monitoring?tab=nodes">Monitoring</NuxtLink>
 							</BreadcrumbLink>
 						</BreadcrumbItem>
 						<BreadcrumbSeparator />
@@ -54,7 +54,16 @@ useHead({ title: computed(() => `${name} · Monitoring`) });
 			</template>
 		</PageHeader>
 
-		<AdminNodeHeader v-if="detail" :detail="detail" />
+		<template v-if="detail">
+			<AdminNodeHeader :detail="detail" />
+			<AdminClusterMeterTiles
+				:cpu="detail.node.cpu"
+				:memory="detail.node.memory"
+				:disk="detail.node.disk"
+				disk-label="Disk"
+				:pods="detail.node.pods"
+			/>
+		</template>
 
 		<AdminNodeCharts :name="name" />
 
@@ -67,7 +76,7 @@ useHead({ title: computed(() => `${name} · Monitoring`) });
 
 		<section v-if="detail" class="flex flex-col gap-3">
 			<h2 class="text-sm font-medium">Warning events for this node</h2>
-			<AdminNodeEvents :events="detail.events" />
+			<AdminClusterEventList :events="detail.events" />
 		</section>
 	</div>
 </template>
