@@ -86,6 +86,18 @@ describe('validateTemplateReferences', () => {
 		t.services[0]!.config.env.push({ key: 'X', value: '{{ services.ghost.host }}' });
 		expect(validateTemplateReferences(t)).toEqual([]);
 	});
+	test('flags a ${{services.…}} reference: instance-prefixed names are unknown when the template is written', () => {
+		const t = ghostLike();
+		t.services[1]!.config.env.push({ key: 'DB_URL', value: 'mysql://${{services.db.host}}:3306' });
+		expect(validateTemplateReferences(t)).toContain(
+			'service "ghost": ${{services.…}} references are not supported in templates (use {{ services.<name>.host }})'
+		);
+	});
+	test('leaves other ${{…}} text alone', () => {
+		const t = ghostLike();
+		t.services[1]!.config.env.push({ key: 'CI', value: '${{ secrets.GITHUB_TOKEN }}' });
+		expect(validateTemplateReferences(t)).toEqual([]);
+	});
 	test('flags an unknown service reference', () => {
 		const t = ghostLike();
 		t.services[0]!.config.env.push({ key: 'X', value: '{{ services.nope.host }}' });

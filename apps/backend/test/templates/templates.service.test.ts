@@ -62,14 +62,19 @@ const ghost: CatalogTemplate = {
 };
 
 function makeService(template: CatalogTemplate | null, existingNames: string[] = []) {
-	const created: Array<{ name: string; config: Record<string, unknown>; id: string }> = [];
+	const created: Array<{ name: string; config: Record<string, unknown>; id: string; batchNames: string[] }> = [];
 	let counter = 0;
 	const services = {
 		listServicesForEnvironment: async () => existingNames.map(name => ({ name })),
-		createService: async (_u: string, _e: string, input: { name: string; config: Record<string, unknown> }, id?: string) => {
+		createService: async (
+			_u: string,
+			_e: string,
+			input: { name: string; config: Record<string, unknown> },
+			batch?: { id: string; names: string[] }
+		) => {
 			counter += 1;
-			const serviceId = id ?? `id-${counter}`;
-			created.push({ name: input.name, config: input.config, id: serviceId });
+			const serviceId = batch?.id ?? `id-${counter}`;
+			created.push({ name: input.name, config: input.config, id: serviceId, batchNames: batch?.names ?? [] });
 			return { id: serviceId, name: input.name };
 		}
 	} as unknown as ServicesService;
@@ -91,6 +96,15 @@ describe('TemplatesService.instantiate', () => {
 		)!.value;
 		expect(dbSecret).toBe(ghostSecret);
 		expect(dbSecret.length).toBeGreaterThan(0);
+	});
+
+	test('announces every name of the batch, so a reference to a sibling created later validates', async () => {
+		const { svc, created } = makeService(ghost);
+		await svc.instantiate('u', 'env', 'ghost', 'myblog', { url: 'https://blog.test' });
+		expect(created.map(c => c.batchNames)).toEqual([
+			['myblog-db', 'myblog'],
+			['myblog-db', 'myblog']
+		]);
 	});
 
 	test('returns generated secrets once, matching the values injected into services', async () => {

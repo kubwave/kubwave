@@ -95,6 +95,13 @@ function trimDescription(description?: string): string {
 
 type ServicesTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
+// Multi-service creators (templates, repo analyze) pre-generate ids and create one service at a time;
+// `names` lists the whole batch so a reference to a sibling created later still validates.
+export interface ServiceBatch {
+	id: string;
+	names: string[];
+}
+
 interface ServiceRename {
 	from: string;
 	to: string;
@@ -190,14 +197,14 @@ export class ServicesService {
 		return rows.map(row => toServiceView(row, defaultDomain));
 	}
 
-	async createService(actingUserId: string, environmentId: string, input: CreateServiceInput, id?: string): Promise<ServiceView> {
+	async createService(actingUserId: string, environmentId: string, input: CreateServiceInput, batch?: ServiceBatch): Promise<ServiceView> {
 		const environment = await this.environmentsService.loadEnvironmentForUser(actingUserId, environmentId);
 		const name = input.name.trim();
 
 		if (await this.serviceNameTaken(environment.id, name)) {
 			throw new ServiceNameTakenError();
 		}
-		await this.assertValidReferences(environment.id, name, input.config);
+		await this.assertValidReferences(environment.id, [name, ...(batch?.names ?? [])], input.config);
 
 		if (input.type === 'private-repo') {
 			await this.assertSshKeyForTeam(environment.teamId, input.config.sshKeyId);
@@ -243,7 +250,7 @@ export class ServicesService {
 				.insert(services)
 				.values({
 					// Optional caller-provided id (template instantiation pre-generates ids so cross-references resolve in any order).
-					...(id ? { id } : {}),
+					...(batch ? { id: batch.id } : {}),
 					environmentId: environment.id,
 					name,
 					description: trimDescription(input.description),
@@ -438,7 +445,7 @@ export class ServicesService {
 
 		if (input.config !== undefined) {
 			// The current name (still this row's) stays valid for this write: a rename rewrites references to it below.
-			await this.assertValidReferences(service.environmentId, values.name ?? service.name, input.config);
+			await this.assertValidReferences(service.environmentId, [values.name ?? service.name], input.config);
 			const liveSizes = new Map((service.config.volumes ?? []).map(volume => [volume.name, volume.size]));
 			const incomingVolumes = 'volumes' in input.config ? input.config.volumes : [];
 
@@ -567,9 +574,10 @@ export class ServicesService {
 		return row;
 	}
 
-	private async assertValidReferences(environmentId: string, ownName: string, config: ReferenceInput): Promise<void> {
+	// `pendingNames`: services that exist once this write (or its batch) lands, on top of the environment's current ones.
+	private async assertValidReferences(environmentId: string, pendingNames: string[], config: ReferenceInput): Promise<void> {
 		const rows = await db.select({ name: services.name }).from(services).where(eq(services.environmentId, environmentId));
-		const issues = referenceIssues(config, new Set([ownName, ...rows.map(row => row.name)]));
+		const issues = referenceIssues(config, new Set([...pendingNames, ...rows.map(row => row.name)]));
 		if (issues.length > 0) throw new InvalidReferenceError(issues);
 	}
 

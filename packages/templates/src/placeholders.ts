@@ -2,6 +2,7 @@ import type { Template } from './schema';
 
 // `${{ … }}` is a deploy-time service reference (resolved per environment by the worker), never a template placeholder.
 const PLACEHOLDER_RE = /(?<!\$)\{\{\s*([a-zA-Z]+)\.([a-zA-Z0-9_]+)(?:\.([a-zA-Z0-9_]+))?\s*\}\}/g;
+const DEPLOY_REFERENCE_RE = /\$\{\{\s*services\./;
 
 export interface Placeholder {
 	ns: string;
@@ -49,6 +50,10 @@ export function validateTemplateReferences(template: Template): string[] {
 
 	for (const service of template.services) {
 		for (const value of configStrings(service.config)) {
+			// Instantiation passes these through untouched and prefixes service names with the instance name, so they could never resolve.
+			if (DEPLOY_REFERENCE_RE.test(value)) {
+				errors.push(`service "${service.name}": \${{services.…}} references are not supported in templates (use {{ services.<name>.host }})`);
+			}
 			for (const ph of findPlaceholders(value)) {
 				if (ph.ns === 'secrets' && !secretKeys.has(ph.key)) {
 					errors.push(`service "${service.name}": unknown secret reference "${ph.key}"`);

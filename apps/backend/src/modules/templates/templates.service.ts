@@ -102,7 +102,7 @@ export class TemplatesService {
 					...(config.resources ? { resources: config.resources } : {})
 				}
 			};
-			const service = await this.services.createService(actingUserId, environmentId, input, serviceIds[i]!);
+			const service = await this.services.createService(actingUserId, environmentId, input, { id: serviceIds[i]!, names: finalNames });
 			created.push(service);
 		}
 
