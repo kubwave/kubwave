@@ -24,6 +24,11 @@ describe('rewriteCrossRefs', () => {
 	it('rewrites a custom-domain host in URLs, with ports and paths, case-insensitively', () => {
 		expect(rewriteCrossRefs('https://Example.com:443/api/v1', mapping)).toBe('https://web-3448ea31.kubwave.com:443/api/v1');
 	});
+	it('rewrites a host after URL userinfo (credentials in the authority)', () => {
+		expect(rewriteCrossRefs('smtp://user:pass@example.com:587', mapping)).toBe('smtp://user:pass@web-3448ea31.kubwave.com:587');
+		expect(rewriteCrossRefs('redis://:pw@example.com:6379/0', mapping)).toBe('redis://:pw@web-3448ea31.kubwave.com:6379/0');
+		expect(rewriteCrossRefs('https://user@example.com/hook', mapping)).toBe('https://user@web-3448ea31.kubwave.com/hook');
+	});
 	it('does not rewrite a host inside a longer host or an email address', () => {
 		for (const value of ['https://api.example.com', 'https://notexample.com', 'example.com.au', 'noreply@example.com', 'my-example.com']) {
 			expect(rewriteCrossRefs(value, mapping)).toBe(value);
