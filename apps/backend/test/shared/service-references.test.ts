@@ -69,6 +69,22 @@ describe('renameReferences', () => {
 			'${{services.backend.url}}/v1 ${{ services.web.host }}'
 		);
 	});
+
+	test('reaches references inside encrypted secrets and config files when applied through mapConfigValues', () => {
+		const stored: DockerImageServiceConfig = {
+			image: 'nginx',
+			tag: 'latest',
+			containerPort: 80,
+			env: [],
+			secrets: [{ key: 'DATABASE_URL', value: encryptSecret('postgres://app:pw@${{services.db.host}}/app') }],
+			configFiles: [{ path: '/etc/upstream.conf', content: encryptSecret('server ${{services.db.host}}:${{services.db.port}};') }],
+			domains: [],
+			volumes: []
+		};
+		const renamed = mapConfigValues(stored, value => renameReferences(value, 'db', 'postgres'));
+		expect(decryptSecret(renamed.secrets![0]!.value)).toBe('postgres://app:pw@${{services.postgres.host}}/app');
+		expect(decryptSecret(renamed.configFiles![0]!.content)).toBe('server ${{services.postgres.host}}:${{services.postgres.port}};');
+	});
 });
 
 describe('mapConfigValues', () => {
