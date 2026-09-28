@@ -35,6 +35,18 @@ function toBasicAuthView(stored: BasicAuthConfig | undefined): BasicAuthView | u
 	return { enabled: true, username: stored.username, hasPassword: true, ...(stored.publicPaths?.length ? { publicPaths: stored.publicPaths } : {}) };
 }
 
+// Fills a partial config patch with the stored fields, credentials as null (keep stored), so omitted fields survive the full update.
+export function mergeConfigPatch(stored: ServiceConfig, patch: Record<string, unknown>): Record<string, unknown> {
+	const view = toConfigView(stored);
+	return {
+		...view,
+		secrets: (stored.secrets ?? []).map(secret => ({ key: secret.key, value: null })),
+		...(view.basicAuth ? { basicAuth: { ...view.basicAuth, password: null } } : {}),
+		...('registryAuth' in view && view.registryAuth ? { registryAuth: { ...view.registryAuth, password: null } } : {}),
+		...patch
+	};
+}
+
 function toRegistryAuthView(stored: RegistryAuthConfig | undefined): RegistryAuthView | undefined {
 	if (!stored) return undefined;
 	return { enabled: true, server: stored.server, username: stored.username, hasPassword: true };

@@ -22,9 +22,11 @@ import { TemplatesService } from '../templates/templates.service.js';
 import { createFromTemplateSchema, toTemplateDto } from '../templates/templates.dto.js';
 import { GitInstallationsService } from '../git/git-installations.service.js';
 import { GiteaInstallationsService } from '../git/gitea-installations.service.js';
+import { REFERENCE_PROPS } from '../../shared/service-references.js';
 import { defineMcpTool, type McpTarget, type McpTool } from './mcp-execution.js';
 
 const id = z.string().uuid();
+const referenceHint = ` Env values, secrets and config files may reference other services in the environment as \${{services.<name>.<${REFERENCE_PROPS.join('|')}>}}; resolved at deploy.`;
 const pagination = { offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(100).default(50) };
 const team = (a: { teamId: string }): McpTarget[] => [{ kind: 'team', id: a.teamId }];
 const project = (a: { projectId: string }): McpTarget[] => [{ kind: 'project', id: a.projectId }];
@@ -234,7 +236,8 @@ export function createMcpTools(app: NestFastifyApplication): McpTool[] {
 	add({
 		name: 'create_service',
 		description:
-			'Create an application or managed database. For monorepos use repository root as build context when shared packages are needed, with app-specific build commands or dockerfilePath. Deploy separately.',
+			'Create an application or managed database. For monorepos use repository root as build context when shared packages are needed, with app-specific build commands or dockerfilePath. Deploy separately.' +
+			referenceHint,
 		schema: z.object({ environmentId: id, service: createServiceSchema }),
 		scopes: ['write'],
 		targets: environment,
@@ -243,7 +246,8 @@ export function createMcpTools(app: NestFastifyApplication): McpTool[] {
 	add({
 		name: 'update_service',
 		description:
-			'Patch a service; omitted configuration fields and stored credentials are preserved. Explicit arrays replace that entire array. Deploy separately to apply runtime changes.',
+			'Patch a service; omitted configuration fields and stored credentials are preserved. Explicit arrays replace that entire array. Deploy separately to apply runtime changes.' +
+			referenceHint,
 		schema: z.object({
 			serviceId: id,
 			name: z.string().min(1).max(100).optional(),
