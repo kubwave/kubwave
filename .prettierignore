@@ -22,3 +22,4 @@ packages/templates/catalog.json
 
 # Standalone design prototype with its own `format` script.
 design/
+design-docs/

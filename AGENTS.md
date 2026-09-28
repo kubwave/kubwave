@@ -12,7 +12,7 @@ The API and worker share the `apps/backend` codebase and image, but they stay se
 
 The console is Nuxt 4/Vue 3. Do not reintroduce the old Next.js shape, and do not resurrect the deleted `infra/k8s/` Kustomize tree.
 
-`design/` is a standalone Next.js design prototype (own lockfile, not a workspace), not the console.
+`design/` (console) and `design-docs/` (docs) are standalone Next.js design prototypes (own lockfiles, not workspaces), not the console or `apps/docs`.
 
 ## Directory Layout
 

@@ -1,0 +1,149 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+	--font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+	--font-mono: var(--font-geist-mono), ui-monospace, 'SF Mono', monospace;
+
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-primary-text: var(--primary-text);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-success: var(--success);
+	--color-warning: var(--warning);
+	--color-info: var(--info);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+
+	--radius-sm: calc(var(--radius) - 4px);
+	--radius-md: calc(var(--radius) - 2px);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+	--radius: 0.5rem;
+	--background: #fafafa;
+	--foreground: #09090b;
+	--card: #ffffff;
+	--card-foreground: #09090b;
+	--popover: #ffffff;
+	--popover-foreground: #09090b;
+	--primary: #18181b;
+	--primary-foreground: #fafafa;
+	--primary-text: #0e7d99;
+	--secondary: #f4f4f5;
+	--secondary-foreground: #27272a;
+	--muted: #f4f4f5;
+	--muted-foreground: #6b6b76;
+	--accent: #efeff1;
+	--accent-foreground: #09090b;
+	--destructive: #dc2626;
+	--success: #16a34a;
+	--warning: #d97706;
+	--info: #0284c7;
+	--border: #e4e4e7;
+	--input: #e4e4e7;
+	--ring: #0899bb;
+}
+
+.dark {
+	--background: #0b0c0e;
+	--foreground: #ececef;
+	--card: #131417;
+	--card-foreground: #ececef;
+	--popover: #17181c;
+	--popover-foreground: #ececef;
+	--primary: #ececef;
+	--primary-foreground: #0b0c0e;
+	--primary-text: #22d3ee;
+	--secondary: #1c1d22;
+	--secondary-foreground: #d4d4d8;
+	--muted: #17181c;
+	--muted-foreground: #8b8d98;
+	--accent: #1f2025;
+	--accent-foreground: #ececef;
+	--destructive: #f25f5c;
+	--success: #22c55e;
+	--warning: #f59e0b;
+	--info: #38bdf8;
+	--border: #23252b;
+	--input: #2a2c33;
+	--ring: #22d3ee;
+}
+
+@layer base {
+	* {
+		@apply border-border outline-ring/50;
+	}
+	body {
+		@apply bg-background text-foreground antialiased;
+		font-feature-settings: 'cv11', 'ss01';
+	}
+}
+
+.shiki {
+	background-color: transparent !important;
+}
+
+.dark .shiki,
+.dark .shiki span {
+	color: var(--shiki-dark) !important;
+}
+
+/* Numbered steps: CSS counter badges on a thin rail, beats the ol utilities (unlayered). */
+.steps > ol {
+	counter-reset: step;
+	list-style: none;
+	margin-left: 0.75rem;
+	padding-left: 0;
+	border-left: 1px solid var(--border);
+}
+
+.steps > ol > li {
+	counter-increment: step;
+	position: relative;
+	padding-left: 1.75rem;
+}
+
+.steps > ol > li::before {
+	content: counter(step);
+	position: absolute;
+	left: -0.75rem;
+	top: 0.125rem;
+	display: flex;
+	width: 1.5rem;
+	height: 1.5rem;
+	align-items: center;
+	justify-content: center;
+	border: 1px solid var(--border);
+	border-radius: 9999px;
+	background: var(--background);
+	font-family: var(--font-mono);
+	font-size: 0.75rem;
+	color: var(--muted-foreground);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
+	}
+}
