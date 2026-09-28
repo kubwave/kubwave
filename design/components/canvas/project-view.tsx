@@ -115,7 +115,7 @@ function EnvCanvas({ env }: { env: Environment }) {
 		() =>
 			links.map(l => {
 				const active = selectedId !== null && (l.source === selectedId || l.target === selectedId);
-				const color = active ? 'var(--primary)' : 'var(--muted-foreground)';
+				const color = active ? 'var(--primary-text)' : 'var(--muted-foreground)';
 				return {
 					id: `${l.source}->${l.target}`,
 					...l,

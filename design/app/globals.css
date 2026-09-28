@@ -54,7 +54,7 @@
 	--popover-foreground: #09090b;
 	--primary: #18181b;
 	--primary-foreground: #fafafa;
-	--primary-text: #0a7488;
+	--primary-text: #0e7d99;
 	--secondary: #f4f4f5;
 	--secondary-foreground: #27272a;
 	--muted: #f4f4f5;
@@ -67,7 +67,7 @@
 	--info: #0284c7;
 	--border: #e4e4e7;
 	--input: #e4e4e7;
-	--ring: #0892ab;
+	--ring: #0899bb;
 	--canvas: #f4f4f5;
 	--canvas-dot: #d4d4d8;
 	--chart-1: #2a78d6;
@@ -86,7 +86,7 @@
 	--popover-foreground: #ececef;
 	--primary: #ececef;
 	--primary-foreground: #0b0c0e;
-	--primary-text: #5fdff0;
+	--primary-text: #22d3ee;
 	--secondary: #1c1d22;
 	--secondary-foreground: #d4d4d8;
 	--muted: #17181c;
@@ -99,7 +99,7 @@
 	--info: #38bdf8;
 	--border: #23252b;
 	--input: #2a2c33;
-	--ring: #1fc8e0;
+	--ring: #22d3ee;
 	--canvas: #0b0c0e;
 	--canvas-dot: #30323a;
 	--chart-1: #3987e5;
@@ -122,8 +122,8 @@
 .react-flow {
 	--xy-background-color: var(--canvas);
 	--xy-edge-stroke: var(--muted-foreground);
-	--xy-edge-stroke-selected: var(--primary);
-	--xy-connectionline-stroke: var(--primary);
+	--xy-edge-stroke-selected: var(--primary-text);
+	--xy-connectionline-stroke: var(--primary-text);
 	--xy-attribution-background-color: transparent;
 }
 
