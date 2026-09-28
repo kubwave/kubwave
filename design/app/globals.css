@@ -1,0 +1,141 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import '@xyflow/react/dist/style.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+	--font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+	--font-mono: var(--font-geist-mono), ui-monospace, 'SF Mono', monospace;
+
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-primary-text: var(--primary-text);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-success: var(--success);
+	--color-warning: var(--warning);
+	--color-info: var(--info);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+	--color-canvas: var(--canvas);
+	--color-canvas-dot: var(--canvas-dot);
+	--color-chart-1: var(--chart-1);
+	--color-chart-2: var(--chart-2);
+	--color-chart-3: var(--chart-3);
+	--color-chart-4: var(--chart-4);
+	--color-chart-5: var(--chart-5);
+
+	--radius-sm: calc(var(--radius) - 4px);
+	--radius-md: calc(var(--radius) - 2px);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+	--radius: 0.5rem;
+	--background: #fafafa;
+	--foreground: #09090b;
+	--card: #ffffff;
+	--card-foreground: #09090b;
+	--popover: #ffffff;
+	--popover-foreground: #09090b;
+	--primary: #18181b;
+	--primary-foreground: #fafafa;
+	--primary-text: #0a7488;
+	--secondary: #f4f4f5;
+	--secondary-foreground: #27272a;
+	--muted: #f4f4f5;
+	--muted-foreground: #6b6b76;
+	--accent: #efeff1;
+	--accent-foreground: #09090b;
+	--destructive: #dc2626;
+	--success: #16a34a;
+	--warning: #d97706;
+	--info: #0284c7;
+	--border: #e4e4e7;
+	--input: #e4e4e7;
+	--ring: #0892ab;
+	--canvas: #f4f4f5;
+	--canvas-dot: #d4d4d8;
+	--chart-1: #2a78d6;
+	--chart-2: #eb6834;
+	--chart-3: #1baf7a;
+	--chart-4: #eda100;
+	--chart-5: #e87ba4;
+}
+
+.dark {
+	--background: #0b0c0e;
+	--foreground: #ececef;
+	--card: #131417;
+	--card-foreground: #ececef;
+	--popover: #17181c;
+	--popover-foreground: #ececef;
+	--primary: #ececef;
+	--primary-foreground: #0b0c0e;
+	--primary-text: #5fdff0;
+	--secondary: #1c1d22;
+	--secondary-foreground: #d4d4d8;
+	--muted: #17181c;
+	--muted-foreground: #8b8d98;
+	--accent: #1f2025;
+	--accent-foreground: #ececef;
+	--destructive: #f25f5c;
+	--success: #22c55e;
+	--warning: #f59e0b;
+	--info: #38bdf8;
+	--border: #23252b;
+	--input: #2a2c33;
+	--ring: #1fc8e0;
+	--canvas: #0b0c0e;
+	--canvas-dot: #30323a;
+	--chart-1: #3987e5;
+	--chart-2: #d95926;
+	--chart-3: #199e70;
+	--chart-4: #c98500;
+	--chart-5: #d55181;
+}
+
+@layer base {
+	* {
+		@apply border-border outline-ring/50;
+	}
+	body {
+		@apply bg-background text-foreground antialiased;
+		font-feature-settings: 'cv11', 'ss01';
+	}
+}
+
+.react-flow {
+	--xy-background-color: var(--canvas);
+	--xy-edge-stroke: var(--muted-foreground);
+	--xy-edge-stroke-selected: var(--primary);
+	--xy-connectionline-stroke: var(--primary);
+	--xy-attribution-background-color: transparent;
+}
+
+.react-flow__node:focus-visible {
+	outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
+	}
+}
