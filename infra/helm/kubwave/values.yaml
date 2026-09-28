@@ -410,8 +410,8 @@ mailcrab:
     host: mailcrab.localhost
   nodeSelector: {}
 
-# Dev-only docs site (Astro Starlight, `astro dev` with HMR). In prod the static
-# build ships to Cloudflare (apps/docs/wrangler.jsonc), so this is disabled there.
+# Dev-only docs site (Next.js, `next dev` with HMR). In prod the static
+# build runs as a kubwave service (apps/docs/Dockerfile `prod`), so this is disabled there.
 docs:
   enabled: true
   image:

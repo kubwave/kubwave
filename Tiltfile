@@ -46,8 +46,8 @@ docker_build(
     ],
 )
 
-# ---- docs (Nuxt Content) — nuxt dev / HMR over synced app + content files ----
-# Dev-only workload: prod ships the static build to Cloudflare (apps/docs/wrangler.jsonc),
+# ---- docs (Next.js + MDX) — next dev / HMR over synced app + content files ----
+# Dev-only workload: prod runs the static build (Dockerfile `prod` target) as a kubwave service,
 # so the chart gates it behind docs.enabled (true in dev values, false in prod).
 docker_build(
     'docs',
@@ -56,8 +56,11 @@ docker_build(
     target='dev',
     only=_only,
     live_update=[
-        fall_back_on(_deps + ['./apps/docs/package.json', './apps/docs/nuxt.config.ts', './apps/docs/content.config.ts', './apps/docs/tsconfig.json', './apps/docs/Dockerfile']),
+        fall_back_on(_deps + ['./apps/docs/package.json', './apps/docs/next.config.ts', './apps/docs/tsconfig.json', './apps/docs/Dockerfile']),
         sync('./apps/docs/app', '/app/apps/docs/app'),
+        sync('./apps/docs/components', '/app/apps/docs/components'),
+        sync('./apps/docs/lib', '/app/apps/docs/lib'),
+        sync('./apps/docs/mdx-components.tsx', '/app/apps/docs/mdx-components.tsx'),
         sync('./apps/docs/content', '/app/apps/docs/content'),
         sync('./apps/docs/public', '/app/apps/docs/public'),
     ],

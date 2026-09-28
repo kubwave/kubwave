@@ -1,81 +1,43 @@
 import { describe, expect, test } from 'bun:test';
-import { buildInstallCommand } from '../app/utils/install-command';
-import { flatDocsNav } from '../app/utils/navigation';
+import { Glob } from 'bun';
+import { flatNav } from '../lib/nav';
 
-const expectedRoutes = [
-	'/',
-	'/start/introduction',
-	'/start/quickstart',
-	'/start/supported-providers',
-	'/start/architecture',
-	'/providers/cloudfleet-hetzner',
-	'/providers/cloudfleet-gcp',
-	'/providers/upcloud-uks',
-	'/providers/infomaniak-pck',
-	'/guides/deploy-a-service',
-	'/guides/configure-a-service',
-	'/guides/tenant-isolation',
-	'/guides/contributing-to-docs',
-	'/templates',
-	'/templates/supabase',
-	'/templates/ghost',
-	'/templates/uptime-kuma',
-	'/reference/cli',
-	'/reference/helm-chart',
-	'/reference/environment-variables'
-] as const;
+const contentFile = (path: string) => `content${path}.mdx`;
 
-const forbiddenPatterns = [/@astrojs\/starlight/, /<\/?(?:Aside|CardGrid|Card|LinkCard|Tabs|TabItem|Steps)\b/, /\{\/\*/] as const;
-
-async function resolveContentFile(route: string): Promise<string | undefined> {
-	const candidates = route === '/' ? ['content/index.md'] : [`content${route}.md`, `content${route}/index.md`];
-	for (const candidate of candidates) {
-		if (await Bun.file(candidate).exists()) return candidate;
-	}
-	return undefined;
+async function contentPaths(): Promise<string[]> {
+	const files = await Array.fromAsync(new Glob('**/*.mdx').scan('content'));
+	return files.map(file => `/${file.replace(/\.mdx$/, '')}`).sort();
 }
 
-describe('docs content conversion', () => {
-	test('has every expected route as converted Markdown', async () => {
-		for (const route of expectedRoutes) {
-			expect(await resolveContentFile(route)).toBeDefined();
+describe('docs content', () => {
+	test('has an MDX file for every sidebar entry', async () => {
+		for (const { path } of flatNav) {
+			expect(await Bun.file(contentFile(path)).exists()).toBe(true);
 		}
 	});
 
-	test('keeps sidebar order aligned with the converted routes', () => {
-		expect(flatDocsNav().map(item => item.path)).toEqual(expectedRoutes.filter(route => route !== '/'));
+	test('lists every MDX file in the sidebar, so no page is orphaned', async () => {
+		expect(await contentPaths()).toEqual(flatNav.map(item => item.path).sort());
 	});
 
-	test('removes Starlight imports and raw JSX component tags', async () => {
-		for (const route of expectedRoutes) {
-			const file = await resolveContentFile(route);
-			expect(file).toBeDefined();
-			const text = await Bun.file(file!).text();
-			for (const pattern of forbiddenPatterns) {
-				expect(text).not.toMatch(pattern);
-			}
+	test('exports a title and description from every page', async () => {
+		for (const { path } of flatNav) {
+			const text = await Bun.file(contentFile(path)).text();
+			expect(text).toMatch(/^export const metadata = \{[\s\S]*?title:\s*['"].+?['"],[\s\S]*?description:\s*['"].+?['"]/);
 		}
 	});
 
-	test('never hardcodes the install command in Markdown', async () => {
-		for (const route of expectedRoutes) {
-			const text = await Bun.file((await resolveContentFile(route))!).text();
-			expect(text).not.toMatch(/get\.kubwave\.com/);
+	test('contains no leftover Nuxt MDC directives or Starlight imports', async () => {
+		for (const { path } of flatNav) {
+			const text = await Bun.file(contentFile(path)).text();
+			expect(text).not.toMatch(/^\s*:{2,}[a-z-]*/m);
+			expect(text).not.toMatch(/@astrojs\/starlight/);
 		}
 	});
-});
 
-describe('install command', () => {
-	test('adds the preview channel on the next docs build', () => {
-		expect(buildInstallCommand('next')).toBe('curl -fsSL https://get.kubwave.com | bash -s -- --channel preview');
-	});
-
-	test('uses the script default on the stable docs build', () => {
-		expect(buildInstallCommand('latest')).toBe('curl -fsSL https://get.kubwave.com | bash');
-	});
-
-	test('falls back to stable for unknown channels', () => {
-		expect(buildInstallCommand('')).toBe(buildInstallCommand('latest'));
-		expect(buildInstallCommand('edge')).toBe(buildInstallCommand('latest'));
+	test('never hardcodes the install command, which depends on the docs channel', async () => {
+		for (const { path } of flatNav) {
+			expect(await Bun.file(contentFile(path)).text()).not.toMatch(/get\.kubwave\.com/);
+		}
 	});
 });

@@ -1,0 +1,132 @@
+export const metadata = { title: 'Contributing to the docs', description: 'How to edit, preview, and publish the kubwave documentation site.' };
+
+The kubwave documentation is a [Next.js](https://nextjs.org) app exported as a static site. Pages are
+**MDX** (Markdown with JSX components) in `apps/docs/content/`, styled with Tailwind CSS and shadcn/ui.
+
+## Quickstart: run the docs locally
+
+1. **Install dependencies** from the repo root:
+
+   ```sh
+   bun install
+   ```
+
+2. **Start the dev server:**
+
+   ```sh
+   bun run --filter=docs dev
+   ```
+
+3. Open [http://localhost:4321](http://localhost:4321). The site hot-reloads on every save. The full
+   local stack (`bun run dev`) also serves it at `http://docs.localhost`.
+
+## Where files live
+
+```
+apps/docs/
+├── content/              # ← All doc pages (.mdx), one folder per sidebar section
+├── lib/nav.ts            # Sidebar groups and order (also drives prev/next links)
+├── app/                  # Next.js routes: home page, doc pages, search index
+├── components/           # Top bar, sidebar, search, MDX components, shadcn/ui primitives
+├── mdx-components.tsx    # Maps Markdown elements and MDX components to React components
+├── next.config.ts        # Static export, MDX plugins, Shiki languages
+└── public/               # Static files (favicon, logo)
+```
+
+## Adding a new page
+
+1. Create an `.mdx` file in the right folder under `content/`. The file path is the URL:
+
+   ```sh
+   touch apps/docs/content/guides/my-new-guide.mdx
+   ```
+
+2. Export the page title and description at the top:
+
+   ```mdx
+   export const metadata = { title: 'My new guide', description: 'What this page covers in one sentence.' };
+
+   Content goes here.
+   ```
+
+3. Add the page to the sidebar in `apps/docs/lib/nav.ts`:
+
+   ```ts
+   {
+     title: 'Guides',
+     items: [
+       { title: 'Deploy a service', path: '/guides/deploy-a-service' },
+       { title: 'My new guide', path: '/guides/my-new-guide' }, // ← add here
+     ],
+   },
+   ```
+
+4. Run `bun run --filter=docs test`. It fails if a page is missing from the sidebar or has no metadata.
+
+## Components you can use
+
+These are available in every page without imports.
+
+| Component                                                 | Use for                                   |
+| --------------------------------------------------------- | ----------------------------------------- |
+| `<Callout type="note\|tip\|caution\|danger" title="...">` | Callout boxes (`title` is optional)       |
+| `<Tabs>` + `<Tab label="...">`                            | Tabbed content sections                   |
+| `<Steps>` around a numbered list                          | Numbered step lists                       |
+| `<Cards>` + `<Card title="...">`                          | A grid of short summaries                 |
+| `<LinkCard title="..." href="..." description="..." />`   | A single next-step link                   |
+| `<InstallCommand />`                                      | The install command for this docs channel |
+
+Leave a blank line after an opening tag and before a closing tag so the content inside is parsed as Markdown.
+Never hardcode the install command: the `next` channel adds `--channel preview`, and `<InstallCommand />`
+handles that.
+
+MDX treats `{` and `<` as code. In prose, escape them (`\{`, `\<`) or put them in a code span.
+
+## Code blocks
+
+Code blocks use [Shiki](https://shiki.style) with the `github-light`/`github-dark` themes:
+
+````mdx
+```sh
+kubwave install --domain app.example.com
+```
+````
+
+Add a language tag to get syntax highlighting; leave it blank for plain text. Loaded languages are `sh`,
+`bash`, `yaml`, `dockerfile`, `mdx`, and `ansi`; add more in `next.config.ts`.
+
+## Style conventions
+
+- Use sentence-case for headings and sidebar labels.
+- Keep pages self-contained. Link to related pages at the bottom with `<LinkCard />`.
+- The docs are **English-only** for v1.
+
+## Testing your changes
+
+```sh
+# From the repo root:
+bun run --filter=docs dev           # hot-reload dev server
+bun run --filter=docs test          # sidebar, metadata, and search index checks
+bun run --filter=docs check-types
+bun run --filter=docs build         # static export to apps/docs/out
+bun run format:check
+```
+
+## Publishing
+
+The docs run on kubwave itself: the Dockerfile's `prod` target serves the static build with nginx. A
+stable release pushes `ghcr.io/kubwave/docs:latest`, which [docs.kubwave.com](https://docs.kubwave.com)
+picks up; a prerelease pushes `:next` for [docs-next.kubwave.com](https://docs-next.kubwave.com). The
+release workflow sets `NEXT_PUBLIC_DOCS_CHANNEL` for each image, which drives the version switcher and
+the install command. To republish without a release, run the **Docs image** workflow on the matching tag.
+`main` and every open pull request also get a preview deployment on the cluster.
+
+---
+
+<LinkCard
+	title="Contributing to kubwave"
+	description="Code contributions, dev setup, and the PR process."
+	href="https://github.com/kubwave/kubwave/blob/main/CONTRIBUTING.md"
+/>
+
+<LinkCard title="MDX in Next.js" description="How Next.js compiles MDX pages and components." href="https://nextjs.org/docs/app/guides/mdx" />

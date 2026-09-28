@@ -152,7 +152,7 @@ adminer:
 mailcrab:
   enabled: false
 
-# Docs ship to Cloudflare in prod (apps/docs/wrangler.jsonc), not the cluster.
+# Prod docs run as a kubwave service (apps/docs/Dockerfile `prod`), not part of the chart.
 docs:
   enabled: false
 

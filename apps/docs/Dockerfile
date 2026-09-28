@@ -15,13 +15,27 @@ COPY packages/templates/package.json ./packages/templates/
 RUN bun install --frozen-lockfile --ignore-scripts
 
 FROM node:24-alpine AS dev
-RUN apk add --no-cache python3 make g++
 WORKDIR /app
 COPY --from=deps /app ./
 COPY packages ./packages
 COPY apps/docs ./apps/docs
-RUN npm rebuild better-sqlite3
 EXPOSE 4321
-ENV PORT=4321 NUXT_TELEMETRY_DISABLED=1
+ENV PORT=4321 NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app/apps/docs
-CMD ["node", "node_modules/.bin/nuxt", "dev", "--port", "4321", "--host", "0.0.0.0"]
+CMD ["node", "node_modules/.bin/next", "dev", "--port", "4321", "--hostname", "0.0.0.0"]
+
+FROM node:24-alpine AS build
+# Release line baked into the static export: "latest" (stable) or "next" (prerelease).
+ARG NEXT_PUBLIC_DOCS_CHANNEL=latest
+ENV NEXT_PUBLIC_DOCS_CHANNEL=${NEXT_PUBLIC_DOCS_CHANNEL} NEXT_TELEMETRY_DISABLED=1
+WORKDIR /app
+COPY --from=deps /app ./
+COPY apps/docs ./apps/docs
+WORKDIR /app/apps/docs
+RUN node node_modules/.bin/next build
+
+# Last stage, so plain `docker build` (and kubwave's Dockerfile builder) produce the site image.
+FROM nginxinc/nginx-unprivileged:1.29-alpine AS prod
+COPY apps/docs/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/apps/docs/out /usr/share/nginx/html
+EXPOSE 8080

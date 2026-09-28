@@ -49,7 +49,7 @@ Hostnames (via Traefik on `:80`):
 
 - `http://console.localhost` — Web console (Nuxt 4 SSR)
 - `/api` on `http://console.localhost` — NestJS API routed same-origin through Traefik
-- `http://docs.localhost:4321` — Docs (Astro dev server)
+- `http://docs.localhost` — Docs (Next.js dev server)
 
 ## What's in this repo
 
@@ -60,7 +60,7 @@ A Bun + Turborepo monorepo with three decoupled workloads and shared packages:
 | `apps/backend`       | NestJS on Node 24 — API and worker entrypoints                                |
 | `apps/console`       | Nuxt 4 web console (Nitro SSR, Vue 3, shadcn-vue)                             |
 | `apps/cli`           | Bun-compiled single-binary CLI with embedded Helm chart                       |
-| `apps/docs`          | Astro + Starlight docs site                                                   |
+| `apps/docs`          | Next.js + MDX docs site                                                       |
 | `packages/*`         | Shared source-only packages: `@kubwave/{api-client,crypto,db,kube,templates}` |
 | `infra/helm/kubwave` | The Helm chart — single source of truth for K8s manifests                     |
 
@@ -172,7 +172,7 @@ Then update `GCP_PD_CSI_VERSION` in `csi-catalog.ts` and open a PR — the manif
 
 ## Docs
 
-- **User docs** live in [`apps/docs/src/content/docs/`](./apps/docs/src/content/docs/) (Astro + Starlight, MDX).
+- **User docs** live in [`apps/docs/content/`](./apps/docs/content/) (Next.js, MDX).
 - Site conventions: [`AGENTS.md § Docs site conventions`](./AGENTS.md#docs-site).
 
 To edit the public docs locally:
@@ -181,7 +181,7 @@ To edit the public docs locally:
 bun run --filter=docs dev
 ```
 
-The Sidebar is hand-maintained in [`apps/docs/astro.config.mjs`](./apps/docs/astro.config.mjs). Add new pages there.
+The sidebar is hand-maintained in [`apps/docs/lib/nav.ts`](./apps/docs/lib/nav.ts). Add new pages there. See [Contributing to the docs](https://docs.kubwave.com/guides/contributing-to-docs/) for components and conventions.
 
 ## Where to get help
 

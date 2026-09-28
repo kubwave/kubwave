@@ -17,7 +17,7 @@ Three runtime workloads plus shared packages. The single most important structur
 - `apps/backend` — NestJS on Node 24. `main-api.ts` is the REST API + auth authority (mints JWTs, runs DB migrations on boot, read-only k8s RBAC, served under `/api`). `main-worker.ts` is a Nest app context running reconcilers/schedulers/build jobs (read-write k8s RBAC, no `JWT_SECRET`, health server on `:8080`).
 - `apps/console` — Nuxt 4 / Vue 3 / Nitro SSR, shadcn-vue (Reka UI) on Tailwind v4, TanStack Vue Query. Talks to the API only through `@kubwave/api-client`. Browser uses same-origin `/api`; SSR uses `INTERNAL_API_URL`.
 - `apps/cli` — Bun single-binary installer with the Helm chart embedded.
-- `apps/docs` — Nuxt 4 + Nuxt Content public docs (not deployed in-cluster).
+- `apps/docs` — Next.js + MDX public docs, static export served by nginx as a kubwave service (not part of the chart).
 - `packages/*` — source-only shared packages: `@kubwave/{api-client,crypto,db,kube,templates}`.
 - `infra/helm/kubwave` — the Helm chart, single source of truth for what lands in a cluster.
 
@@ -63,7 +63,7 @@ cd apps/backend && bun test -t "name substring"         # filter by test name
 - **Auth tokens:** access tokens live in memory (console) only; refresh tokens are opaque HttpOnly cookies. Never persist access tokens in cookies/localStorage. SSR refresh is in `apps/console/server/middleware/1.auth.ts`.
 - **Controllers stay thin;** services own business logic and Drizzle queries. No repository abstractions over Drizzle. Shared error shape `{ error: string, details?: unknown }`; backend errors extend `ApiError` (`apps/backend/src/shared/errors/api-error.ts`).
 - **Comments minimal** — only when the _why_ is non-obvious; no what-narration, no commented-out code, no banner dividers.
-- **Do not resurrect** the old Next.js console, `packages/core`/`@kubwave/core`, or the deleted `infra/k8s/` Kustomize tree.
+- **Do not resurrect** the old Next.js console, `packages/core`/`@kubwave/core`, or the deleted `infra/k8s/` Kustomize tree. (`apps/docs` being Next.js is intentional.)
 
 ## Release
 

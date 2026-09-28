@@ -1,8 +1,8 @@
-# Nuxt
-.nuxt
-.output
-.data
-dist
+# Next.js
+.next
+out
+next-env.d.ts
+*.tsbuildinfo
 
 # Node
 node_modules

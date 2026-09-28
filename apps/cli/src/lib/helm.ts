@@ -267,7 +267,7 @@ export function buildProductionValues(input: ProductionValuesInput): Record<stri
 			: {}),
 		adminer: { enabled: false },
 		mailcrab: { enabled: false },
-		// docs is dev-only (prod ships static to Cloudflare); the chart defaults it on, so prod MUST disable it or ErrImageNeverPulls hangs --wait.
+		// docs is dev-only (prod docs run as a kubwave service); the chart defaults it on, so prod MUST disable it or ErrImageNeverPulls hangs --wait.
 		docs: { enabled: false },
 		// CLI writes the platform-marker ConfigMap itself (version-marker.ts); chart must not render it too.
 		platformMarker: { create: false },

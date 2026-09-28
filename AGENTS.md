@@ -10,9 +10,9 @@
 
 The API and worker share the `apps/backend` codebase and image, but they stay separate Kubernetes Deployments with separate commands, ServiceAccounts, and RBAC. Do not collapse them into one runtime process.
 
-The console is Nuxt 4/Vue 3. Do not reintroduce the old Next.js shape, and do not resurrect the deleted `infra/k8s/` Kustomize tree.
+The console is Nuxt 4/Vue 3. Do not reintroduce the old Next.js console shape, and do not resurrect the deleted `infra/k8s/` Kustomize tree. The public docs (`apps/docs`) are a separate Next.js app.
 
-`design/` (console) and `design-docs/` (docs) are standalone Next.js design prototypes (own lockfiles, not workspaces), not the console or `apps/docs`.
+`design/` is a standalone Next.js design prototype of the console (own lockfile, not a workspace), not the console.
 
 ## Directory Layout
 
@@ -21,7 +21,7 @@ apps/
   backend     - NestJS API + worker entrypoints.
   console     - Nuxt 4 (Vue 3, Nitro SSR) + shadcn-vue + TanStack Vue Query.
   cli         - Bun single-binary installer (ships embedded Helm chart).
-  docs        - Nuxt 4 + Nuxt Content public docs (not deployed in-cluster).
+  docs        - Next.js + MDX public docs, static export (runs as a kubwave service, not part of the chart).
   build-tools - source-build helper image inputs.
 packages/
   api-client  - @kubwave/api-client generated from backend OpenAPI.
@@ -227,7 +227,7 @@ Keep this flow intact. Storing access tokens in cookies, localStorage, or persis
 
 ## Docs Site
 
-`apps/docs` is Nuxt 4 + Nuxt Content. Content lives in `content/**`. Site config is in `nuxt.config.ts`. The docs site is English-only for v1 and is deployed separately from the in-cluster platform.
+`apps/docs` is Next.js (App Router, `output: 'export'`) with MDX via `@next/mdx`, shadcn/ui, and Tailwind v4. Pages live in `content/**/*.mdx`, each exporting `metadata = { title, description }`; the URL is the file path. The sidebar and prev/next order are `lib/nav.ts`, and `bun run --filter=docs test` fails when a page is missing from it. MDX components (`Callout`, `Tabs`/`Tab`, `Steps`, `Cards`/`Card`, `LinkCard`, `InstallCommand`) are registered in `mdx-components.tsx`. Search reads a static `/search.json` built from the MDX sources (`lib/search-index.ts`). `NEXT_PUBLIC_DOCS_CHANNEL` (`latest`/`next`) is baked in at build time and drives the version switcher and install command. The Dockerfile `prod` target (last stage) serves `out/` with nginx on `:8080`. `.github/workflows/docs-image.yml` pushes it as `ghcr.io/kubwave/docs:latest` (stable) or `:next` (prerelease), called by `release.yml` or run by hand to republish without a release; the `kubwave-docs` project on the kubwave cluster runs those tags with image watch (docs.kubwave.com, docs-next.kubwave.com) plus a `preview` environment that builds `main` with PR previews. The chart only runs `next dev` for local dev. The docs site is English-only for v1.
 
 ## Release Model
 
