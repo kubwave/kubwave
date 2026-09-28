@@ -2,7 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { randomBytes } from 'node:crypto';
 import { decryptSecret } from '@kubwave/crypto';
 import { dockerImageConfigSchema } from '~/modules/services/services.dto';
-import { resolveBasicAuth } from '~/modules/services/services.config';
+import type { ServiceConfig } from '@kubwave/db';
+import { mergeConfigPatch, resolveBasicAuth } from '~/modules/services/services.config';
 
 process.env.SECRETS_KEY = randomBytes(32).toString('base64url');
 
@@ -66,5 +67,16 @@ describe('resolveBasicAuth publicPaths', () => {
 		expect(resolveBasicAuth({ enabled: false }, undefined)).toBeUndefined();
 		const stored = resolveBasicAuth({ enabled: true, username: 'u', password: 'p' }, undefined);
 		expect(stored).toEqual({ username: 'u', password: stored!.password });
+	});
+});
+
+describe('mergeConfigPatch basicAuth', () => {
+	test('keeps stored public paths when the patch omits basic auth', () => {
+		const basicAuth = resolveBasicAuth({ enabled: true, username: 'u', password: 'p', publicPaths: ['/health'] }, undefined)!;
+		const stored = { image: 'nginx', tag: '1', containerPort: 80, env: [], domains: [], volumes: [], basicAuth } as unknown as ServiceConfig;
+		const merged = mergeConfigPatch(stored, { env: [{ key: 'A', value: '1' }] });
+		const parsed = dockerImageConfigSchema.parse(merged);
+		expect(parsed.basicAuth).toEqual({ enabled: true, username: 'u', password: null, publicPaths: ['/health'] });
+		expect(resolveBasicAuth(parsed.basicAuth, basicAuth)).toEqual(basicAuth);
 	});
 });
