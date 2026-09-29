@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import * as k8s from '@kubernetes/client-node';
+import { and, inArray } from 'drizzle-orm';
+import { db, deployments } from '@kubwave/db';
 import type { V1Deployment } from '@kubernetes/client-node';
 import {
 	LABEL_MANAGED_BY,
@@ -10,10 +12,13 @@ import {
 	getKubeConfig,
 	isNotFound,
 	resourceName,
-	unknownRuntime
+	unknownRuntime,
+	withActiveDeployment
 } from '@kubwave/kube';
 import type { ServiceRuntime } from '@kubwave/kube';
 import { ServicesService } from '../services.service.js';
+
+const ACTIVE_DEPLOYMENT_STATUSES = ['pending', 'deploying', 'canceling'];
 
 @Injectable()
 export class ServiceStatusService {
@@ -24,7 +29,8 @@ export class ServiceStatusService {
 
 		try {
 			const deployment = await this.readDeploymentOrNull(this.appsApi(), environmentNamespace(service.environmentId), resourceName(serviceId));
-			return deploymentRuntimeStatus(deployment);
+			const runtime = deploymentRuntimeStatus(deployment);
+			return withActiveDeployment(runtime, (await this.activeDeploymentServiceIds([serviceId])).has(serviceId));
 		} catch {
 			return unknownRuntime();
 		}
@@ -50,10 +56,22 @@ export class ServiceStatusService {
 			if (!isNotFound(err)) readFailed = true;
 		}
 
+		const active = await this.activeDeploymentServiceIds(serviceList.map(service => service.id));
 		return serviceList.map(service => ({
 			serviceId: service.id,
-			runtime: readFailed ? unknownRuntime() : deploymentRuntimeStatus(byServiceId.get(service.id) ?? null)
+			runtime: readFailed
+				? unknownRuntime()
+				: withActiveDeployment(deploymentRuntimeStatus(byServiceId.get(service.id) ?? null), active.has(service.id))
 		}));
+	}
+
+	private async activeDeploymentServiceIds(serviceIds: string[]): Promise<Set<string>> {
+		if (serviceIds.length === 0) return new Set();
+		const rows = await db
+			.selectDistinct({ serviceId: deployments.serviceId })
+			.from(deployments)
+			.where(and(inArray(deployments.serviceId, serviceIds), inArray(deployments.status, ACTIVE_DEPLOYMENT_STATUSES)));
+		return new Set(rows.map(row => row.serviceId));
 	}
 
 	private appsApi(): k8s.AppsV1Api {

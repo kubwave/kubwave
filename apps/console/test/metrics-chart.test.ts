@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { pollIntervalForRange, fractionalX, seriesDomain, deployMarkers, nearestIndex, deriveRateSeries } from '../app/utils/metrics-chart';
+import { pollIntervalForRange, fractionalX, seriesDomain, deployMarkers, nearestIndex, deriveRateSeries } from '../lib/metrics-chart';
 
 describe('pollIntervalForRange', () => {
 	test('refreshes 1h often, 24h slowly, and never auto-refreshes 7d', () => {

@@ -1,0 +1,67 @@
+# Builds the docs site and pushes ghcr.io/kubwave/docs:<channel> (plus :<version> from a release).
+# The kubwave-docs services on the kubwave cluster watch the channel tags and redeploy on push:
+# :latest serves docs.kubwave.com, :next serves docs-next.kubwave.com.
+# release.yml calls this on every release. Run it by hand (on the matching ref) to republish the
+# docs without a release.
+name: Docs image
+
+on:
+  workflow_call:
+    inputs:
+      channel:
+        required: true
+        type: string
+      version:
+        required: false
+        type: string
+        default: ''
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Docs channel to publish
+        required: true
+        type: choice
+        options:
+          - latest
+          - next
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/kubwave/docs
+
+jobs:
+  publish:
+    name: Publish docs image
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_BUILD_RECORD_UPLOAD: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to ghcr.io
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push docs image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/docs/Dockerfile
+          target: prod
+          push: true
+          build-args: NEXT_PUBLIC_DOCS_CHANNEL=${{ inputs.channel }}
+          tags: |
+            ${{ env.IMAGE }}:${{ inputs.channel }}
+            ${{ inputs.version && format('{0}:{1}', env.IMAGE, inputs.version) || '' }}
+          cache-from: type=gha,scope=docs
+          cache-to: type=gha,mode=max,scope=docs

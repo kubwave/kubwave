@@ -5,21 +5,21 @@
 `kubwave` is a self-hosted PaaS control plane. It is a Bun-managed Turborepo monorepo with three runtime workloads:
 
 - backend API - NestJS on Node 24, exposed under `/api`
-- console - Nuxt 4/Vue 3/Nitro SSR
+- console - Next.js 16 (App Router, React 19)
 - backend worker - NestJS application context, no public API
 
 The API and worker share the `apps/backend` codebase and image, but they stay separate Kubernetes Deployments with separate commands, ServiceAccounts, and RBAC. Do not collapse them into one runtime process.
 
-The console is Nuxt 4/Vue 3. Do not reintroduce the old Next.js shape, and do not resurrect the deleted `infra/k8s/` Kustomize tree.
+The console is Next.js 16 with React 19. Do not reintroduce the Nuxt console, and do not resurrect the deleted `infra/k8s/` Kustomize tree. The public docs (`apps/docs`) are a separate Next.js app.
 
 ## Directory Layout
 
 ```text
 apps/
   backend     - NestJS API + worker entrypoints.
-  console     - Nuxt 4 (Vue 3, Nitro SSR) + shadcn-vue + TanStack Vue Query.
+  console     - Next.js 16 (App Router, standalone server) + shadcn/ui + TanStack Query/Form.
   cli         - Bun single-binary installer (ships embedded Helm chart).
-  docs        - Nuxt 4 + Nuxt Content public docs (not deployed in-cluster).
+  docs        - Next.js + MDX public docs, static export (runs as a kubwave service, not part of the chart).
   build-tools - source-build helper image inputs.
 packages/
   api-client  - @kubwave/api-client generated from backend OpenAPI.
@@ -36,7 +36,7 @@ There is no `packages/core` or `@kubwave/core`. Backend domain errors extend `Ap
 
 - **Backend API** - `apps/backend/src/main-api.ts`. NestJS + Fastify adapter. Auth authority: mints JWT access tokens and opaque refresh tokens. Requires `JWT_SECRET`. Routes are served under `/api`; OpenAPI is published at `/api/openapi.json`, Swagger UI at `/api/docs`. Runs DB migrations on boot. Kubernetes RBAC is read-only.
 
-- **Console** - `apps/console`. Nuxt 4, TanStack Vue Query v5, shadcn-vue (Reka UI) on Tailwind v4. Consumes the API through `@kubwave/api-client`. Browser traffic uses same-origin `/api`; SSR uses `INTERNAL_API_URL` plus the access token from Nitro middleware.
+- **Console** - `apps/console`. Next.js 16 App Router (`output: 'standalone'`), React 19, TanStack Query v5 and TanStack Form, shadcn/ui (Radix) on Tailwind v4. Consumes the API through `@kubwave/api-client`. Browser traffic uses same-origin `/api`; server rendering uses `INTERNAL_API_URL` plus the access token handed over by `proxy.ts`.
 
 - **Backend worker** - `apps/backend/src/main-worker.ts`. Nest application context plus a small health server on `:8080`. It runs scheduler jobs, deployment reconcile, build logs, self-update lifecycle, Git pollers, PR previews, registry maintenance, and platform reconcile. It does not require `JWT_SECRET`. Kubernetes RBAC is read-write.
 
@@ -175,20 +175,18 @@ Do not reintroduce type imports from backend internals in the Console. Domain vi
 
 The backend API is the auth authority. It issues short-lived JWT access tokens (`Authorization: Bearer`) and opaque refresh tokens stored as HttpOnly cookies. Refresh rotation lives in the backend auth module.
 
-Console keeps access tokens in memory only. SSR refresh happens in `apps/console/server/middleware/1.auth.ts`: Nitro exchanges the refresh cookie for an access token, relays any rotated cookie, and stores the access token on `event.context.accessToken` for server rendering.
+Console keeps access tokens in memory only. SSR refresh happens in `apps/console/proxy.ts` (Next.js proxy, Node runtime): on document requests only, it exchanges the refresh cookie for an access token, relays any rotated cookie, decides redirects (login, setup) via `lib/auth/route-policy.ts`, and forwards the access token to server rendering in the internal `x-kubwave-access-token` request header (any client-sent copy is stripped). RSC and prefetch requests skip the exchange so parallel navigations never race a rotation. The root layout passes the token to `SessionProvider`, which seeds the in-memory store in the browser; later refreshes are single-flight in `lib/auth/token-store.ts`.
 
 Keep this flow intact. Storing access tokens in cookies, localStorage, or persistent browser storage is not acceptable.
 
 ## Console Conventions
 
-- Nuxt 4 layout with `srcDir: app/`.
-- Pages live in `app/pages`.
-- Domain components live in `app/components/<domain>`.
-- UI uses shadcn-vue primitives in `app/components/ui` (Reka UI under the hood); icons from `lucide-vue-next`; forms via `vee-validate` + zod. Design tokens live in `app/assets/css/main.css`. Do not reintroduce Nuxt UI.
-- Query keys live in `app/utils/query-keys.ts`.
-- `app/utils/api-client.ts` and `app/composables/use-api.ts` wrap `@kubwave/api-client`.
-- Types in `app/utils/types.ts` should derive from `@kubwave/api-client`.
-- `server/middleware/1.auth.ts` is the SSR auth proxy.
+- Routes live in `app/` (App Router). Pages are thin server components: they await `params`/`searchParams`, optionally seed React Query with `serverPrefetch()` (`lib/api/server-prefetch.ts`) inside a `HydrationBoundary`, and render one feature component.
+- Feature code lives in `features/<domain>` (client components, hooks, pure `model.ts` logic). Shared building blocks live in `components/`; shadcn/ui primitives in `components/ui` (Radix via `radix-ui`), icons from `lucide-react`, forms via TanStack Form + zod. Design tokens live in `app/globals.css`.
+- Query keys live in `lib/api/query-keys.ts`. `getBrowserApi()` (`lib/api/browser-api.ts`) and `getServerApi()` (`lib/api/server-api.ts`) wrap `@kubwave/api-client`.
+- Types in `lib/api/types.ts` derive from `@kubwave/api-client`.
+- Pure logic is tested first with `bun test` under `apps/console/test`.
+- `proxy.ts` is the SSR auth proxy; in dev, `next.config.ts` rewrites `/api` to `INTERNAL_API_URL`.
 
 ## Packages
 
@@ -202,7 +200,7 @@ Keep this flow intact. Storing access tokens in cookies, localStorage, or persis
 
 **New API endpoint** - add a controller method under `apps/backend/src/modules/<domain>`, define DTO/schema metadata, guard it as needed, delegate to a service, and add a stable `operationId`. If the endpoint is consumed by TypeScript clients, regenerate `@kubwave/api-client`.
 
-**New console feature/page** - add `app/pages/.../*.vue` or a domain component, use Vue Query with `queryKeys`, call the generated API client through `useApi()`, and derive response types from `@kubwave/api-client`.
+**New console feature/page** - add `app/(app)/.../page.tsx` as a thin server component and put the UI in `features/<domain>`. Use React Query with `queryKeys`, call the generated API client through `getBrowserApi()`, and derive response types from `@kubwave/api-client`.
 
 **New service type/deployer** - extend `ServiceType` and config shapes in `@kubwave/db`, implement the deployer under `apps/backend/src/modules/worker/jobs/deployments/deployers`, register it in the deployer registry, and add the Console create/settings UI.
 
@@ -218,14 +216,15 @@ Keep this flow intact. Storing access tokens in cookies, localStorage, or persis
 
 - TypeScript 6.0.3, Bun 1.3.14, Node >= 24.
 - `noUncheckedIndexedAccess` and `verbatimModuleSyntax` are on.
-- Console alias: `~/*` points to `apps/console/app/*`.
+- Next.js apps (`apps/console`, `apps/docs`) carry their own `AGENTS.md`/`CLAUDE.md` with the managed `nextjs-agent-rules` block, which `next dev` keeps current: read the version-matched docs in `apps/<app>/node_modules/next/dist/docs/` before writing Next.js code. The `next-devtools` MCP server in `.mcp.json` reads compilation issues, routes and logs from a running `next dev`.
+- Console alias: `@/*` points to `apps/console/*`. `@kubwave/api-client` uses extensionless relative imports so Turbopack can resolve it.
 - CLI needs pre-build stubs: `bun run --filter=cli _prepare-embedded`.
 - Dockerfiles for `backend`, `console`, `docs`, and `cli` have `dev` and `prod` targets.
 - Tilt live updates sync source; package/config changes trigger rebuilds.
 
 ## Docs Site
 
-`apps/docs` is Nuxt 4 + Nuxt Content. Content lives in `content/**`. Site config is in `nuxt.config.ts`. The docs site is English-only for v1 and is deployed separately from the in-cluster platform.
+`apps/docs` is Next.js (App Router, `output: 'export'`) with MDX via `@next/mdx`, shadcn/ui, and Tailwind v4. Pages live in `content/**/*.mdx`, each exporting `metadata = { title, description }`; the URL is the file path. The sidebar and prev/next order are `lib/nav.ts`, and `bun run --filter=docs test` fails when a page is missing from it. MDX components (`Callout`, `Tabs`/`Tab`, `Steps`, `Cards`/`Card`, `LinkCard`, `InstallCommand`) are registered in `mdx-components.tsx`. Search reads a static `/search.json` built from the MDX sources (`lib/search-index.ts`). `NEXT_PUBLIC_DOCS_CHANNEL` (`latest`/`next`) is baked in at build time and drives the version switcher and install command. The Dockerfile `prod` target (last stage) serves `out/` with nginx on `:8080`. `.github/workflows/docs-image.yml` pushes it as `ghcr.io/kubwave/docs:latest` (stable) or `:next` (prerelease), called by `release.yml` or run by hand to republish without a release; the `kubwave-docs` project on the kubwave cluster runs those tags with image watch (docs.kubwave.com, docs-next.kubwave.com) plus a `preview` environment that builds `main` with PR previews. The chart only runs `next dev` for local dev. The docs site is English-only for v1.
 
 ## Release Model
 

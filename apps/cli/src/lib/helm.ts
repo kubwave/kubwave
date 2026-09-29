@@ -213,7 +213,7 @@ export function buildProductionValues(input: ProductionValuesInput): Record<stri
 		// console — pure API consumer (INTERNAL_API_URL = chart default). No Secret, no k8s RBAC.
 		console: {
 			image: image('console'),
-			// Prod runs the standalone Nitro build; don't inherit the chart's higher dev-server memory, which makes small preview nodes look artificially full.
+			// Prod runs the standalone Next.js server; don't inherit the chart's higher dev-server memory, which makes small preview nodes look artificially full.
 			resources: productionConsoleResources,
 			...nodeSelector
 		},
@@ -267,7 +267,7 @@ export function buildProductionValues(input: ProductionValuesInput): Record<stri
 			: {}),
 		adminer: { enabled: false },
 		mailcrab: { enabled: false },
-		// docs is dev-only (prod ships static to Cloudflare); the chart defaults it on, so prod MUST disable it or ErrImageNeverPulls hangs --wait.
+		// docs is dev-only (prod docs run as a kubwave service); the chart defaults it on, so prod MUST disable it or ErrImageNeverPulls hangs --wait.
 		docs: { enabled: false },
 		// CLI writes the platform-marker ConfigMap itself (version-marker.ts); chart must not render it too.
 		platformMarker: { create: false },

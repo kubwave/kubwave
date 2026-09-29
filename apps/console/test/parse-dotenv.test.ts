@@ -1,5 +1,22 @@
 import { describe, expect, test } from 'bun:test';
-import { parseDotenv } from '../app/utils/parse-dotenv';
+import { formatDotenv, parseDotenv } from '../lib/parse-dotenv';
+
+describe('formatDotenv', () => {
+	test('round-trips values that need quoting', () => {
+		const env = [
+			{ key: 'PLAIN', value: 'hello' },
+			{ key: 'EMPTY', value: '' },
+			{ key: 'HASH', value: 'a #b' },
+			{ key: 'MULTI', value: 'line1\nline2' },
+			{ key: 'QUOTES', value: `say "hi" it's` },
+			{ key: 'PADDED', value: '  x  ' },
+			{ key: 'SLASH', value: 'C:\\temp\\n' },
+			{ key: 'REF', value: '${{services.db.host}}' }
+		];
+		expect(parseDotenv(formatDotenv(env))).toEqual(env);
+		expect(formatDotenv([{ key: 'PLAIN', value: 'hello' }])).toBe('PLAIN=hello');
+	});
+});
 
 describe('parseDotenv', () => {
 	test('parses plain, exported, and commented lines', () => {

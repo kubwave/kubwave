@@ -15,9 +15,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Three runtime workloads plus shared packages. The single most important structural fact: **the backend API and the backend worker share `apps/backend` code and image but run as separate Kubernetes Deployments** selected by `BACKEND_ENTRYPOINT` (`api` vs `worker`). Never collapse them into one process.
 
 - `apps/backend` — NestJS on Node 24. `main-api.ts` is the REST API + auth authority (mints JWTs, runs DB migrations on boot, read-only k8s RBAC, served under `/api`). `main-worker.ts` is a Nest app context running reconcilers/schedulers/build jobs (read-write k8s RBAC, no `JWT_SECRET`, health server on `:8080`).
-- `apps/console` — Nuxt 4 / Vue 3 / Nitro SSR, shadcn-vue (Reka UI) on Tailwind v4, TanStack Vue Query. Talks to the API only through `@kubwave/api-client`. Browser uses same-origin `/api`; SSR uses `INTERNAL_API_URL`.
+- `apps/console` — Next.js 16 App Router / React 19 (standalone server), shadcn/ui (Radix) on Tailwind v4, TanStack Query + Form. Talks to the API only through `@kubwave/api-client`. Browser uses same-origin `/api`; SSR uses `INTERNAL_API_URL`.
 - `apps/cli` — Bun single-binary installer with the Helm chart embedded.
-- `apps/docs` — Nuxt 4 + Nuxt Content public docs (not deployed in-cluster).
+- `apps/docs` — Next.js + MDX public docs, static export served by nginx as a kubwave service (not part of the chart).
 - `packages/*` — source-only shared packages: `@kubwave/{api-client,crypto,db,kube,templates}`.
 - `infra/helm/kubwave` — the Helm chart, single source of truth for what lands in a cluster.
 
@@ -60,10 +60,10 @@ cd apps/backend && bun test -t "name substring"         # filter by test name
 - **Helm values are mirrored in three places** — keep them in sync and update the CLI Helm tests when they change: `buildValues()`/`buildProductionValues()` in `apps/cli/src/lib/helm.ts`, `buildUpgradeValues()` in `apps/cli/src/lib/upgrade-plan.ts`, and `infra/helm/kubwave/templates/update/job-template.yaml`.
 - **Don't touch the cluster while Tilt runs.** No `kubectl apply` / `helm upgrade` during `bun run dev` — Tilt owns rendered output and image-tag rewriting.
 - **CLI needs stubs before building:** `bun run --filter=cli _prepare-embedded`.
-- **Auth tokens:** access tokens live in memory (console) only; refresh tokens are opaque HttpOnly cookies. Never persist access tokens in cookies/localStorage. SSR refresh is in `apps/console/server/middleware/1.auth.ts`.
+- **Auth tokens:** access tokens live in memory (console) only; refresh tokens are opaque HttpOnly cookies. Never persist access tokens in cookies/localStorage. SSR refresh is in `apps/console/proxy.ts`, which hands the token to server rendering via an internal request header.
 - **Controllers stay thin;** services own business logic and Drizzle queries. No repository abstractions over Drizzle. Shared error shape `{ error: string, details?: unknown }`; backend errors extend `ApiError` (`apps/backend/src/shared/errors/api-error.ts`).
 - **Comments minimal** — only when the _why_ is non-obvious; no what-narration, no commented-out code, no banner dividers.
-- **Do not resurrect** the old Next.js console, `packages/core`/`@kubwave/core`, or the deleted `infra/k8s/` Kustomize tree.
+- **Do not resurrect** the Nuxt console, `packages/core`/`@kubwave/core`, or the deleted `infra/k8s/` Kustomize tree.
 
 ## Release
 

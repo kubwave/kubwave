@@ -1,8 +1,8 @@
-import { createClient, type Client } from '../generated/client/index.js';
-import { createResourceClient, type KubwaveRawClient, type KubwaveResourceClient } from '../generated/resource-client.gen.js';
-import * as sdk from '../generated/sdk.gen.js';
-export { apiData, apiResult, normalizeApiError } from './result.js';
-export type { ApiData, ApiResult, KubwaveApiErrorBody, KubwaveApiResult, NormalizeApiData } from './result.js';
+import { createClient, type Client } from '../generated/client/index';
+import { createResourceClient, type KubwaveRawClient, type KubwaveResourceClient } from '../generated/resource-client.gen';
+import * as sdk from '../generated/sdk.gen';
+export { apiData, apiResult, normalizeApiError } from './result';
+export type { ApiData, ApiResult, KubwaveApiErrorBody, KubwaveApiResult, NormalizeApiData } from './result';
 
 export interface KubwaveClientOptions {
 	baseUrl: string;

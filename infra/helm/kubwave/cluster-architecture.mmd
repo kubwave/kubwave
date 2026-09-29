@@ -23,7 +23,7 @@ flowchart TB
     platformIngress["Ingress: console<br/>host: ingress.host<br/>/api -> Service api<br/>/ -> Service console"]
 
     consoleSvc["Service: console<br/>ClusterIP :3000"]
-    consoleDep["Deployment: console<br/>Nuxt UI<br/>no DB secret<br/>no Kubernetes RBAC"]
+    consoleDep["Deployment: console<br/>Next.js UI<br/>no DB secret<br/>no Kubernetes RBAC"]
 
     apiSvc["Service: api<br/>ClusterIP :3001"]
     apiDep["Deployment: api<br/>NestJS backend API + auth<br/>runs DB migrations on boot"]

@@ -31,7 +31,7 @@ docker_build(
     ],
 )
 
-# ---- console (Nuxt) — Vite HMR over synced app/server/public files ----
+# ---- console (Next.js) — next dev / HMR over synced source files ----
 docker_build(
     'console',
     context='.',
@@ -39,15 +39,18 @@ docker_build(
     target='dev',
     only=_only,
     live_update=[
-        fall_back_on(_deps + ['./apps/console/tsconfig.json', './apps/console/nuxt.config.ts', './apps/console/Dockerfile']),
+        fall_back_on(_deps + ['./apps/console/tsconfig.json', './apps/console/next.config.ts', './apps/console/postcss.config.mjs', './apps/console/Dockerfile']),
         sync('./apps/console/app', '/app/apps/console/app'),
-        sync('./apps/console/server', '/app/apps/console/server'),
+        sync('./apps/console/components', '/app/apps/console/components'),
+        sync('./apps/console/features', '/app/apps/console/features'),
+        sync('./apps/console/lib', '/app/apps/console/lib'),
+        sync('./apps/console/proxy.ts', '/app/apps/console/proxy.ts'),
         sync('./apps/console/public', '/app/apps/console/public'),
     ],
 )
 
-# ---- docs (Nuxt Content) — nuxt dev / HMR over synced app + content files ----
-# Dev-only workload: prod ships the static build to Cloudflare (apps/docs/wrangler.jsonc),
+# ---- docs (Next.js + MDX) — next dev / HMR over synced app + content files ----
+# Dev-only workload: prod runs the static build (Dockerfile `prod` target) as a kubwave service,
 # so the chart gates it behind docs.enabled (true in dev values, false in prod).
 docker_build(
     'docs',
@@ -56,8 +59,11 @@ docker_build(
     target='dev',
     only=_only,
     live_update=[
-        fall_back_on(_deps + ['./apps/docs/package.json', './apps/docs/nuxt.config.ts', './apps/docs/content.config.ts', './apps/docs/tsconfig.json', './apps/docs/Dockerfile']),
+        fall_back_on(_deps + ['./apps/docs/package.json', './apps/docs/next.config.ts', './apps/docs/tsconfig.json', './apps/docs/Dockerfile']),
         sync('./apps/docs/app', '/app/apps/docs/app'),
+        sync('./apps/docs/components', '/app/apps/docs/components'),
+        sync('./apps/docs/lib', '/app/apps/docs/lib'),
+        sync('./apps/docs/mdx-components.tsx', '/app/apps/docs/mdx-components.tsx'),
         sync('./apps/docs/content', '/app/apps/docs/content'),
         sync('./apps/docs/public', '/app/apps/docs/public'),
     ],

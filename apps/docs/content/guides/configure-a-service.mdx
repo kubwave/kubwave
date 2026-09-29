@@ -1,0 +1,170 @@
+export const metadata = {
+	title: 'Configure a service',
+	description:
+		'Environment variables, secrets, custom domains, resources, autoscaling, health checks, and volumes — the runtime settings every service shares.'
+};
+
+However a service is built — image, Dockerfile, or Git repo — it shares the same runtime settings.
+You configure them in the console, and every change produces a new [deployment](/guides/deploy-a-service/#deployments-and-rollback)
+that the worker rolls out.
+
+## Environment variables
+
+Plain key/value pairs injected into the container's environment. Use them for non-sensitive
+configuration — feature flags, service URLs, log levels.
+
+### Service references
+
+Instead of hard-coding another service's address, reference it by name with `${{services.<name>.<property>}}`:
+
+```bash
+NUXT_PUBLIC_API_BASE=${{services.api.url}}/api/v1
+DATABASE_URL=postgres://app:<password>@${{services.postgres.host}}:${{services.postgres.port}}/app
+```
+
+In the console, type `${{` in a variable, secret, or config file to get suggestions for every service
+and property in the environment.
+
+The worker resolves references on **every deploy**, separately for each environment. The same
+configuration therefore works in the base environment and in its [PR previews](#pr-previews), and a
+changed domain reaches the services that use it. References work in environment variables,
+[secrets](#secrets), and config files.
+
+| Property      | Resolves to                                                                      |
+| ------------- | -------------------------------------------------------------------------------- |
+| `host`        | Internal hostname `svc-<id>`, reachable only inside the environment              |
+| `port`        | Container port (for databases, the engine port)                                  |
+| `internalUrl` | `http://svc-<id>:<port>`                                                         |
+| `domain`      | Public hostname: the first custom domain, otherwise the generated default domain |
+| `url`         | `https://` + `domain` (`http://` when the platform issues no TLS certificates)   |
+
+- Only services in the same environment can be referenced, by name. Secret values of other services
+  can't be referenced.
+- Saving a reference to an unknown service or property is rejected. If a reference can't be resolved
+  when deploying (the service was deleted, has no container port, or `domain`/`url` is used for a
+  service without a public domain, e.g. because the platform default domain is off), the deployment
+  fails and its log names the reference and the reason.
+- Renaming a service updates the references to it in the same environment.
+- Only `${{services.…}}` is special. Other `${{…}}` text, such as GitHub Actions syntax in a config
+  file, is left as is.
+
+<Callout type="note">
+
+A service picks up new values on its own next deploy. After changing a service's domain, redeploy the
+services that reference it.
+
+</Callout>
+
+## Secrets
+
+Sensitive values — API keys, database passwords — kept separate from plain environment variables.
+They're **encrypted at rest** (AES-256-GCM) and injected as a Kubernetes Secret, decrypted only by
+the worker at rollout. Once saved, a secret's value is never shown back to you; you can replace it or
+remove it, but not read it.
+
+## Custom domains
+
+Attach one or more hostnames to a service, each pointing at a container port. The platform creates a
+Traefik ingress route and **cert-manager** issues a Let's Encrypt certificate automatically.
+
+<Callout type="tip">
+
+Point an `A` record for the hostname at your cluster's load-balancer IP first — the certificate is issued once DNS resolves.
+
+</Callout>
+
+## Public TCP ports
+
+Expose a raw TCP container port on the platform's **public IP** — no HTTP, no hostname, no TLS
+termination. The platform allocates a public port from its TCP pool and routes it straight to your
+container via a Traefik TCP route. This is what you reach for when a protocol client needs direct
+access, e.g. pushing [Supabase](/templates/) database migrations from your machine:
+
+```bash
+supabase db push --db-url "postgresql://postgres:<password>@<public-ip>:<public-port>/postgres"
+```
+
+<Callout type="caution">
+
+An exposed port is reachable by **anyone** without extra authentication — open it only as long as you
+need it (run the migration, then remove the exposure again). The pool is finite (default 20 ports),
+so free ports you no longer use.
+
+</Callout>
+
+For managed databases the connection card shows the ready-made external connection string once the
+engine port is exposed.
+
+### Configure the TCP pool
+
+Platform administrators set the pool in **Admin → Settings → Network**. They can enable or disable
+it and choose the first port and pool size (up to 100 ports). Saving starts an infrastructure
+reconciliation: Traefik, its LoadBalancer and the platform workloads receive the complete new port
+set. This can take a few minutes.
+
+The change is rejected when an existing public service port would fall outside the new range. Disable
+the pool only after removing every service exposure; kubwave never silently closes or renumbers an
+endpoint. Adding a port range alone does not expose any service — each service must opt in above.
+
+## Resources
+
+Set CPU and memory **requests** (what the scheduler reserves) and **limits** (the hard ceiling), e.g.
+`250m` CPU / `256Mi` memory. Requests also matter for autoscaling — see below.
+
+## Autoscaling
+
+Opt a service into a Horizontal Pod Autoscaler: set **min** and **max** replicas and a target **CPU**
+or **memory** utilization, and the platform scales replicas between those bounds.
+
+<Callout type="caution">
+
+Autoscaling needs a few things to work: the matching **resource request** must be set (the HPA measures utilization against it), your cluster needs
+**metrics-server**, and the service must not have a persistent volume — a volume attaches to a single instance and can't be shared across replicas.
+
+</Callout>
+
+## Health checks
+
+Add an HTTP or TCP **probe** so Kubernetes only sends traffic to healthy instances and restarts ones
+that wedge. An HTTP check needs a path; both need a port to probe (either an explicit one or the
+service's container port).
+
+## Volumes
+
+Attach **persistent storage** mounted at a path in the container. A volume is a single ReadWriteOnce
+PersistentVolumeClaim, so it belongs to one instance — services that need a volume scale vertically
+(more CPU/RAM/disk), not by adding replicas.
+
+## Metrics
+
+Each service has live CPU, memory, network, and volume metrics out of the box, read from the kubelet.
+Point the platform at Prometheus if you want historical metrics beyond the live view.
+
+## PR previews
+
+With PR previews enabled, each open pull request gets a copy of the base environment. Custom domains
+don't carry over. Every service that is public in the base (custom domain or default domain) is
+served on its own generated **default domain** in the preview. Internal services stay internal.
+
+[Service references](#service-references) resolve inside the preview environment, so they point at the
+preview's own services and URLs without any rewriting. Prefer them over literal hosts.
+
+For literal values, the platform rewrites the base's addresses in environment variables, secrets, and
+config files when it creates the preview:
+
+- internal service hosts (`svc-<id>`) and the environment namespace point at the preview's services,
+  so a `DATABASE_URL` reaches the preview database, not the base one;
+- the base's public hosts (custom and default domains) become the preview's default-domain hosts,
+  e.g. `https://app.example.com` → `https://web-1a2b3c4d.<default-domain>`.
+
+Only exact host matches are rewritten: `api.example.com` is not touched when only `example.com` is a
+domain of the base, and email addresses like `noreply@example.com` stay as they are. Values are
+rewritten once, when the preview is created. Preview databases start empty.
+
+<Callout type="caution">
+
+Previews need the platform default domain (**Admin → Settings → App domain**). When it is off, public services
+get no preview URL: literal values keep pointing at the base hosts (the preview deployment log shows a warning),
+and deployments that use `domain` or `url` references of those services fail.
+
+</Callout>

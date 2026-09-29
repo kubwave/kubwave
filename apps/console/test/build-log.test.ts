@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { buildLogLines } from '../app/utils/build-log';
+import { buildLogLines } from '../lib/build-log';
 
 const ESC = String.fromCharCode(27);
 

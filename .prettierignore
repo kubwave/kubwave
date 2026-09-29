@@ -1,7 +1,8 @@
 node_modules
 plans
-.nuxt
-.output
+.next
+out
+next-env.d.ts
 .turbo
 .astro
 dist
@@ -15,6 +16,9 @@ coverage
 # Helm chart templates use Go template syntax — not valid YAML to Prettier.
 # values*.yaml and Chart.yaml stay formatted; only templates/ is ignored.
 infra/helm/kubwave/templates/
+
+# Written by the `skills` CLI (`bunx skills add|update`); keep its format so updates stay clean diffs.
+skills-lock.json
 
 # Generated artifact — `build:catalog` is the sole authority over its format
 # (enforced by the check:catalog CI gate). Keep Prettier out so the two don't conflict.

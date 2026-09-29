@@ -73,6 +73,12 @@ export function unknownRuntime(): ServiceRuntime {
 	return { status: 'unknown', readyReplicas: 0, desiredReplicas: 0, updatedReplicas: 0, availableReplicas: 0 };
 }
 
+// A queued or building deployment hasn't touched the cluster yet, so the live Deployment would still read as running.
+export function withActiveDeployment(runtime: ServiceRuntime, hasActiveDeployment: boolean): ServiceRuntime {
+	if (!hasActiveDeployment || runtime.status === 'unknown') return runtime;
+	return { ...runtime, status: 'progressing' };
+}
+
 export type DeploymentRolloutState = 'ready' | 'progressing' | 'failed';
 
 function progressDeadlineExceeded(dep: V1Deployment) {

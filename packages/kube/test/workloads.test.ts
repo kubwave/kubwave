@@ -10,6 +10,7 @@ import {
 	pvcName,
 	resourceName,
 	secretName,
+	withActiveDeployment,
 	SERVICE_ROLLOUT_FAILURE_GRACE_SECONDS,
 	SERVICE_ROLLOUT_PROGRESS_DEADLINE_SECONDS,
 	selectorLabels,
@@ -348,5 +349,19 @@ describe('deploymentRuntimeStatus', () => {
 		// Real-time path on a healthy deployment.
 		const d = dep({ replicas: 1, updatedReplicas: 1, readyReplicas: 1, availableReplicas: 1, statusReplicas: 1 });
 		expect(deploymentRuntimeStatus(d).status).toBe('running');
+	});
+});
+
+describe('withActiveDeployment', () => {
+	const running = { status: 'running', readyReplicas: 1, desiredReplicas: 1, updatedReplicas: 1, availableReplicas: 1 } as const;
+
+	test('running service with active deployment reads progressing', () => {
+		expect(withActiveDeployment(running, true).status).toBe('progressing');
+	});
+	test('without active deployment status is unchanged', () => {
+		expect(withActiveDeployment(running, false)).toBe(running);
+	});
+	test('unknown stays unknown', () => {
+		expect(withActiveDeployment(unknownRuntime(), true).status).toBe('unknown');
 	});
 });

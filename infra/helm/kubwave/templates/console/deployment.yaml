@@ -50,8 +50,8 @@ spec:
             - name: APP_VERSION
               value: {{ .Values.console.image.tag | quote }}
           startupProbe:
-            # httpGet (not tcpSocket): `nuxt dev` binds :3000 in ~1s but then spends 1-2 min
-            # of CPU-bound Vite cold-start optimization before it serves any HTTP. A tcpSocket
+            # httpGet (not tcpSocket): `next dev` binds :3000 in ~1s but then compiles on the
+            # first requests, which can take a while on a cold cache. A tcpSocket
             # probe succeeds on bind, so liveness/readiness engage mid-warmup and kill the pod
             # (intermittent crash loop). Gating startup on /health keeps liveness/readiness
             # disabled until the dev server actually serves. The 60×5s=300s budget covers warmup.

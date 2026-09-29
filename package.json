@@ -22,12 +22,11 @@
 		"dev:local": "turbo run dev",
 		"docs:dev": "bun run --filter=docs dev",
 		"docs:build": "bun run --filter=docs build",
-		"docs:preview": "bun run --filter=docs preview",
 		"lint": "oxlint --deny-warnings apps packages",
 		"test": "turbo run test",
 		"test:coverage": "turbo run test:coverage",
-		"format": "prettier --write \"**/*.{ts,tsx,js,mjs,vue,json,md,yaml,yml,mdx,css}\"",
-		"format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,vue,json,md,yaml,yml,mdx,css}\"",
+		"format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,yaml,yml,mdx,css}\"",
+		"format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,yaml,yml,mdx,css}\"",
 		"check-types": "turbo run check-types"
 	},
 	"devDependencies": {
