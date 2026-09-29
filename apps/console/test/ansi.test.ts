@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { parseAnsi, stripAnsi } from '../app/utils/ansi';
+import { parseAnsi, stripAnsi } from '../lib/ansi';
 
 const ESC = String.fromCharCode(27);
 

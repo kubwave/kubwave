@@ -79,19 +79,19 @@ Backend API entrypoint — auth authority, `JWT_SECRET` holder, read-only Kubern
 
 ## `console`
 
-Nuxt 4 / Nitro SSR UI workload. No database access, no JWT secret, no Kubernetes RBAC.
+Next.js SSR UI workload. No database access, no JWT secret, no Kubernetes RBAC.
 
-| Key                            | Default                                     | Description                           |
-| ------------------------------ | ------------------------------------------- | ------------------------------------- |
-| `console.replicas`             | `1`                                         | Deployment replicas.                  |
-| `console.image.repository`     | `console`                                   | Image repository.                     |
-| `console.image.tag`            | `dev`                                       | Image tag.                            |
-| `console.image.pullPolicy`     | `Never`                                     | Pull policy.                          |
-| `console.port`                 | `3000`                                      | Container port.                       |
-| `console.env.INTERNAL_API_URL` | `http://api:3001`                           | Server-side API base URL (Nitro SSR). |
-| `console.resources`            | `{requests: 100m/512Mi, limits: 1000m/2Gi}` | Resource requests/limits.             |
-| `console.probes`               | —                                           | Probe config.                         |
-| `console.nodeSelector`         | `{}`                                        | Node selector.                        |
+| Key                            | Default                                     | Description                     |
+| ------------------------------ | ------------------------------------------- | ------------------------------- |
+| `console.replicas`             | `1`                                         | Deployment replicas.            |
+| `console.image.repository`     | `console`                                   | Image repository.               |
+| `console.image.tag`            | `dev`                                       | Image tag.                      |
+| `console.image.pullPolicy`     | `Never`                                     | Pull policy.                    |
+| `console.port`                 | `3000`                                      | Container port.                 |
+| `console.env.INTERNAL_API_URL` | `http://api:3001`                           | Server-side API base URL (SSR). |
+| `console.resources`            | `{requests: 100m/512Mi, limits: 1000m/2Gi}` | Resource requests/limits.       |
+| `console.probes`               | —                                           | Probe config.                   |
+| `console.nodeSelector`         | `{}`                                        | Node selector.                  |
 
 ---
 

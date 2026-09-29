@@ -47,7 +47,7 @@ bun run --filter=docs dev
 
 Hostnames (via Traefik on `:80`):
 
-- `http://console.localhost` — Web console (Nuxt 4 SSR)
+- `http://console.localhost` — Web console (Next.js dev server)
 - `/api` on `http://console.localhost` — NestJS API routed same-origin through Traefik
 - `http://docs.localhost` — Docs (Next.js dev server)
 
@@ -58,7 +58,7 @@ A Bun + Turborepo monorepo with three decoupled workloads and shared packages:
 | Path                 | What                                                                          |
 | -------------------- | ----------------------------------------------------------------------------- |
 | `apps/backend`       | NestJS on Node 24 — API and worker entrypoints                                |
-| `apps/console`       | Nuxt 4 web console (Nitro SSR, Vue 3, shadcn-vue)                             |
+| `apps/console`       | Next.js web console (App Router, React 19, shadcn/ui)                         |
 | `apps/cli`           | Bun-compiled single-binary CLI with embedded Helm chart                       |
 | `apps/docs`          | Next.js + MDX docs site                                                       |
 | `packages/*`         | Shared source-only packages: `@kubwave/{api-client,crypto,db,kube,templates}` |
@@ -133,7 +133,7 @@ See [`AGENTS.md`](./AGENTS.md) for the full per-workspace conventions. Highlight
 - **TypeScript 6** with `noUncheckedIndexedAccess` and `verbatimModuleSyntax` everywhere.
 - **Backend API** → NestJS controllers stay thin; services own business logic; errors use the shared `{ error, details? }` shape.
 - **OpenAPI client** → generated from Nest OpenAPI into `@kubwave/api-client`; the Console should not hand-write API response types.
-- **Console** → shadcn-vue components (Reka UI primitives, Tailwind v4), forms with vee-validate + zod, TanStack Vue Query v5.
+- **Console** → shadcn/ui components (Radix primitives, Tailwind v4), forms with TanStack Form + zod, TanStack Query v5.
 - **Backend worker** → separate Nest application context, single-flight reconcile, `FOR UPDATE SKIP LOCKED`, HA-safe.
 - **Helm values** are mirrored in three places — [`AGENTS.md`](./AGENTS.md#helm-chart-shape) explains the rule.
 

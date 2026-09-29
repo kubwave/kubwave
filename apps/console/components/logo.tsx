@@ -1,0 +1,10 @@
+import { cn } from '@/lib/utils';
+
+export function Logo({ className, showText = true }: { className?: string; showText?: boolean }) {
+	return (
+		<span className={cn('inline-flex items-center gap-2', className)}>
+			<img src="/logo.png" alt="kubwave" className="size-[1.55em]" />
+			{showText && <span className="font-semibold tracking-tight">kubwave</span>}
+		</span>
+	);
+}

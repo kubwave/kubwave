@@ -67,13 +67,13 @@ local dev.
 
 The Console is a pure API consumer — it holds no database credentials or JWT key.
 
-| Variable                  | Required | Default                 | Description                                                                                                 |
-| ------------------------- | -------- | ----------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `INTERNAL_API_URL`        | No       | `http://localhost:3001` | Server-side (Nitro SSR) base URL to reach the API. The browser uses `/api` same-origin through the ingress. |
-| `PORT`                    | No       | `3000`                  | HTTP listen port (standard for Nitro servers).                                                              |
-| `HOST`                    | No       | `0.0.0.0`               | Listen host (set in the prod Dockerfile).                                                                   |
-| `NODE_ENV`                | No       | —                       | Set to `production` in prod; affects Nitro behavior.                                                        |
-| `NUXT_TELEMETRY_DISABLED` | No       | `1`                     | Disabled in all Dockerfiles.                                                                                |
+| Variable                  | Required | Default                 | Description                                                                                           |
+| ------------------------- | -------- | ----------------------- | ----------------------------------------------------------------------------------------------------- |
+| `INTERNAL_API_URL`        | No       | `http://localhost:3001` | Server-side (SSR) base URL to reach the API. The browser uses `/api` same-origin through the ingress. |
+| `PORT`                    | No       | `3000`                  | HTTP listen port.                                                                                     |
+| `HOSTNAME`                | No       | `0.0.0.0`               | Listen host (set in the prod Dockerfile).                                                             |
+| `NODE_ENV`                | No       | —                       | Set to `production` in prod.                                                                          |
+| `NEXT_TELEMETRY_DISABLED` | No       | `1`                     | Disabled in all Dockerfiles.                                                                          |
 
 </Tab>
 

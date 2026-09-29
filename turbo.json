@@ -6,7 +6,7 @@
 			"dependsOn": ["^build"],
 			"inputs": ["$TURBO_DEFAULT$", ".env*"],
 			"env": ["NEXT_PUBLIC_*"],
-			"outputs": [".output/**", "dist/**", ".next/**", "!.next/cache/**", "out/**"]
+			"outputs": ["dist/**", ".next/**", "!.next/cache/**", "out/**"]
 		},
 		"build:docker": {
 			"env": ["KUBWAVE_VERSION", "KUBWAVE_HELM_VERSION"],

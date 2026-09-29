@@ -213,7 +213,7 @@ export function buildProductionValues(input: ProductionValuesInput): Record<stri
 		// console — pure API consumer (INTERNAL_API_URL = chart default). No Secret, no k8s RBAC.
 		console: {
 			image: image('console'),
-			// Prod runs the standalone Nitro build; don't inherit the chart's higher dev-server memory, which makes small preview nodes look artificially full.
+			// Prod runs the standalone Next.js server; don't inherit the chart's higher dev-server memory, which makes small preview nodes look artificially full.
 			resources: productionConsoleResources,
 			...nodeSelector
 		},

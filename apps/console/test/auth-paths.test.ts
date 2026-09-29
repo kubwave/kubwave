@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { loginPath, safeRedirect } from '../shared/auth-paths';
+import { loginPath, safeRedirect } from '../lib/auth/auth-paths';
 
 describe('login redirect', () => {
 	test('round-trips a path with its query', () => {
@@ -9,6 +9,7 @@ describe('login redirect', () => {
 	});
 
 	test('rejects off-site targets', () => {
-		for (const value of ['//evil.com', '/\\evil.com', 'https://evil.com', undefined, ['/a']]) expect(safeRedirect(value)).toBe('/');
+		for (const value of ['//evil.com', '/\\evil.com', '/\t/evil.com', '/\n/evil.com', '/\\\t\\evil.com', 'https://evil.com', undefined, ['/a']])
+			expect(safeRedirect(value)).toBe('/');
 	});
 });

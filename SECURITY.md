@@ -49,7 +49,7 @@ resolved within 90 days of the initial report, you are free to disclose it publi
 The supported attack surface includes:
 
 - The **API** (NestJS HTTP server, authentication, authorization, OpenAPI endpoints)
-- The **Console** (Nuxt/Nitro SSR server, browser-facing UI)
+- The **Console** (Next.js SSR server, browser-facing UI)
 - The **Worker** (reconcile loop, self-update job lifecycle, health endpoint)
 - The **CLI** (install, upgrade, status commands, embedded Helm/Helm chart)
 - The **Helm chart** (rendered Kubernetes manifests, RBAC, secrets handling)

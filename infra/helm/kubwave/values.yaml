@@ -1,7 +1,7 @@
 # Default values for the dev profile (k3d + Tilt). The Cloudfleet-on-Hetzner prod
 # overrides live in values-cloudfleet-hetzner.yaml.
 #
-# Three runtime workloads: backend API, console (Nuxt 4 / Vue 3), and backend worker.
+# Three runtime workloads: backend API, console (Next.js), and backend worker.
 # API and worker use the same backend image with different BACKEND_ENTRYPOINT values.
 # Same-origin ingress: / → console, /api → api. Only api + worker hold DB credentials;
 # console holds none.
@@ -72,7 +72,7 @@ api:
       JWT_SECRET: dev-jwt-secret-not-for-production
       SECRETS_KEY: dev-secrets-key-not-for-production
 
-# ── console (Nuxt / Nitro) — pure API consumer. No DB/JWT, no k8s RBAC. ──
+# ── console (Next.js) — pure API consumer. No DB/JWT, no k8s RBAC. ──
 console:
   replicas: 1
   image:
@@ -81,11 +81,11 @@ console:
     pullPolicy: Never
   port: 3000
   env:
-    # Server-side (Nitro SSR + auth middleware) reach the api via its in-cluster
+    # Server-side (SSR + auth proxy) reach the api via its in-cluster
     # Service; the browser uses /api same-origin through the ingress.
     INTERNAL_API_URL: http://api:3001
   resources:
-    # nuxt dev (Vite HMR) is far hungrier than the prod Nitro build —
+    # next dev (Turbopack HMR) is far hungrier than the prod standalone server —
     # 1Gi OOMKills the dev container. Prod overrides this in values-cloudfleet-hetzner.yaml.
     requests: { cpu: 100m, memory: 512Mi }
     limits: { cpu: 1000m, memory: 2Gi }

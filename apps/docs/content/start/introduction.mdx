@@ -48,7 +48,7 @@ console, not buried in YAML.
 
 The CLI installs five moving parts into your cluster, all defined by a single Helm chart:
 
-- **Console** — a Nuxt web UI where you manage projects, environments, and services.
+- **Console** — a web UI where you manage projects, environments, and services.
 - **API** — the NestJS backend API (OpenAPI, JWT auth) served same-origin with the console under `/api`.
 - **Worker** — a reconciliation loop that turns your service config into running workloads, builds
   Dockerfiles in-cluster, rolls out deployments, and applies platform self-updates.

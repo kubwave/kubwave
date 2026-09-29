@@ -5,7 +5,6 @@ const nextConfig: NextConfig = {
 	output: 'export',
 	trailingSlash: true,
 	images: { unoptimized: true },
-	agentRules: false,
 	// docs.localhost: the Tilt dev workload's ingress host.
 	allowedDevOrigins: ['127.0.0.1', 'docs.localhost'],
 	devIndicators: false

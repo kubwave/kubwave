@@ -32,17 +32,18 @@ validating DTOs and publishing OpenAPI for generated clients.
 - **Secrets:** Encrypts per-service secrets via `@kubwave/crypto` (AES-256-GCM) before
   persisting them to the database.
 
-### Console — Nuxt 4 + Nitro
+### Console — Next.js
 
-The Console is the browser-facing UI, served as a Nuxt 4 application running on
-[Nitro](https://nitro.build) in SSR mode.
+The Console is the browser-facing UI, a [Next.js](https://nextjs.org) App Router
+application running as a standalone Node server with server-side rendering.
 
 - **Port:** 3000 (internally; exposed at `/` by the ingress)
-- **Client:** Uses TanStack Vue Query v5 with `@kubwave/api-client`, generated from
+- **Client:** Uses TanStack Query v5 with `@kubwave/api-client`, generated from
   the backend OpenAPI document. Access tokens stay in memory — never in cookies or
   `localStorage`.
-- **SSR:** The Nitro server authenticates via the refresh-token cookie, fetches data
-  server-side, and dehydrates the Vue Query cache into the rendered page.
+- **SSR:** The Next.js proxy exchanges the refresh-token cookie for an access token
+  on page loads, the server fetches data with it, and the TanStack Query cache is
+  dehydrated into the rendered page.
 - **No database access, no JWT secret.** The Console is a pure API consumer.
 
 ### Worker — NestJS application context

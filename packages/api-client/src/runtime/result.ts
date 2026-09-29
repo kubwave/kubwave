@@ -1,5 +1,5 @@
-import type { ServiceView, ServiceConfigView } from '../domain/service-config.js';
-import type { ServiceViewDto } from '../generated/types.gen.js';
+import type { ServiceView, ServiceConfigView } from '../domain/service-config';
+import type { ServiceViewDto } from '../generated/types.gen';
 
 export interface KubwaveApiErrorBody {
 	error: string;

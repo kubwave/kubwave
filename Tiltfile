@@ -31,7 +31,7 @@ docker_build(
     ],
 )
 
-# ---- console (Nuxt) — Vite HMR over synced app/server/public files ----
+# ---- console (Next.js) — next dev / HMR over synced source files ----
 docker_build(
     'console',
     context='.',
@@ -39,9 +39,12 @@ docker_build(
     target='dev',
     only=_only,
     live_update=[
-        fall_back_on(_deps + ['./apps/console/tsconfig.json', './apps/console/nuxt.config.ts', './apps/console/Dockerfile']),
+        fall_back_on(_deps + ['./apps/console/tsconfig.json', './apps/console/next.config.ts', './apps/console/postcss.config.mjs', './apps/console/Dockerfile']),
         sync('./apps/console/app', '/app/apps/console/app'),
-        sync('./apps/console/server', '/app/apps/console/server'),
+        sync('./apps/console/components', '/app/apps/console/components'),
+        sync('./apps/console/features', '/app/apps/console/features'),
+        sync('./apps/console/lib', '/app/apps/console/lib'),
+        sync('./apps/console/proxy.ts', '/app/apps/console/proxy.ts'),
         sync('./apps/console/public', '/app/apps/console/public'),
     ],
 )

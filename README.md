@@ -48,14 +48,14 @@ Start with:
 
 A Bun + Turborepo monorepo. The platform runs as three decoupled workloads plus shared packages:
 
-| Path                 | What                                                                                        |
-| -------------------- | ------------------------------------------------------------------------------------------- |
-| `apps/backend`       | NestJS on Node 24 — the REST API, auth authority, and worker entrypoints                    |
-| `apps/console`       | Nuxt 4 web console (Nitro SSR, Vue 3, shadcn-vue) — the UI, served same-origin with the API |
-| `apps/cli`           | Bun-compiled single-binary CLI with the Helm chart embedded                                 |
-| `apps/docs`          | Next.js + MDX docs site (this repo's public docs)                                           |
-| `packages/*`         | Shared source-only packages: `@kubwave/{api-client,crypto,db,kube,templates}`               |
-| `infra/helm/kubwave` | The Helm chart — single source of truth for what lands in your cluster                      |
+| Path                 | What                                                                                            |
+| -------------------- | ----------------------------------------------------------------------------------------------- |
+| `apps/backend`       | NestJS on Node 24 — the REST API, auth authority, and worker entrypoints                        |
+| `apps/console`       | Next.js web console (App Router, React 19, shadcn/ui) — the UI, served same-origin with the API |
+| `apps/cli`           | Bun-compiled single-binary CLI with the Helm chart embedded                                     |
+| `apps/docs`          | Next.js + MDX docs site (this repo's public docs)                                               |
+| `packages/*`         | Shared source-only packages: `@kubwave/{api-client,crypto,db,kube,templates}`                   |
+| `infra/helm/kubwave` | The Helm chart — single source of truth for what lands in your cluster                          |
 
 ## Local development
 

@@ -1,4 +1,4 @@
-import type { ServiceViewDto } from '../generated/types.gen.js';
+import type { ServiceViewDto } from '../generated/types.gen';
 
 export type ServiceType =
 	| 'docker-image'

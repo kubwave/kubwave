@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { deriveServiceConnections } from '../app/utils/service-connections';
-import type { Service } from '~/utils/types';
+import { deriveServiceConnections } from '../lib/service-connections';
+import type { Service } from '../lib/api/types';
 
 function service(id: string, internalDomain: string | null, env: Array<{ key: string; value: string }> = []): Service {
 	return {
@@ -26,8 +26,10 @@ function service(id: string, internalDomain: string | null, env: Array<{ key: st
 			nextPollAt: null,
 			lastPollError: null
 		},
+		imageWatch: { enabled: false, lastDigest: null, lastCheckedAt: null, nextCheckAt: null, lastError: null },
 		internalDomain,
 		defaultUrl: null,
+		exposedEndpoints: [],
 		createdAt: '2026-06-17T12:00:00.000Z',
 		updatedAt: '2026-06-17T12:00:00.000Z'
 	};

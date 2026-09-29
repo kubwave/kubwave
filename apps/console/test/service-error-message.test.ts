@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { serviceErrorMessage } from '../app/utils/api-error';
+import { serviceErrorMessage } from '../lib/api/api-error';
 
 describe('serviceErrorMessage', () => {
 	test('maps service_name_taken to a friendly duplicate-name message', () => {

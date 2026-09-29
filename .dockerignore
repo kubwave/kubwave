@@ -11,10 +11,8 @@ node_modules
 **/coverage
 **/*.tsbuildinfo
 
-**/.nuxt
 **/.next
 **/out
-**/.output
 
 .env
 .env.*

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { insertReference, referenceQueryBefore, referenceSuggestions } from '../app/utils/service-references';
+import { insertReference, previewReferences, referenceQueryBefore, referenceSuggestions } from '../lib/service-references';
 
 describe('referenceQueryBefore', () => {
 	test('returns the partial expression typed after `${{`', () => {
@@ -38,5 +38,27 @@ describe('insertReference', () => {
 
 	test('swallows closing braces that were already typed', () => {
 		expect(insertReference('${{}}', 0, 3, '${{services.api.url}}')).toEqual({ text: '${{services.api.url}}', caret: 21 });
+	});
+});
+
+describe('previewReferences', () => {
+	const services = [
+		{ name: 'api', internalDomain: 'svc-1', config: { containerPort: 3000, domains: [{ host: 'api.acme.dev', port: 3000 }] }, defaultUrl: null },
+		{ name: 'db', internalDomain: 'svc-2', config: { containerPort: 5432, domains: [] }, defaultUrl: null }
+	];
+
+	test('resolves references to the values the platform injects', () => {
+		expect(previewReferences('http://${{services.api.host}}:${{services.api.port}}', services)).toBe('http://svc-1:3000');
+		expect(previewReferences('${{services.api.url}} ${{services.db.internalUrl}}', services)).toBe('https://api.acme.dev http://svc-2:5432');
+	});
+
+	test('leaves unknown services and properties untouched', () => {
+		expect(previewReferences('${{services.nope.host}} ${{services.api.password}}', services)).toBe(
+			'${{services.nope.host}} ${{services.api.password}}'
+		);
+	});
+
+	test('has no preview without a public domain', () => {
+		expect(previewReferences('${{services.db.domain}}', services)).toBe('${{services.db.domain}}');
 	});
 });
