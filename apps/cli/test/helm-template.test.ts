@@ -420,6 +420,9 @@ describe('helm chart rendering', () => {
 
 		// The autoscaler reuses existing grants for the writes themselves:
 		expect(hasRule(clusterRole, '', 'persistentvolumeclaims', 'update')).toBe(true);
+		// Tenant GC reclaims Released Retain PVs (UpCloud UKS) by flipping them to Delete.
+		expect(hasRule(clusterRole, '', 'persistentvolumes', 'list')).toBe(true);
+		expect(hasRule(clusterRole, '', 'persistentvolumes', 'update')).toBe(true);
 		expect(hasRule(role, 'postgresql.cnpg.io', 'clusters', 'update')).toBe(true);
 	});
 

@@ -28,11 +28,24 @@ let namespaceItems: unknown[] = [];
 let deploymentItems: unknown[] = [];
 const deletedNamespaces: string[] = [];
 const deletedWorkloads: Array<{ name: string; namespace: string }> = [];
+let volumeItems: unknown[] = [];
+// Phase per namespace that still exists; anything absent reads as 404.
+let livePhases: Record<string, string> = {};
+const replacedVolumes: Array<{ name: string; reclaimPolicy: string }> = [];
 
 const coreApi = {
 	listNamespace: async () => ({ items: namespaceItems }),
 	deleteNamespace: async ({ name }: { name: string }) => {
 		deletedNamespaces.push(name);
+	},
+	readNamespace: async ({ name }: { name: string }) => {
+		const phase = livePhases[name];
+		if (phase === undefined) throw Object.assign(new Error('not found'), { code: 404 });
+		return { status: { phase } };
+	},
+	listPersistentVolume: async () => ({ items: volumeItems }),
+	replacePersistentVolume: async ({ name, body }: { name: string; body: { spec: { persistentVolumeReclaimPolicy: string } } }) => {
+		replacedVolumes.push({ name, reclaimPolicy: body.spec.persistentVolumeReclaimPolicy });
 	}
 };
 const appsApi = {
@@ -66,7 +79,18 @@ afterEach(() => {
 	deploymentItems = [];
 	deletedNamespaces.length = 0;
 	deletedWorkloads.length = 0;
+	volumeItems = [];
+	livePhases = {};
+	replacedVolumes.length = 0;
 });
+
+function volume(name: string, phase: string, reclaimPolicy: string, claimNamespace: string) {
+	return {
+		metadata: { name },
+		spec: { persistentVolumeReclaimPolicy: reclaimPolicy, claimRef: { namespace: claimNamespace, name: 'svc-x-data' } },
+		status: { phase }
+	};
+}
 
 describe('gcOrphans', () => {
 	test('drops a namespace whose environment has no live services', async () => {
@@ -111,5 +135,38 @@ describe('gcOrphans', () => {
 		await gcOrphans(kc);
 		expect(deletedWorkloads).toEqual([]);
 		expect(teardownNetworkingCalls).toEqual([]);
+	});
+
+	test('flips only Released Retain volumes of tenant namespaces to Delete', async () => {
+		volumeItems = [
+			volume('pv-orphan', 'Released', 'Retain', 'kubwave-env-gone'),
+			volume('pv-bound', 'Bound', 'Retain', 'kubwave-env-live'),
+			volume('pv-already-delete', 'Released', 'Delete', 'kubwave-env-gone'),
+			volume('pv-platform', 'Released', 'Retain', 'kubwave')
+		];
+		liveServiceResults = [[]]; // only pv-orphan reaches the services check: env has no services
+		await gcOrphans(kc);
+		expect(replacedVolumes).toEqual([{ name: 'pv-orphan', reclaimPolicy: 'Delete' }]);
+	});
+
+	test('keeps a Released Retain volume when its namespace is gone but the environment still has services', async () => {
+		volumeItems = [volume('pv-lazy', 'Released', 'Retain', 'kubwave-env-recreated-later')];
+		liveServiceResults = [[{ id: 'svc-live' }]];
+		await gcOrphans(kc);
+		expect(replacedVolumes).toEqual([]);
+	});
+
+	test('keeps a Released Retain volume whose tenant namespace is still live', async () => {
+		livePhases = { 'kubwave-env-live': 'Active' };
+		volumeItems = [volume('pv-recoverable', 'Released', 'Retain', 'kubwave-env-live')];
+		await gcOrphans(kc);
+		expect(replacedVolumes).toEqual([]);
+	});
+
+	test('keeps a Released Retain volume whose tenant namespace is still Terminating', async () => {
+		livePhases = { 'kubwave-env-dying': 'Terminating' };
+		volumeItems = [volume('pv-dying', 'Released', 'Retain', 'kubwave-env-dying')];
+		await gcOrphans(kc);
+		expect(replacedVolumes).toEqual([]);
 	});
 });
