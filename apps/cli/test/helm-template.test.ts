@@ -177,8 +177,7 @@ describe('helm chart rendering', () => {
 	test('production render creates the ClusterIssuer for a fresh install', () => {
 		const objects = renderObjects(productionOverrides);
 		const issuer = objects.find(obj => obj.kind === 'ClusterIssuer' && obj.metadata?.name === 'letsencrypt-prod') as
-			| { spec?: { acme?: { email?: string } } }
-			| undefined;
+			{ spec?: { acme?: { email?: string } } } | undefined;
 
 		expect(issuer?.spec?.acme?.email).toBe('ops@example.com');
 	});
@@ -261,15 +260,12 @@ describe('helm chart rendering', () => {
 	test('update RBAC can manage app resources and dependency releases', () => {
 		const objects = renderObjects(productionOverrides);
 		const role = objects.find(obj => obj.kind === 'Role' && obj.metadata?.name === 'kubwave-updater') as
-			| { rules?: Array<{ apiGroups?: string[]; resources?: string[]; verbs?: string[] }> }
-			| undefined;
+			{ rules?: Array<{ apiGroups?: string[]; resources?: string[]; verbs?: string[] }> } | undefined;
 		const appClusterRole = objects.find(obj => obj.kind === 'ClusterRole' && obj.metadata?.name === 'kubwave-updater-app') as
-			| { rules?: Array<{ apiGroups?: string[]; resources?: string[]; verbs?: string[] }> }
-			| undefined;
+			{ rules?: Array<{ apiGroups?: string[]; resources?: string[]; verbs?: string[] }> } | undefined;
 		const appClusterRoleBinding = objects.find(obj => obj.kind === 'ClusterRoleBinding' && obj.metadata?.name === 'kubwave-updater-app');
 		const clusterRole = objects.find(obj => obj.kind === 'ClusterRole' && obj.metadata?.name === 'kubwave-updater-dependencies') as
-			| { rules?: Array<{ apiGroups?: string[]; resources?: string[]; verbs?: string[] }> }
-			| undefined;
+			{ rules?: Array<{ apiGroups?: string[]; resources?: string[]; verbs?: string[] }> } | undefined;
 		const clusterRoleBinding = objects.find(obj => obj.kind === 'ClusterRoleBinding' && obj.metadata?.name === 'kubwave-updater-dependencies');
 
 		expect(hasRule(role, '', 'serviceaccounts', 'create')).toBe(true);
@@ -311,8 +307,7 @@ describe('helm chart rendering', () => {
 			'certManager.clusterIssuer.email=ops@example.com'
 		]);
 		const appClusterRole = objects.find(obj => obj.kind === 'ClusterRole' && obj.metadata?.name === 'kubwave-updater-app') as
-			| { rules?: Array<{ apiGroups?: string[]; resources?: string[]; verbs?: string[] }> }
-			| undefined;
+			{ rules?: Array<{ apiGroups?: string[]; resources?: string[]; verbs?: string[] }> } | undefined;
 
 		expect(appClusterRole).toBeDefined();
 		expect(objects.some(obj => obj.kind === 'ClusterRole' && obj.metadata?.name === 'kubwave-updater-dependencies')).toBe(false);
@@ -330,8 +325,7 @@ describe('helm chart rendering', () => {
 
 		// Tenant namespaces are per-environment, provisioned on demand, so the worker's workloads RBAC is a cluster-scoped ClusterRole, not a namespaced Role.
 		const workloadsRole = objects.find(obj => obj.kind === 'ClusterRole' && obj.metadata?.name === 'kubwave-worker-workloads') as
-			| { rules?: Array<{ apiGroups?: string[]; resources?: string[]; verbs?: string[] }> }
-			| undefined;
+			{ rules?: Array<{ apiGroups?: string[]; resources?: string[]; verbs?: string[] }> } | undefined;
 
 		expect(workloadsRole).toBeDefined();
 		expect(hasRule(workloadsRole, 'networking.k8s.io', 'ingresses', 'create')).toBe(true);
@@ -344,8 +338,7 @@ describe('helm chart rendering', () => {
 
 		// The worker writes the managed-Prometheus ConfigMap in the platform namespace.
 		const workerRole = objects.find(obj => obj.kind === 'Role' && obj.metadata?.name === 'kubwave-worker') as
-			| { rules?: Array<{ apiGroups?: string[]; resources?: string[]; verbs?: string[] }> }
-			| undefined;
+			{ rules?: Array<{ apiGroups?: string[]; resources?: string[]; verbs?: string[] }> } | undefined;
 
 		expect(hasRule(workerRole, '', 'configmaps', 'create')).toBe(true);
 
@@ -408,11 +401,9 @@ describe('helm chart rendering', () => {
 	test('worker RBAC covers the volume autoscaler (kubelet stats, storage classes, events)', () => {
 		const objects = renderObjects(productionOverrides);
 		const clusterRole = objects.find(obj => obj.kind === 'ClusterRole' && obj.metadata?.name === 'kubwave-worker-workloads') as
-			| { rules?: Array<{ apiGroups?: string[]; resources?: string[]; verbs?: string[] }> }
-			| undefined;
+			{ rules?: Array<{ apiGroups?: string[]; resources?: string[]; verbs?: string[] }> } | undefined;
 		const role = objects.find(obj => obj.kind === 'Role' && obj.metadata?.name === 'kubwave-worker') as
-			| { rules?: Array<{ apiGroups?: string[]; resources?: string[]; verbs?: string[] }> }
-			| undefined;
+			{ rules?: Array<{ apiGroups?: string[]; resources?: string[]; verbs?: string[] }> } | undefined;
 
 		expect(hasRule(clusterRole, '', 'nodes/proxy', 'get')).toBe(true);
 		expect(hasRule(clusterRole, 'storage.k8s.io', 'storageclasses', 'get')).toBe(true);
@@ -420,14 +411,16 @@ describe('helm chart rendering', () => {
 
 		// The autoscaler reuses existing grants for the writes themselves:
 		expect(hasRule(clusterRole, '', 'persistentvolumeclaims', 'update')).toBe(true);
+		// Tenant GC reclaims Released Retain PVs (UpCloud UKS) by flipping them to Delete.
+		expect(hasRule(clusterRole, '', 'persistentvolumes', 'list')).toBe(true);
+		expect(hasRule(clusterRole, '', 'persistentvolumes', 'update')).toBe(true);
 		expect(hasRule(role, 'postgresql.cnpg.io', 'clusters', 'update')).toBe(true);
 	});
 
 	test('api workloads RBAC is a read-only ClusterRole (no namespaced Role, no mutate verbs)', () => {
 		const objects = renderObjects(productionOverrides);
 		const apiWorkloads = objects.find(obj => obj.kind === 'ClusterRole' && obj.metadata?.name === 'kubwave-api-workloads') as
-			| { rules?: Array<{ apiGroups?: string[]; resources?: string[]; verbs?: string[] }> }
-			| undefined;
+			{ rules?: Array<{ apiGroups?: string[]; resources?: string[]; verbs?: string[] }> } | undefined;
 
 		expect(apiWorkloads).toBeDefined();
 		expect(hasRule(apiWorkloads, 'apps', 'deployments', 'get')).toBe(true);
@@ -445,8 +438,7 @@ describe('helm chart rendering', () => {
 	test('api control-plane RBAC can only read the platform marker ConfigMap', () => {
 		const objects = renderObjects(productionOverrides);
 		const apiRole = objects.find(obj => obj.kind === 'Role' && obj.metadata?.name === 'kubwave-api') as
-			| { rules?: Array<{ apiGroups?: string[]; resources?: string[]; resourceNames?: string[]; verbs?: string[] }> }
-			| undefined;
+			{ rules?: Array<{ apiGroups?: string[]; resources?: string[]; resourceNames?: string[]; verbs?: string[] }> } | undefined;
 		const configMapRead = (apiRole?.rules ?? []).find(
 			rule => (rule.apiGroups ?? []).includes('') && (rule.resources ?? []).includes('configmaps') && (rule.verbs ?? []).includes('get')
 		);
@@ -460,8 +452,7 @@ describe('helm chart rendering', () => {
 		const objects = renderObjects(productionOverrides);
 		const sa = objects.find(obj => obj.kind === 'ServiceAccount' && obj.metadata?.name === 'kubwave-prometheus');
 		const clusterRole = objects.find(obj => obj.kind === 'ClusterRole' && obj.metadata?.name === 'kubwave-prometheus') as
-			| { rules?: Array<{ apiGroups?: string[]; resources?: string[]; verbs?: string[] }> }
-			| undefined;
+			{ rules?: Array<{ apiGroups?: string[]; resources?: string[]; verbs?: string[] }> } | undefined;
 		const binding = objects.find(obj => obj.kind === 'ClusterRoleBinding' && obj.metadata?.name === 'kubwave-prometheus');
 
 		expect(sa).toBeDefined();
@@ -561,8 +552,7 @@ describe('helm chart rendering', () => {
 
 		// Flat same-origin ingress on the configured host; prod disables mailcrab.
 		const ingress = objects.find(obj => obj.kind === 'Ingress' && obj.metadata?.name === 'console') as
-			| { spec?: { rules?: Array<{ host?: string }> } }
-			| undefined;
+			{ spec?: { rules?: Array<{ host?: string }> } } | undefined;
 		expect(ingress?.spec?.rules?.[0]?.host).toBe('app.example.com');
 		expect(objects.some(obj => obj.metadata?.name === 'mailcrab')).toBe(false);
 
@@ -635,8 +625,7 @@ describe('helm chart rendering', () => {
 			'worker.image.tag=0.2.0'
 		]);
 		const secret = objects.find(obj => obj.kind === 'Secret' && obj.metadata?.name === 'console-creds') as
-			| { stringData?: Record<string, string> }
-			| undefined;
+			{ stringData?: Record<string, string> } | undefined;
 		expect(secret?.stringData?.['SECRETS_KEY']).toBeDefined();
 		expect(secret?.stringData?.['JWT_SECRET']).toBeDefined();
 	});
@@ -678,8 +667,7 @@ describe('high availability + CloudNativePG', () => {
 			// Soft spread: a cluster with <3 nodes still schedules every replica.
 			expect(spec?.topologySpreadConstraints?.[0]?.whenUnsatisfiable).toBe('ScheduleAnyway');
 			const pdb = objects.find(obj => obj.kind === 'PodDisruptionBudget' && obj.metadata?.name === name) as
-				| { spec?: { maxUnavailable?: number; minAvailable?: number } }
-				| undefined;
+				{ spec?: { maxUnavailable?: number; minAvailable?: number } } | undefined;
 			expect(pdb).toBeDefined();
 			// maxUnavailable (not minAvailable) keeps >=2 of 3 up and won't deadlock node drains if later scaled to 1 (HA off before the upgrade removes the PDB).
 			expect(pdb?.spec?.maxUnavailable).toBe(1);
@@ -737,11 +725,9 @@ describe('high availability + CloudNativePG', () => {
 	test('dev cnpg mode renders a basic-auth bootstrap secret whose password matches postgres-creds', () => {
 		const objects = renderObjects([]);
 		const bootstrap = objects.find(obj => obj.kind === 'Secret' && obj.metadata?.name === 'postgres-app-creds') as
-			| { type?: string; stringData?: Record<string, string> }
-			| undefined;
+			{ type?: string; stringData?: Record<string, string> } | undefined;
 		const creds = objects.find(obj => obj.kind === 'Secret' && obj.metadata?.name === 'postgres-creds') as
-			| { stringData?: Record<string, string> }
-			| undefined;
+			{ stringData?: Record<string, string> } | undefined;
 		expect(bootstrap?.type).toBe('kubernetes.io/basic-auth');
 		expect(bootstrap?.stringData?.['username']).toBe('app');
 		// Password MUST equal postgres-creds.POSTGRES_PASSWORD so the app authenticates as `app`.
@@ -848,16 +834,14 @@ function deploymentEnv(objects: K8sObject[], deploymentName: string, envName: st
 
 function deploymentImage(objects: K8sObject[], deploymentName: string): string | undefined {
 	const deployment = objects.find(obj => obj.kind === 'Deployment' && obj.metadata?.name === deploymentName) as
-		| { spec?: { template?: { spec?: { containers?: Array<{ name?: string; image?: string }> } } } }
-		| undefined;
+		{ spec?: { template?: { spec?: { containers?: Array<{ name?: string; image?: string }> } } } } | undefined;
 
 	return deployment?.spec?.template?.spec?.containers?.find(item => item.name === deploymentName)?.image;
 }
 
 function deploymentResources(objects: K8sObject[], deploymentName: string): unknown {
 	const deployment = objects.find(obj => obj.kind === 'Deployment' && obj.metadata?.name === deploymentName) as
-		| { spec?: { template?: { spec?: { containers?: Array<{ name?: string; resources?: unknown }> } } } }
-		| undefined;
+		{ spec?: { template?: { spec?: { containers?: Array<{ name?: string; resources?: unknown }> } } } } | undefined;
 
 	return deployment?.spec?.template?.spec?.containers?.find(item => item.name === deploymentName)?.resources;
 }

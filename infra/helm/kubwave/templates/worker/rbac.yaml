@@ -104,6 +104,10 @@ rules:
   - apiGroups: [""]
     resources: ["persistentvolumeclaims"]
     verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  # GC flips Released tenant PVs from Retain to Delete so the CSI driver reclaims the cloud disk.
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["list", "update"]
   # Per-service env Secrets (svc-<id>-env): the worker decrypts the service config and
   # writes the plaintext into a Secret the container consumes via secretKeyRef.
   - apiGroups: [""]

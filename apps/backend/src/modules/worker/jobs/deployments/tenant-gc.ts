@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { AppsV1Api, CoreV1Api, CustomObjectsApi, NetworkingV1Api, type KubeConfig } from '@kubernetes/client-node';
 import { db, services } from '@kubwave/db';
-import { LABEL_ENVIRONMENT_ID, LABEL_MANAGED_BY, LABEL_SERVICE_ID, MANAGED_BY_VALUE } from '@kubwave/kube';
+import { LABEL_ENVIRONMENT_ID, LABEL_MANAGED_BY, LABEL_SERVICE_ID, MANAGED_BY_VALUE, WORKLOADS_NAMESPACE_PREFIX } from '@kubwave/kube';
 import { deleteIgnoreMissing } from '../../../../shared/cluster/ops.js';
 import { teardownNetworking } from '../../../../shared/cluster/networking.js';
 
@@ -39,5 +39,21 @@ export async function gcOrphans(kc: KubeConfig): Promise<void> {
 			await deleteIgnoreMissing(() => appsApi.deleteNamespacedDeployment({ name, namespace, propagationPolicy: 'Background' }));
 			await teardownNetworking({ coreApi, netApi, customApi, namespace, serviceId });
 		}
+	}
+
+	await reclaimReleasedVolumes(coreApi);
+}
+
+// Tenant PVCs die with their service or namespace, but a Retain StorageClass (UpCloud UKS default) leaves the PV Released and
+// its cloud disk billed forever. Flipping it to Delete makes the CSI driver reclaim the disk. Platform-namespace PVs are never touched.
+async function reclaimReleasedVolumes(coreApi: CoreV1Api): Promise<void> {
+	const volumes = await coreApi.listPersistentVolume();
+	for (const pv of volumes.items) {
+		const name = pv.metadata?.name;
+		if (!name || !pv.spec || pv.status?.phase !== 'Released' || pv.spec.persistentVolumeReclaimPolicy !== 'Retain') continue;
+		if (!pv.spec.claimRef?.namespace?.startsWith(WORKLOADS_NAMESPACE_PREFIX)) continue;
+		console.log(`[reconcile] GC: reclaiming released volume ${name} (claim ${pv.spec.claimRef.namespace}/${pv.spec.claimRef.name})`);
+		pv.spec.persistentVolumeReclaimPolicy = 'Delete';
+		await coreApi.replacePersistentVolume({ name, body: pv });
 	}
 }

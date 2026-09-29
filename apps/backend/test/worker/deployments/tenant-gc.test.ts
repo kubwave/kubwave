@@ -28,11 +28,17 @@ let namespaceItems: unknown[] = [];
 let deploymentItems: unknown[] = [];
 const deletedNamespaces: string[] = [];
 const deletedWorkloads: Array<{ name: string; namespace: string }> = [];
+let volumeItems: unknown[] = [];
+const replacedVolumes: Array<{ name: string; reclaimPolicy: string }> = [];
 
 const coreApi = {
 	listNamespace: async () => ({ items: namespaceItems }),
 	deleteNamespace: async ({ name }: { name: string }) => {
 		deletedNamespaces.push(name);
+	},
+	listPersistentVolume: async () => ({ items: volumeItems }),
+	replacePersistentVolume: async ({ name, body }: { name: string; body: { spec: { persistentVolumeReclaimPolicy: string } } }) => {
+		replacedVolumes.push({ name, reclaimPolicy: body.spec.persistentVolumeReclaimPolicy });
 	}
 };
 const appsApi = {
@@ -66,7 +72,17 @@ afterEach(() => {
 	deploymentItems = [];
 	deletedNamespaces.length = 0;
 	deletedWorkloads.length = 0;
+	volumeItems = [];
+	replacedVolumes.length = 0;
 });
+
+function volume(name: string, phase: string, reclaimPolicy: string, claimNamespace: string) {
+	return {
+		metadata: { name },
+		spec: { persistentVolumeReclaimPolicy: reclaimPolicy, claimRef: { namespace: claimNamespace, name: 'svc-x-data' } },
+		status: { phase }
+	};
+}
 
 describe('gcOrphans', () => {
 	test('drops a namespace whose environment has no live services', async () => {
@@ -111,5 +127,16 @@ describe('gcOrphans', () => {
 		await gcOrphans(kc);
 		expect(deletedWorkloads).toEqual([]);
 		expect(teardownNetworkingCalls).toEqual([]);
+	});
+
+	test('flips only Released Retain volumes of tenant namespaces to Delete', async () => {
+		volumeItems = [
+			volume('pv-orphan', 'Released', 'Retain', 'kubwave-env-gone'),
+			volume('pv-bound', 'Bound', 'Retain', 'kubwave-env-live'),
+			volume('pv-already-delete', 'Released', 'Delete', 'kubwave-env-gone'),
+			volume('pv-platform', 'Released', 'Retain', 'kubwave')
+		];
+		await gcOrphans(kc);
+		expect(replacedVolumes).toEqual([{ name: 'pv-orphan', reclaimPolicy: 'Delete' }]);
 	});
 });
