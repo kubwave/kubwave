@@ -41,6 +41,7 @@ import {
 	buildStoredPrivateRepoConfig,
 	buildStoredPublicRepoConfig,
 	normalizeDockerConfig,
+	mergeConfigPatch,
 	referenceIssues,
 	toConfigView,
 	type ReferenceInput
@@ -376,15 +377,7 @@ export class ServicesService {
 		const input = { ...patch };
 		if (patch.config !== undefined) {
 			if (!patch.config || typeof patch.config !== 'object' || Array.isArray(patch.config)) throw new ApiError(400, 'invalid_config');
-			const view = toConfigView(current.config);
-			const config = {
-				...view,
-				secrets: (current.config.secrets ?? []).map(secret => ({ key: secret.key, value: null })),
-				...(view.basicAuth ? { basicAuth: { enabled: true, username: view.basicAuth.username, password: null } } : {}),
-				...('registryAuth' in view && view.registryAuth ? { registryAuth: { ...view.registryAuth, password: null } } : {}),
-				...patch.config
-			};
-			input.config = config;
+			input.config = mergeConfigPatch(current.config, patch.config as Record<string, unknown>);
 		}
 		return this.updateService(actingUserId, serviceId, updateServiceSchema.parse(input), current.updatedAt);
 	}
