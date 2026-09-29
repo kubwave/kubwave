@@ -29,12 +29,19 @@ let deploymentItems: unknown[] = [];
 const deletedNamespaces: string[] = [];
 const deletedWorkloads: Array<{ name: string; namespace: string }> = [];
 let volumeItems: unknown[] = [];
+// Phase per namespace that still exists; anything absent reads as 404.
+let livePhases: Record<string, string> = {};
 const replacedVolumes: Array<{ name: string; reclaimPolicy: string }> = [];
 
 const coreApi = {
 	listNamespace: async () => ({ items: namespaceItems }),
 	deleteNamespace: async ({ name }: { name: string }) => {
 		deletedNamespaces.push(name);
+	},
+	readNamespace: async ({ name }: { name: string }) => {
+		const phase = livePhases[name];
+		if (phase === undefined) throw Object.assign(new Error('not found'), { code: 404 });
+		return { status: { phase } };
 	},
 	listPersistentVolume: async () => ({ items: volumeItems }),
 	replacePersistentVolume: async ({ name, body }: { name: string; body: { spec: { persistentVolumeReclaimPolicy: string } } }) => {
@@ -73,6 +80,7 @@ afterEach(() => {
 	deletedNamespaces.length = 0;
 	deletedWorkloads.length = 0;
 	volumeItems = [];
+	livePhases = {};
 	replacedVolumes.length = 0;
 });
 
@@ -138,5 +146,19 @@ describe('gcOrphans', () => {
 		];
 		await gcOrphans(kc);
 		expect(replacedVolumes).toEqual([{ name: 'pv-orphan', reclaimPolicy: 'Delete' }]);
+	});
+
+	test('keeps a Released Retain volume whose tenant namespace is still live', async () => {
+		livePhases = { 'kubwave-env-live': 'Active' };
+		volumeItems = [volume('pv-recoverable', 'Released', 'Retain', 'kubwave-env-live')];
+		await gcOrphans(kc);
+		expect(replacedVolumes).toEqual([]);
+	});
+
+	test('reclaims a Released Retain volume whose tenant namespace is Terminating', async () => {
+		livePhases = { 'kubwave-env-dying': 'Terminating' };
+		volumeItems = [volume('pv-dying', 'Released', 'Retain', 'kubwave-env-dying')];
+		await gcOrphans(kc);
+		expect(replacedVolumes).toEqual([{ name: 'pv-dying', reclaimPolicy: 'Delete' }]);
 	});
 });

@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { AppsV1Api, CoreV1Api, CustomObjectsApi, NetworkingV1Api, type KubeConfig } from '@kubernetes/client-node';
 import { db, services } from '@kubwave/db';
 import { LABEL_ENVIRONMENT_ID, LABEL_MANAGED_BY, LABEL_SERVICE_ID, MANAGED_BY_VALUE, WORKLOADS_NAMESPACE_PREFIX } from '@kubwave/kube';
-import { deleteIgnoreMissing } from '../../../../shared/cluster/ops.js';
+import { deleteIgnoreMissing, isNotFound } from '../../../../shared/cluster/ops.js';
 import { teardownNetworking } from '../../../../shared/cluster/networking.js';
 
 // Reclaim orphaned cluster objects: emptied environment -> drop namespace; single service gone -> remove its workload. Only touches managed-by namespaces.
@@ -45,15 +45,28 @@ export async function gcOrphans(kc: KubeConfig): Promise<void> {
 }
 
 // Tenant PVCs die with their service or namespace, but a Retain StorageClass (UpCloud UKS default) leaves the PV Released and
-// its cloud disk billed forever. Flipping it to Delete makes the CSI driver reclaim the disk. Platform-namespace PVs are never touched.
+// its cloud disk billed forever. Flipping it to Delete makes the CSI driver reclaim the disk. Platform-namespace PVs are never touched,
+// and neither are Released PVs whose namespace is still live: those may be manually recoverable, which is what Retain exists for.
 async function reclaimReleasedVolumes(coreApi: CoreV1Api): Promise<void> {
 	const volumes = await coreApi.listPersistentVolume();
 	for (const pv of volumes.items) {
 		const name = pv.metadata?.name;
-		if (!name || !pv.spec || pv.status?.phase !== 'Released' || pv.spec.persistentVolumeReclaimPolicy !== 'Retain') continue;
-		if (!pv.spec.claimRef?.namespace?.startsWith(WORKLOADS_NAMESPACE_PREFIX)) continue;
-		console.log(`[reconcile] GC: reclaiming released volume ${name} (claim ${pv.spec.claimRef.namespace}/${pv.spec.claimRef.name})`);
+		const claimNamespace = pv.spec?.claimRef?.namespace;
+		if (!name || !pv.spec || !claimNamespace || pv.status?.phase !== 'Released' || pv.spec.persistentVolumeReclaimPolicy !== 'Retain') continue;
+		if (!claimNamespace.startsWith(WORKLOADS_NAMESPACE_PREFIX) || !(await isNamespaceGone(coreApi, claimNamespace))) continue;
+		console.log(`[reconcile] GC: reclaiming released volume ${name} (claim ${claimNamespace}/${pv.spec.claimRef?.name})`);
 		pv.spec.persistentVolumeReclaimPolicy = 'Delete';
 		await coreApi.replacePersistentVolume({ name, body: pv });
+	}
+}
+
+// Terminating counts as gone: its PVCs are already being removed. Any other read error propagates so we never flip on a guess.
+async function isNamespaceGone(coreApi: CoreV1Api, name: string): Promise<boolean> {
+	try {
+		const ns = await coreApi.readNamespace({ name });
+		return ns.status?.phase === 'Terminating';
+	} catch (err) {
+		if (isNotFound(err)) return true;
+		throw err;
 	}
 }
