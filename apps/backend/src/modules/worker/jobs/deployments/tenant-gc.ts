@@ -54,10 +54,17 @@ async function reclaimReleasedVolumes(coreApi: CoreV1Api): Promise<void> {
 		const claimNamespace = pv.spec?.claimRef?.namespace;
 		if (!name || !pv.spec || !claimNamespace || pv.status?.phase !== 'Released' || pv.spec.persistentVolumeReclaimPolicy !== 'Retain') continue;
 		if (!claimNamespace.startsWith(WORKLOADS_NAMESPACE_PREFIX) || !(await isNamespaceGone(coreApi, claimNamespace))) continue;
+		// A missing namespace does not prove the environment is gone (deploys re-create it lazily), so the services table has the final say.
+		if (await environmentHasServices(claimNamespace.slice(WORKLOADS_NAMESPACE_PREFIX.length))) continue;
 		console.log(`[reconcile] GC: reclaiming released volume ${name} (claim ${claimNamespace}/${pv.spec.claimRef?.name})`);
 		pv.spec.persistentVolumeReclaimPolicy = 'Delete';
 		await coreApi.replacePersistentVolume({ name, body: pv });
 	}
+}
+
+async function environmentHasServices(environmentId: string): Promise<boolean> {
+	const rows = await db.select({ id: services.id }).from(services).where(eq(services.environmentId, environmentId));
+	return rows.length > 0;
 }
 
 // Only a 404 counts as gone: a Terminating namespace can hang for days and may have been deleted by mistake, so its volumes stay recoverable.

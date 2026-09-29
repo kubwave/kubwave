@@ -144,8 +144,16 @@ describe('gcOrphans', () => {
 			volume('pv-already-delete', 'Released', 'Delete', 'kubwave-env-gone'),
 			volume('pv-platform', 'Released', 'Retain', 'kubwave')
 		];
+		liveServiceResults = [[]]; // only pv-orphan reaches the services check: env has no services
 		await gcOrphans(kc);
 		expect(replacedVolumes).toEqual([{ name: 'pv-orphan', reclaimPolicy: 'Delete' }]);
+	});
+
+	test('keeps a Released Retain volume when its namespace is gone but the environment still has services', async () => {
+		volumeItems = [volume('pv-lazy', 'Released', 'Retain', 'kubwave-env-recreated-later')];
+		liveServiceResults = [[{ id: 'svc-live' }]];
+		await gcOrphans(kc);
+		expect(replacedVolumes).toEqual([]);
 	});
 
 	test('keeps a Released Retain volume whose tenant namespace is still live', async () => {
