@@ -205,13 +205,15 @@ function EnvironmentCanvas({
 		[select, flow]
 	);
 	// Selecting a node opens it: covers clicks and keyboard (Tab to a node, Enter or Space), which
-	// React Flow turns into a selection but never into onNodeClick.
+	// React Flow turns into a selection but never into onNodeClick. React Flow re-runs the handler whenever
+	// its identity changes, so it reads the open service from the URL: depending on selectedServiceId
+	// would re-fire it on close with the still-selected node and reopen the panel.
 	const openSelection = useCallback(
 		({ nodes: picked }: OnSelectionChangeParams) => {
 			const id = picked.length === 1 ? picked[0]!.id : null;
-			if (id && id !== selectedServiceId) open(id);
+			if (id && id !== new URLSearchParams(window.location.search).get('service')) open(id);
 		},
-		[open, selectedServiceId]
+		[open]
 	);
 
 	useEffect(() => {
