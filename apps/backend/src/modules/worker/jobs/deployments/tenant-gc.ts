@@ -60,11 +60,12 @@ async function reclaimReleasedVolumes(coreApi: CoreV1Api): Promise<void> {
 	}
 }
 
-// Terminating counts as gone: its PVCs are already being removed. Any other read error propagates so we never flip on a guess.
+// Only a 404 counts as gone: a Terminating namespace can hang for days and may have been deleted by mistake, so its volumes stay recoverable.
+// Any other read error propagates so we never flip on a guess.
 async function isNamespaceGone(coreApi: CoreV1Api, name: string): Promise<boolean> {
 	try {
-		const ns = await coreApi.readNamespace({ name });
-		return ns.status?.phase === 'Terminating';
+		await coreApi.readNamespace({ name });
+		return false;
 	} catch (err) {
 		if (isNotFound(err)) return true;
 		throw err;

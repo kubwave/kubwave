@@ -155,10 +155,10 @@ describe('gcOrphans', () => {
 		expect(replacedVolumes).toEqual([]);
 	});
 
-	test('reclaims a Released Retain volume whose tenant namespace is Terminating', async () => {
+	test('keeps a Released Retain volume whose tenant namespace is still Terminating', async () => {
 		livePhases = { 'kubwave-env-dying': 'Terminating' };
 		volumeItems = [volume('pv-dying', 'Released', 'Retain', 'kubwave-env-dying')];
 		await gcOrphans(kc);
-		expect(replacedVolumes).toEqual([{ name: 'pv-dying', reclaimPolicy: 'Delete' }]);
+		expect(replacedVolumes).toEqual([]);
 	});
 });
