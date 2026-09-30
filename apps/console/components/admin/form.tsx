@@ -30,6 +30,15 @@ export function Row({
 	);
 }
 
+export function Suffixed({ suffix, className, ...props }: React.ComponentProps<typeof Input> & { suffix: string }) {
+	return (
+		<div className="relative">
+			<Input inputMode="numeric" className={cn('pr-12 tabular-nums', className)} {...props} />
+			<span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-xs text-muted-foreground">{suffix}</span>
+		</div>
+	);
+}
+
 export function Field({
 	label,
 	htmlFor,

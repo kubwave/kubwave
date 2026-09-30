@@ -19,7 +19,7 @@ import type {
 import { registryDraftFrom, registryErrors, registryPayload, type RegistryDraft, type RegistryPayload } from '@/features/platform/registry-model';
 import type { GroupSpec } from './settings-group';
 
-export const SETTINGS_TABS = ['system', 'scaling', 'network', 'integrations'] as const;
+export const SETTINGS_TABS = ['system', 'scaling', 'network', 'integrations', 'builds'] as const;
 export type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 // The GitHub App manifest callback returns with ?connected=1 or ?git_error=, which belong to the integrations tab.

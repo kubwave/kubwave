@@ -1,3 +1,4 @@
+import { PlatformBuildSettingsController } from './settings/builds/platform-build-settings.controller.js';
 import { Module } from '@nestjs/common';
 import { AdminGuard } from '../../shared/auth/auth.guard.js';
 import { ClusterController } from './cluster/cluster.controller.js';
@@ -36,6 +37,7 @@ import { PlatformVersionService } from './version/platform-version.service.js';
 
 @Module({
 	controllers: [
+		PlatformBuildSettingsController,
 		PlatformController,
 		PlatformUsersController,
 		PlatformDomainSettingsController,

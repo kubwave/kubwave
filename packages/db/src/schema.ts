@@ -739,3 +739,68 @@ export const deploymentLogs = pgTable(
 
 export type DeploymentLog = typeof deploymentLogs.$inferSelect;
 export type NewDeploymentLog = typeof deploymentLogs.$inferInsert;
+
+export interface BuildRunSettings {
+	execution: 'cluster' | 'agent';
+	cpuRequest: string;
+	cpuLimit: string;
+	memoryRequest: string;
+	memoryLimit: string;
+	maxConcurrentBuilds: number;
+	timeoutSeconds: number;
+	queueTimeoutSeconds: number;
+	fallbackToCluster: boolean;
+}
+
+export const buildAgents = pgTable(
+	'build_agents',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		name: text('name').notNull(),
+		registrationHash: text('registration_hash'),
+		registrationExpiresAt: timestamp('registration_expires_at', { withTimezone: true }),
+		tokenHash: text('token_hash'),
+		paused: boolean('paused').notNull().default(false),
+		revoked: boolean('revoked').notNull().default(false),
+		maxConcurrentBuilds: integer('max_concurrent_builds').notNull().default(1),
+		lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+		protocolVersion: integer('protocol_version'),
+		version: text('version'),
+		architecture: text('architecture'),
+		capabilities: jsonb('capabilities').$type<{ cpus: number; memoryBytes: number; freeDiskBytes: number; dockerReady: boolean }>(),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+	},
+	table => [
+		uniqueIndex('build_agents_registration_hash_idx').on(table.registrationHash),
+		uniqueIndex('build_agents_token_hash_idx').on(table.tokenHash)
+	]
+);
+
+export const buildRuns = pgTable(
+	'build_runs',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		deploymentId: uuid('deployment_id')
+			.notNull()
+			.references(() => deployments.id, { onDelete: 'cascade' })
+			.unique(),
+		settings: jsonb('settings').$type<BuildRunSettings>().notNull(),
+		execution: text('execution').$type<'cluster' | 'agent'>().notNull(),
+		status: text('status').$type<'queued' | 'preparing' | 'ready' | 'running' | 'succeeded' | 'failed' | 'canceled'>().notNull().default('queued'),
+		agentId: uuid('agent_id').references(() => buildAgents.id, { onDelete: 'set null' }),
+		attempt: integer('attempt').notNull().default(1),
+		leaseTokenHash: text('lease_token_hash'),
+		leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+		payloadCiphertext: text('payload_ciphertext'),
+		sourceCommit: text('source_commit'),
+		imageRef: text('image_ref'),
+		lastError: text('last_error'),
+		startedAt: timestamp('started_at', { withTimezone: true }),
+		finishedAt: timestamp('finished_at', { withTimezone: true }),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+	},
+	table => [index('build_runs_status_execution_idx').on(table.status, table.execution), index('build_runs_agent_id_idx').on(table.agentId)]
+);
+
+export type BuildAgent = typeof buildAgents.$inferSelect;
+export type BuildRun = typeof buildRuns.$inferSelect;

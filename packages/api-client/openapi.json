@@ -1,6 +1,399 @@
 {
 	"openapi": "3.0.0",
 	"paths": {
+		"/api/build-agent/heartbeat": {
+			"post": {
+				"operationId": "buildAgentHeartbeat",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/AgentHeartbeatDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AgentHeartbeatResponseDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"buildAgentAuth": []
+					}
+				],
+				"summary": "Report capacity and renew active build leases",
+				"tags": ["build-agents"]
+			}
+		},
+		"/api/build-agent/claim": {
+			"post": {
+				"operationId": "buildAgentClaim",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AgentClaimDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"buildAgentAuth": []
+					}
+				],
+				"summary": "Claim the next assigned build",
+				"tags": ["build-agents"]
+			}
+		},
+		"/api/build-agent/tasks/{id}/logs": {
+			"post": {
+				"operationId": "buildAgentTaskLogs",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/AgentTaskLogsDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AgentOkDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"buildAgentAuth": []
+					}
+				],
+				"summary": "Append idempotent build logs",
+				"tags": ["build-agents"]
+			}
+		},
+		"/api/build-agent/tasks/{id}/result": {
+			"post": {
+				"operationId": "buildAgentTaskResult",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/AgentTaskResultDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AgentOkDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"buildAgentAuth": []
+					}
+				],
+				"summary": "Complete the current build attempt",
+				"tags": ["build-agents"]
+			}
+		},
+		"/api/build-agent/tasks/{id}/source": {
+			"post": {
+				"operationId": "buildAgentTaskSource",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/AgentTaskSourceDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AgentOkDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"buildAgentAuth": []
+					}
+				],
+				"summary": "Pin the checked-out source commit for retries",
+				"tags": ["build-agents"]
+			}
+		},
+		"/api/build-agent/register": {
+			"post": {
+				"operationId": "buildAgentRegister",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/RegisterBuildAgentDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/BuildAgentCredentialsDto"
+								}
+							}
+						}
+					}
+				},
+				"summary": "Exchange a one-time registration code",
+				"tags": ["build-agents"]
+			}
+		},
+		"/api/platform/build-agents": {
+			"get": {
+				"operationId": "platformBuildAgentsList",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/BuildAgentDto"
+									}
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "List external build servers",
+				"tags": ["build-agents"]
+			},
+			"post": {
+				"operationId": "platformBuildAgentsCreate",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateBuildAgentDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/BuildAgentRegistrationDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Create a one-time build server registration",
+				"tags": ["build-agents"]
+			}
+		},
+		"/api/platform/build-agents/{id}": {
+			"put": {
+				"operationId": "platformBuildAgentsUpdate",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateBuildAgentDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AgentOkDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Pause a server or configure its capacity",
+				"tags": ["build-agents"]
+			},
+			"delete": {
+				"operationId": "platformBuildAgentsDelete",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AgentOkDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Remove a server with no active builds",
+				"tags": ["build-agents"]
+			}
+		},
+		"/api/platform/build-agents/{id}/revoke": {
+			"post": {
+				"operationId": "platformBuildAgentsRevoke",
+				"parameters": [
+					{
+						"name": "id",
+						"required": true,
+						"in": "path",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AgentOkDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Revoke a server and fail its active builds",
+				"tags": ["build-agents"]
+			}
+		},
 		"/api/mcp/info": {
 			"get": {
 				"operationId": "mcpInfoGet",
@@ -2962,6 +3355,64 @@
 				"tags": ["invitations"]
 			}
 		},
+		"/api/platform/settings/builds": {
+			"get": {
+				"operationId": "platformSettingsBuildsGet",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/BuildSettingsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Get build execution and resource settings",
+				"tags": ["platform-settings"]
+			},
+			"put": {
+				"operationId": "platformSettingsBuildsUpdate",
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/BuildSettingsDto"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/BuildSettingsDto"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"summary": "Configure new builds",
+				"tags": ["platform-settings"]
+			}
+		},
 		"/api/platform/version": {
 			"get": {
 				"operationId": "platformVersionGet",
@@ -4194,9 +4645,337 @@
 				"scheme": "bearer",
 				"bearerFormat": "JWT",
 				"type": "http"
+			},
+			"buildAgentAuth": {
+				"scheme": "bearer",
+				"bearerFormat": "opaque",
+				"type": "http"
 			}
 		},
 		"schemas": {
+			"TaskLeaseDto": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"attempt": {
+						"type": "number"
+					},
+					"leaseToken": {
+						"type": "string"
+					}
+				},
+				"required": ["id", "attempt", "leaseToken"]
+			},
+			"AgentHeartbeatDto": {
+				"type": "object",
+				"properties": {
+					"protocolVersion": {
+						"type": "number"
+					},
+					"version": {
+						"type": "string"
+					},
+					"architecture": {
+						"type": "string",
+						"enum": ["amd64", "arm64"]
+					},
+					"cpus": {
+						"type": "number"
+					},
+					"memoryBytes": {
+						"type": "number"
+					},
+					"freeDiskBytes": {
+						"type": "number"
+					},
+					"dockerReady": {
+						"type": "boolean"
+					},
+					"tasks": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/TaskLeaseDto"
+						}
+					}
+				},
+				"required": ["protocolVersion", "version", "architecture", "cpus", "memoryBytes", "freeDiskBytes", "dockerReady", "tasks"]
+			},
+			"AgentHeartbeatResponseDto": {
+				"type": "object",
+				"properties": {
+					"leaseExpiresAt": {
+						"type": "string"
+					},
+					"canceled": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"required": ["leaseExpiresAt", "canceled"]
+			},
+			"AgentTaskDto": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"attempt": {
+						"type": "number"
+					},
+					"leaseToken": {
+						"type": "string"
+					},
+					"leaseExpiresAt": {
+						"type": "string"
+					},
+					"timeoutSeconds": {
+						"type": "number"
+					},
+					"imageRef": {
+						"type": "string"
+					},
+					"job": {
+						"type": "object",
+						"additionalProperties": true
+					},
+					"files": {
+						"type": "object",
+						"additionalProperties": true
+					},
+					"redactions": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"required": ["id", "attempt", "leaseToken", "leaseExpiresAt", "timeoutSeconds", "imageRef", "job", "files", "redactions"]
+			},
+			"AgentClaimDto": {
+				"type": "object",
+				"properties": {
+					"task": {
+						"nullable": true,
+						"type": "object",
+						"allOf": [
+							{
+								"$ref": "#/components/schemas/AgentTaskDto"
+							}
+						]
+					}
+				},
+				"required": ["task"]
+			},
+			"AgentLogLineDto": {
+				"type": "object",
+				"properties": {
+					"sequence": {
+						"type": "number"
+					},
+					"container": {
+						"type": "string"
+					},
+					"message": {
+						"type": "string"
+					},
+					"ts": {
+						"type": "string"
+					}
+				},
+				"required": ["sequence", "container", "message", "ts"]
+			},
+			"AgentTaskLogsDto": {
+				"type": "object",
+				"properties": {
+					"attempt": {
+						"type": "number"
+					},
+					"leaseToken": {
+						"type": "string"
+					},
+					"lines": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/AgentLogLineDto"
+						}
+					}
+				},
+				"required": ["attempt", "leaseToken", "lines"]
+			},
+			"AgentOkDto": {
+				"type": "object",
+				"properties": {
+					"ok": {
+						"type": "boolean"
+					}
+				},
+				"required": ["ok"]
+			},
+			"AgentTaskResultDto": {
+				"type": "object",
+				"properties": {
+					"attempt": {
+						"type": "number"
+					},
+					"leaseToken": {
+						"type": "string"
+					},
+					"success": {
+						"type": "boolean"
+					},
+					"error": {
+						"type": "string"
+					}
+				},
+				"required": ["attempt", "leaseToken", "success"]
+			},
+			"AgentTaskSourceDto": {
+				"type": "object",
+				"properties": {
+					"attempt": {
+						"type": "number"
+					},
+					"leaseToken": {
+						"type": "string"
+					},
+					"commit": {
+						"type": "string"
+					}
+				},
+				"required": ["attempt", "leaseToken", "commit"]
+			},
+			"RegisterBuildAgentDto": {
+				"type": "object",
+				"properties": {
+					"token": {
+						"type": "string"
+					}
+				},
+				"required": ["token"]
+			},
+			"BuildAgentCredentialsDto": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"token": {
+						"type": "string"
+					}
+				},
+				"required": ["id", "token"]
+			},
+			"BuildAgentDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"maxConcurrentBuilds": {
+						"type": "number",
+						"minimum": 1,
+						"maximum": 32
+					},
+					"id": {
+						"type": "string"
+					},
+					"paused": {
+						"type": "boolean"
+					},
+					"status": {
+						"type": "string",
+						"enum": ["pending", "online", "offline", "paused", "revoked", "incompatible", "unavailable"]
+					},
+					"lastSeenAt": {
+						"type": "string",
+						"nullable": true
+					},
+					"version": {
+						"type": "string",
+						"nullable": true
+					},
+					"architecture": {
+						"type": "string",
+						"nullable": true
+					},
+					"activeBuilds": {
+						"type": "number"
+					},
+					"cpus": {
+						"type": "number",
+						"nullable": true
+					},
+					"memoryBytes": {
+						"type": "number",
+						"nullable": true
+					},
+					"freeDiskBytes": {
+						"type": "number",
+						"nullable": true
+					}
+				},
+				"required": [
+					"name",
+					"maxConcurrentBuilds",
+					"id",
+					"paused",
+					"status",
+					"lastSeenAt",
+					"version",
+					"architecture",
+					"activeBuilds",
+					"cpus",
+					"memoryBytes",
+					"freeDiskBytes"
+				]
+			},
+			"CreateBuildAgentDto": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"maxConcurrentBuilds": {
+						"type": "number",
+						"minimum": 1,
+						"maximum": 32
+					}
+				},
+				"required": ["name", "maxConcurrentBuilds"]
+			},
+			"BuildAgentRegistrationDto": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"installCommand": {
+						"type": "string"
+					},
+					"expiresAt": {
+						"type": "string"
+					}
+				},
+				"required": ["id", "installCommand", "expiresAt"]
+			},
+			"UpdateBuildAgentDto": {
+				"type": "object",
+				"properties": {
+					"paused": {
+						"type": "boolean"
+					},
+					"maxConcurrentBuilds": {
+						"type": "number",
+						"minimum": 1,
+						"maximum": 32
+					}
+				},
+				"required": ["paused", "maxConcurrentBuilds"]
+			},
 			"McpInfoDto": {
 				"type": "object",
 				"properties": {
@@ -6550,6 +7329,56 @@
 					}
 				},
 				"required": ["accessToken", "user"]
+			},
+			"BuildSettingsDto": {
+				"type": "object",
+				"properties": {
+					"execution": {
+						"type": "string",
+						"enum": ["cluster", "agent"]
+					},
+					"cpuRequest": {
+						"type": "string"
+					},
+					"cpuLimit": {
+						"type": "string"
+					},
+					"memoryRequest": {
+						"type": "string"
+					},
+					"memoryLimit": {
+						"type": "string"
+					},
+					"maxConcurrentBuilds": {
+						"type": "number",
+						"minimum": 1,
+						"maximum": 100
+					},
+					"timeoutSeconds": {
+						"type": "number",
+						"minimum": 60,
+						"maximum": 86400
+					},
+					"queueTimeoutSeconds": {
+						"type": "number",
+						"minimum": 60,
+						"maximum": 604800
+					},
+					"fallbackToCluster": {
+						"type": "boolean"
+					}
+				},
+				"required": [
+					"execution",
+					"cpuRequest",
+					"cpuLimit",
+					"memoryRequest",
+					"memoryLimit",
+					"maxConcurrentBuilds",
+					"timeoutSeconds",
+					"queueTimeoutSeconds",
+					"fallbackToCluster"
+				]
 			},
 			"AvailableVersionDto": {
 				"type": "object",

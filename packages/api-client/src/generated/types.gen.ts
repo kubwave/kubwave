@@ -4,6 +4,118 @@ export type ClientOptions = {
 	baseUrl: string;
 };
 
+export type TaskLeaseDto = {
+	id: string;
+	attempt: number;
+	leaseToken: string;
+};
+
+export type AgentHeartbeatDto = {
+	protocolVersion: number;
+	version: string;
+	architecture: 'amd64' | 'arm64';
+	cpus: number;
+	memoryBytes: number;
+	freeDiskBytes: number;
+	dockerReady: boolean;
+	tasks: Array<TaskLeaseDto>;
+};
+
+export type AgentHeartbeatResponseDto = {
+	leaseExpiresAt: string;
+	canceled: Array<string>;
+};
+
+export type AgentTaskDto = {
+	id: string;
+	attempt: number;
+	leaseToken: string;
+	leaseExpiresAt: string;
+	timeoutSeconds: number;
+	imageRef: string;
+	job: {
+		[key: string]: unknown;
+	};
+	files: {
+		[key: string]: unknown;
+	};
+	redactions: Array<string>;
+};
+
+export type AgentClaimDto = {
+	task: AgentTaskDto | null;
+};
+
+export type AgentLogLineDto = {
+	sequence: number;
+	container: string;
+	message: string;
+	ts: string;
+};
+
+export type AgentTaskLogsDto = {
+	attempt: number;
+	leaseToken: string;
+	lines: Array<AgentLogLineDto>;
+};
+
+export type AgentOkDto = {
+	ok: boolean;
+};
+
+export type AgentTaskResultDto = {
+	attempt: number;
+	leaseToken: string;
+	success: boolean;
+	error?: string;
+};
+
+export type AgentTaskSourceDto = {
+	attempt: number;
+	leaseToken: string;
+	commit: string;
+};
+
+export type RegisterBuildAgentDto = {
+	token: string;
+};
+
+export type BuildAgentCredentialsDto = {
+	id: string;
+	token: string;
+};
+
+export type BuildAgentDto = {
+	name: string;
+	maxConcurrentBuilds: number;
+	id: string;
+	paused: boolean;
+	status: 'pending' | 'online' | 'offline' | 'paused' | 'revoked' | 'incompatible' | 'unavailable';
+	lastSeenAt: string | null;
+	version: string | null;
+	architecture: string | null;
+	activeBuilds: number;
+	cpus: number | null;
+	memoryBytes: number | null;
+	freeDiskBytes: number | null;
+};
+
+export type CreateBuildAgentDto = {
+	name: string;
+	maxConcurrentBuilds: number;
+};
+
+export type BuildAgentRegistrationDto = {
+	id: string;
+	installCommand: string;
+	expiresAt: string;
+};
+
+export type UpdateBuildAgentDto = {
+	paused: boolean;
+	maxConcurrentBuilds: number;
+};
+
 export type McpInfoDto = {
 	endpoint: string;
 	scopes: Array<string>;
@@ -786,6 +898,18 @@ export type AcceptInviteResponseDto = {
 	user: SessionUserDto;
 };
 
+export type BuildSettingsDto = {
+	execution: 'cluster' | 'agent';
+	cpuRequest: string;
+	cpuLimit: string;
+	memoryRequest: string;
+	memoryLimit: string;
+	maxConcurrentBuilds: number;
+	timeoutSeconds: number;
+	queueTimeoutSeconds: number;
+	fallbackToCluster: boolean;
+};
+
 export type AvailableVersionDto = {
 	version: string;
 	changelogUrl: string | null;
@@ -1186,6 +1310,161 @@ export type UpdateAiSettingsDtoWritable = {
 	model: string;
 	apiKey?: string | null;
 };
+
+export type BuildAgentHeartbeatData = {
+	body: AgentHeartbeatDto;
+	path?: never;
+	query?: never;
+	url: '/api/build-agent/heartbeat';
+};
+
+export type BuildAgentHeartbeatResponses = {
+	200: AgentHeartbeatResponseDto;
+};
+
+export type BuildAgentHeartbeatResponse = BuildAgentHeartbeatResponses[keyof BuildAgentHeartbeatResponses];
+
+export type BuildAgentClaimData = {
+	body?: never;
+	path?: never;
+	query?: never;
+	url: '/api/build-agent/claim';
+};
+
+export type BuildAgentClaimResponses = {
+	200: AgentClaimDto;
+};
+
+export type BuildAgentClaimResponse = BuildAgentClaimResponses[keyof BuildAgentClaimResponses];
+
+export type BuildAgentTaskLogsData = {
+	body: AgentTaskLogsDto;
+	path: {
+		id: string;
+	};
+	query?: never;
+	url: '/api/build-agent/tasks/{id}/logs';
+};
+
+export type BuildAgentTaskLogsResponses = {
+	200: AgentOkDto;
+};
+
+export type BuildAgentTaskLogsResponse = BuildAgentTaskLogsResponses[keyof BuildAgentTaskLogsResponses];
+
+export type BuildAgentTaskResultData = {
+	body: AgentTaskResultDto;
+	path: {
+		id: string;
+	};
+	query?: never;
+	url: '/api/build-agent/tasks/{id}/result';
+};
+
+export type BuildAgentTaskResultResponses = {
+	200: AgentOkDto;
+};
+
+export type BuildAgentTaskResultResponse = BuildAgentTaskResultResponses[keyof BuildAgentTaskResultResponses];
+
+export type BuildAgentTaskSourceData = {
+	body: AgentTaskSourceDto;
+	path: {
+		id: string;
+	};
+	query?: never;
+	url: '/api/build-agent/tasks/{id}/source';
+};
+
+export type BuildAgentTaskSourceResponses = {
+	200: AgentOkDto;
+};
+
+export type BuildAgentTaskSourceResponse = BuildAgentTaskSourceResponses[keyof BuildAgentTaskSourceResponses];
+
+export type BuildAgentRegisterData = {
+	body: RegisterBuildAgentDto;
+	path?: never;
+	query?: never;
+	url: '/api/build-agent/register';
+};
+
+export type BuildAgentRegisterResponses = {
+	200: BuildAgentCredentialsDto;
+};
+
+export type BuildAgentRegisterResponse = BuildAgentRegisterResponses[keyof BuildAgentRegisterResponses];
+
+export type PlatformBuildAgentsListData = {
+	body?: never;
+	path?: never;
+	query?: never;
+	url: '/api/platform/build-agents';
+};
+
+export type PlatformBuildAgentsListResponses = {
+	200: Array<BuildAgentDto>;
+};
+
+export type PlatformBuildAgentsListResponse = PlatformBuildAgentsListResponses[keyof PlatformBuildAgentsListResponses];
+
+export type PlatformBuildAgentsCreateData = {
+	body: CreateBuildAgentDto;
+	path?: never;
+	query?: never;
+	url: '/api/platform/build-agents';
+};
+
+export type PlatformBuildAgentsCreateResponses = {
+	200: BuildAgentRegistrationDto;
+};
+
+export type PlatformBuildAgentsCreateResponse = PlatformBuildAgentsCreateResponses[keyof PlatformBuildAgentsCreateResponses];
+
+export type PlatformBuildAgentsDeleteData = {
+	body?: never;
+	path: {
+		id: string;
+	};
+	query?: never;
+	url: '/api/platform/build-agents/{id}';
+};
+
+export type PlatformBuildAgentsDeleteResponses = {
+	200: AgentOkDto;
+};
+
+export type PlatformBuildAgentsDeleteResponse = PlatformBuildAgentsDeleteResponses[keyof PlatformBuildAgentsDeleteResponses];
+
+export type PlatformBuildAgentsUpdateData = {
+	body: UpdateBuildAgentDto;
+	path: {
+		id: string;
+	};
+	query?: never;
+	url: '/api/platform/build-agents/{id}';
+};
+
+export type PlatformBuildAgentsUpdateResponses = {
+	200: AgentOkDto;
+};
+
+export type PlatformBuildAgentsUpdateResponse = PlatformBuildAgentsUpdateResponses[keyof PlatformBuildAgentsUpdateResponses];
+
+export type PlatformBuildAgentsRevokeData = {
+	body?: never;
+	path: {
+		id: string;
+	};
+	query?: never;
+	url: '/api/platform/build-agents/{id}/revoke';
+};
+
+export type PlatformBuildAgentsRevokeResponses = {
+	200: AgentOkDto;
+};
+
+export type PlatformBuildAgentsRevokeResponse = PlatformBuildAgentsRevokeResponses[keyof PlatformBuildAgentsRevokeResponses];
 
 export type McpInfoGetData = {
 	body?: never;
@@ -2415,6 +2694,32 @@ export type InvitationsAcceptResponses = {
 };
 
 export type InvitationsAcceptResponse = InvitationsAcceptResponses[keyof InvitationsAcceptResponses];
+
+export type PlatformSettingsBuildsGetData = {
+	body?: never;
+	path?: never;
+	query?: never;
+	url: '/api/platform/settings/builds';
+};
+
+export type PlatformSettingsBuildsGetResponses = {
+	200: BuildSettingsDto;
+};
+
+export type PlatformSettingsBuildsGetResponse = PlatformSettingsBuildsGetResponses[keyof PlatformSettingsBuildsGetResponses];
+
+export type PlatformSettingsBuildsUpdateData = {
+	body: BuildSettingsDto;
+	path?: never;
+	query?: never;
+	url: '/api/platform/settings/builds';
+};
+
+export type PlatformSettingsBuildsUpdateResponses = {
+	200: BuildSettingsDto;
+};
+
+export type PlatformSettingsBuildsUpdateResponse = PlatformSettingsBuildsUpdateResponses[keyof PlatformSettingsBuildsUpdateResponses];
 
 export type PlatformVersionGetData = {
 	body?: never;

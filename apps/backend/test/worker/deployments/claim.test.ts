@@ -28,6 +28,7 @@ mock.module('~/modules/worker/jobs/deployments/logs', () => ({
 function makeTx() {
 	let selectCall = 0;
 	return {
+		execute: async () => {},
 		select: () => {
 			const current = selectCall++;
 			const rows = current === 0 ? [{ value: inflightCount }] : claimableRows;

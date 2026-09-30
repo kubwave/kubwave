@@ -1,3 +1,4 @@
+import { maintainBuildRuns } from '../../../../shared/builds/runs.js';
 import { CoreV1Api } from '@kubernetes/client-node';
 import { type DefaultDomainSettings } from '@kubwave/db';
 import { getKubeConfig } from '@kubwave/kube';
@@ -19,6 +20,7 @@ export async function runDeploymentReconcile(): Promise<void> {
 	}
 	const runtime = await reconcileDefaultDomainRuntime(kc.makeApiClient(CoreV1Api));
 	await runSteps('reconcile', [
+		{ name: 'build-runs', run: maintainBuildRuns },
 		{
 			name: 'claim',
 			run: async () => {

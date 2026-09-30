@@ -11,7 +11,7 @@ const WORKSPACE = '/workspace';
 const SRC_DIR = `${WORKSPACE}/src`;
 const SSH_KEY_MOUNT = '/ssh-key';
 const GIT_TOKEN_MOUNT = '/git-token';
-const SSH_DIR = `${WORKSPACE}/.ssh`;
+const SSH_DIR = '/tmp/kubwave-ssh';
 const SSH_KEY_FILE = `${SSH_DIR}/id`;
 const KNOWN_HOSTS_FILE = `${SSH_DIR}/known_hosts`;
 

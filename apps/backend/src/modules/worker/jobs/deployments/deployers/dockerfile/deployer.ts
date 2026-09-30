@@ -1,3 +1,4 @@
+import type { BuildCoreApi } from '../../../../../../shared/builds/artifacts.js';
 import { BatchV1Api, CoreV1Api } from '@kubernetes/client-node';
 import type { DockerfileServiceConfig } from '@kubwave/db';
 import { LABEL_SERVICE_ID } from '@kubwave/kube';
@@ -10,7 +11,13 @@ import { buildConfigMapName, buildJobName, buildDockerfileBuildJob } from './job
 
 // Builds a pasted Dockerfile via a BuildKit Job; the build->deploy state machine is shared (runBuildReconcile), only the ConfigMap step is here.
 
-async function ensureBuildConfigMap(api: CoreV1Api, namespace: string, serviceId: string, deploymentId: string, dockerfile: string): Promise<void> {
+async function ensureBuildConfigMap(
+	api: BuildCoreApi,
+	namespace: string,
+	serviceId: string,
+	deploymentId: string,
+	dockerfile: string
+): Promise<void> {
 	const name = buildConfigMapName(deploymentId);
 	if (await readConfigMapOrNull(api, namespace, name)) return;
 	await createIgnoreConflict(() =>

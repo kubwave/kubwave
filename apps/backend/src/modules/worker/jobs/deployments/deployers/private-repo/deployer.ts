@@ -1,3 +1,4 @@
+import type { BuildCoreApi } from '../../../../../../shared/builds/artifacts.js';
 import { eq } from 'drizzle-orm';
 import { BatchV1Api, CoreV1Api, NetworkingV1Api } from '@kubernetes/client-node';
 import { db, sshKeys, type PrivateRepoServiceConfig } from '@kubwave/db';
@@ -21,7 +22,7 @@ function sshSecretName(deploymentId: string): string {
 }
 
 // Decrypt the team key into a one-shot Secret under data key `id`; create unconditionally (409 swallowed). Throws a retryable failure if the key was deleted.
-async function ensureSshKeySecret(api: CoreV1Api, namespace: string, serviceId: string, deploymentId: string, sshKeyId: string): Promise<void> {
+async function ensureSshKeySecret(api: BuildCoreApi, namespace: string, serviceId: string, deploymentId: string, sshKeyId: string): Promise<void> {
 	const [row] = await db.select({ ciphertext: sshKeys.privateKeyCiphertext }).from(sshKeys).where(eq(sshKeys.id, sshKeyId)).limit(1);
 	if (!row) throw new Error('Deploy key not found - it may have been deleted. Reattach a key in the service settings.');
 
@@ -66,11 +67,12 @@ export const privateRepoDeployer: Deployer = {
 					return err instanceof Error ? err.message : 'Invalid private repository SSH URL.';
 				}
 			},
-			startBuild: async ({ coreApi, batchApi, namespace, imageRef, cacheRef, serviceId, deploymentId }) => {
+			startBuild: async ({ coreApi, batchApi, namespace, imageRef, cacheRef, serviceId, deploymentId, external }) => {
 				const buildToolsImage = env.buildToolsImage;
 				if (!buildToolsImage) throw new Error('Private-repo builds are not available: no build tools image is configured (BUILD_TOOLS_IMAGE).');
 				await ensureSshKeySecret(coreApi, namespace, serviceId, deploymentId, config.sshKeyId);
-				await ensureSshEgressPolicy({ api: ctx.kc.makeApiClient(NetworkingV1Api), namespace, serviceId, deploymentId, port: resolveSshPort() });
+				if (!external)
+					await ensureSshEgressPolicy({ api: ctx.kc.makeApiClient(NetworkingV1Api), namespace, serviceId, deploymentId, port: resolveSshPort() });
 				// Deterministic Job name -> a create race yields a tolerated 409; swallow it (the next tick converges).
 				await createIgnoreConflict(() =>
 					batchApi.createNamespacedJob({

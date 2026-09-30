@@ -15,6 +15,7 @@ export function createOpenApiDocument(app: NestFastifyApplication): OpenAPIObjec
 		.setTitle('kubwave API')
 		.setVersion(process.env.APP_VERSION ?? 'dev')
 		.addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'bearerAuth')
+		.addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'opaque' }, 'buildAgentAuth')
 		.build();
 
 	const document = SwaggerModule.createDocument(app, config, {
@@ -47,14 +48,12 @@ function addMissingOperationPathParameters(operation: OperationObject, pathItem:
 
 	operation.parameters = [
 		...own,
-		...missing.map(
-			(name): ParameterObject => ({
-				name,
-				in: 'path',
-				required: true,
-				schema: { type: 'string' }
-			})
-		)
+		...missing.map((name): ParameterObject => ({
+			name,
+			in: 'path',
+			required: true,
+			schema: { type: 'string' }
+		}))
 	];
 }
 

@@ -1,0 +1,109 @@
+export const metadata = {
+	title: 'Build servers',
+	description: 'Configure Kubernetes build resources or move complete service builds onto external Linux servers.'
+};
+
+Admins configure builds in **Platform settings → Builds**. Dockerfile, public Git,
+private Git, GitHub and Gitea services support both execution modes, including
+Nixpacks. Services using existing images and managed databases do not build images.
+
+## Build in Kubernetes
+
+Choose **In Kubernetes** and configure CPU and memory requests and limits.
+These settings apply to checkout, Nixpacks preparation and BuildKit. CPU quantities
+accept values such as `500m` or `2`; memory quantities accept `512Mi`, `1.5Gi` or `4Gi`.
+Limits must be at least their requests. Leave CPU fields empty to preserve the
+existing unrestricted CPU behavior. If only a CPU limit is set, Kubernetes also
+uses it as the request.
+
+Requests determine how much capacity Kubernetes schedules for a build. A request
+larger than any available node leaves the build waiting for capacity. Memory usage
+above the limit can terminate a build; increasing the request alone does not raise
+that limit.
+
+**Concurrent cluster builds** bounds build jobs separately from deployments.
+Builds waiting for a server or slot do not occupy the deployment concurrency budget.
+Lowering capacity lets existing jobs finish before admitting new ones.
+
+Resource settings, execution mode and timeouts are saved with each build when it
+first enters the build queue. Changes apply to subsequent builds. The build timeout
+starts on execution; the queue timeout bounds waiting for capacity.
+
+## Register an external server
+
+Use a dedicated Linux server with Docker installed. The agent needs permission to
+use its Docker socket and launch rootless BuildKit containers. Builds are isolated
+in separate containers, but the agent's Docker access controls the build host.
+The agent supports amd64 and arm64. Use the same architecture as your kubwave worker
+and workload nodes; this release does not provide cross-compilation or multi-platform builds.
+
+1. Open **Platform settings → Builds** and enter a server name under **External build servers**.
+2. Click **Add server** and copy the generated installation command.
+3. Run the command on the build server. It starts the versioned agent container with
+   automatic restart, a Docker socket mount and a persistent credentials volume.
+4. Wait for the server to appear as **online**. Configure its parallel build capacity.
+5. Choose **External build servers** as the default execution and save.
+
+The registration code expires after 30 minutes and works once. The agent exchanges
+it for its own revocable credential and stores that credential in its persistent
+volume. It connects to kubwave using outbound HTTPS; no inbound agent port or public
+BuildKit endpoint is required. Local development permits loopback HTTP URLs.
+
+The server must reach kubwave, the Git repositories, builder images, base-image
+registries and the configured build registry. Kubernetes must also be able to pull
+from that registry. A cluster-only Service hostname cannot serve as an external
+server's registry address. Private Git hosts and private build-tools images need
+their corresponding network access. To pull private tool images, mount a Docker
+authentication config into the agent, for example by adding
+`-v "$HOME/.docker:/root/.docker:ro"` before the agent image name.
+
+Every step runs externally: checkout, Nixpacks, BuildKit and image push. No
+Kubernetes build job is created. Runtime deployments remain in Kubernetes.
+
+## External resource limits
+
+Cluster requests and limits do not control external builds. The agent defaults to
+a **2Gi memory limit per build stage**, with no CPU cap. Add these environment flags
+to the generated `docker run` command **before the image name** to change its local limits:
+
+```sh
+-e KUBWAVE_BUILD_MEMORY_LIMIT=8Gi -e KUBWAVE_BUILD_CPU_LIMIT=4
+```
+
+Size limits and parallel capacity for the server's available memory and CPU. External
+builds use temporary volumes which are removed after each attempt. Registry cache
+layers can be reused between successful builds. Docker's downloaded tool images
+remain on the server; manage their retention using normal Docker maintenance.
+
+## Failures and maintenance
+
+The agent reports capacity and renews build leases every 10 seconds. Leases expire
+after 90 seconds; the agent stops execution before its last lease expires if it
+cannot reach kubwave. A lost lease can retry once as a new attempt. Each attempt has
+a separate image tag; only the current attempt can finish the deployment. The
+checked-out Git commit is pinned before later stages so retries use the same source.
+
+Logs appear in the usual deployment build-log view. During connection loss the
+agent keeps a bounded log buffer. An agent restart cleans up its own orphaned
+containers and volumes; unfinished builds recover through lease expiration.
+
+Pause a server to stop accepting new work while existing builds finish. Revoking
+access stops its credential from working and fails its active builds. A server with
+active builds cannot be removed. Remove and register again if you lose its credentials
+or the initial registration expires.
+
+Cluster fallback is disabled by default. If enabled, unstarted builds may move to
+Kubernetes after 90 seconds without external capacity. Attempts that already started externally stay on external servers when retried. The configured cluster resource limits still apply.
+
+## Updating the agent
+
+Pause the server and wait until it has no active builds. Replace its container with
+the agent image matching the kubwave release, retaining the credentials volume,
+Docker socket mount and environment settings. Resume the server after it reports
+healthy. Agents with an incompatible protocol version receive no new builds.
+
+For a development checkout, build the image locally before using a `dev` installation command:
+
+```sh
+docker build --target prod -f apps/build-agent/Dockerfile -t ghcr.io/kubwave/build-agent:dev .
+```

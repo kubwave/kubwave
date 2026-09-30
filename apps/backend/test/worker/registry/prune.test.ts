@@ -15,17 +15,21 @@ mock.module('@kubwave/db', () => ({
 		select: () => ({
 			from: () => ({
 				innerJoin: () => ({
-					where: () => ({
-						orderBy: async () => deploymentRows
+					leftJoin: () => ({
+						where: () => ({
+							orderBy: async () => deploymentRows
+						})
 					})
 				})
 			})
 		})
 	},
+	buildRuns: { deploymentId: 'deploymentId', imageRef: 'imageRef', id: 'id', attempt: 'attempt' },
 	deployments: { id: 'd.id', serviceId: 'd.serviceId', status: 'd.status', type: 'd.type', createdAt: 'd.createdAt' },
 	services: { id: 's.id', environmentId: 's.environmentId' }
 }));
 mock.module('drizzle-orm', () => ({
+	inArray: (a: unknown, b: unknown) => ({ inArray: [a, b] }),
 	desc: (c: unknown) => ({ desc: c }),
 	eq: (a: unknown, b: unknown) => ({ eq: [a, b] })
 }));
@@ -60,6 +64,9 @@ describe('selectTagsToDelete', () => {
 });
 
 describe('computeKeepTags', () => {
+	test('keeps external attempt tags alongside their deployments', () => {
+		expect(Array.from(computeKeepTags([{ id: 'dep-1', status: 'succeeded', imageTag: 'dep-1-run-1' }], 1)).sort()).toEqual(['dep-1', 'dep-1-run-1']);
+	});
 	test('keeps the N most recent succeeded plus all in-flight deployments', () => {
 		// newest-first, as the query returns them
 		const rows = [
@@ -90,6 +97,19 @@ afterEach(() => {
 });
 
 describe('pruneServiceRepo', () => {
+	test('keeps a cache manifest when an old attempt tag points at the same digest', async () => {
+		const deleted: string[] = [];
+		globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+			const url = String(input);
+			if (url.endsWith('/tags/list')) return Response.json({ tags: ['buildcache', 'buildcache-old-attempt'] });
+			if (init?.method === 'HEAD') return new Response(null, { headers: { 'docker-content-digest': 'sha256:shared' } });
+			deleted.push(url);
+			return new Response(null, { status: 202 });
+		}) as typeof fetch;
+		expect(await pruneServiceRepo('env', 'service', new Set())).toBe(0);
+		expect(deleted).toEqual([]);
+	});
+
 	test('resolves each non-kept tag to a digest and deletes it', async () => {
 		const calls: Array<{ method: string; url: string }> = [];
 		globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
@@ -111,7 +131,7 @@ describe('pruneServiceRepo', () => {
 		const deleted = await pruneServiceRepo('env-1', 'svc-1', new Set(['keep-me']));
 
 		expect(deleted).toBe(2);
-		expect(calls.some(c => c.method === 'HEAD' && c.url.includes('/manifests/keep-me'))).toBe(false);
+		expect(calls.some(c => c.method === 'HEAD' && c.url.includes('/manifests/keep-me'))).toBe(true);
 		expect(calls.some(c => c.method === 'DELETE' && c.url.includes('/manifests/sha256:drop-1'))).toBe(true);
 		expect(calls.some(c => c.method === 'DELETE' && c.url.includes('/manifests/sha256:drop-2'))).toBe(true);
 	});

@@ -2,7 +2,7 @@
 
 import type { PlatformVolumeDto } from '@kubwave/api-client';
 import { ChartLineIcon, DatabaseIcon, LoaderCircleIcon, PackageIcon } from 'lucide-react';
-import { Field, Row } from '@/components/admin/form';
+import { Field, Row, Suffixed } from '@/components/admin/form';
 import { SettingsCard } from '@/components/settings-layout';
 import { Input } from '@/components/ui/input';
 import { LoadError } from '@/components/settings/parts';
@@ -18,15 +18,6 @@ const VOLUMES: Record<PlatformVolumeDto['volume'], { title: string; icon: React.
 	registry: { title: 'Container registry', icon: PackageIcon },
 	prometheus: { title: 'Managed Prometheus', icon: ChartLineIcon }
 };
-
-function Suffixed({ suffix, ...props }: React.ComponentProps<typeof Input> & { suffix: string }) {
-	return (
-		<div className="relative">
-			<Input inputMode="numeric" className="pr-12 tabular-nums" {...props} />
-			<span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-xs text-muted-foreground">{suffix}</span>
-		</div>
-	);
-}
 
 function Meter({ percent, marker }: { percent: number; marker?: number }) {
 	const tone = SEVERITY_BAR[usageSeverity(percent)];

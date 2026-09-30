@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { BuildAgentsModule } from './modules/build-agents/build-agents.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { DeploymentsModule } from './modules/deployments/deployments.module.js';
 import { EnvironmentsModule } from './modules/environments/environments.module.js';
@@ -16,6 +17,7 @@ import { McpModule } from './modules/mcp/mcp.module.js';
 
 @Module({
 	imports: [
+		BuildAgentsModule,
 		SharedModule,
 		McpModule,
 		HealthModule,

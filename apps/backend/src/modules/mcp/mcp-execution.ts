@@ -8,8 +8,7 @@ import type { McpPrincipal } from './mcp-auth.service.js';
 import { tokenHash, type McpScope } from './mcp.schemas.js';
 
 export type McpTarget =
-	| { kind: 'team' | 'project' | 'environment' | 'service' | 'deployment'; id: string; listProjects?: boolean }
-	| { kind: 'unrestricted' };
+	{ kind: 'team' | 'project' | 'environment' | 'service' | 'deployment'; id: string; listProjects?: boolean } | { kind: 'unrestricted' };
 export type McpToolResult = { content: Array<{ type: 'text'; text: string }>; structuredContent: Record<string, unknown>; isError?: boolean };
 export interface McpTool {
 	definition: Tool;

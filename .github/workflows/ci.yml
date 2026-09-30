@@ -17,6 +17,17 @@ jobs:
   verify:
     name: Verify
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: kubwave_test
+          POSTGRES_PASSWORD: kubwave_test
+          POSTGRES_DB: kubwave_build_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U kubwave_test -d kubwave_build_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -44,9 +55,9 @@ jobs:
       - name: Test
         run: bun run test
         env:
-          # Unit tests mock the data layer; @kubwave/db builds a lazy client at import
-          # time and only needs a syntactically valid URL — no real database is contacted.
+          # Unit tests use mocks; build-agent integration tests use the dedicated PostgreSQL service.
           DATABASE_URL: postgres://test:test@127.0.0.1:5432/test
+          BUILD_AGENT_TEST_DATABASE_URL: postgres://kubwave_test:kubwave_test@127.0.0.1:5432/kubwave_build_test
 
       - name: Build
         run: bun run build

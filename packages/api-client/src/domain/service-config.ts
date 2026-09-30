@@ -1,16 +1,7 @@
 import type { ServiceViewDto } from '../generated/types.gen';
 
 export type ServiceType =
-	| 'docker-image'
-	| 'dockerfile'
-	| 'public-repo'
-	| 'private-repo'
-	| 'github-repo'
-	| 'gitea-repo'
-	| 'postgres'
-	| 'mysql'
-	| 'mariadb'
-	| 'mongodb';
+	'docker-image' | 'dockerfile' | 'public-repo' | 'private-repo' | 'github-repo' | 'gitea-repo' | 'postgres' | 'mysql' | 'mariadb' | 'mongodb';
 
 export interface EnvVar {
 	key: string;

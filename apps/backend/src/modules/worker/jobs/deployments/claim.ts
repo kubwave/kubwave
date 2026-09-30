@@ -3,20 +3,27 @@ import { db, deploymentLogs, deployments, type Deployment } from '@kubwave/db';
 import { env } from '../../../../shared/config/worker-env.js';
 import { deploymentLogRows, logEntry } from './logs.js';
 import { computeClaimLimit, getMaxConcurrentDeployments } from './concurrency.js';
+import { DEPLOYMENT_CAPACITY_LOCK } from './builds/promotion.js';
 import { RECONCILE_IN_FLIGHT_STATUSES } from './types.js';
 
 // How many queued deployments to claim per tick: bounds per-tick work, not total throughput (each claimed row is reconciled the same tick).
 export const CLAIM_BATCH = 5;
 
 // Atomically claim queued rows via FOR UPDATE SKIP LOCKED (peers skip them); at most one in-flight deploy per service.
-// Concurrency cap is exact for a single worker, a converging soft ceiling under multiple replicas.
+// Claims and build promotion share the same capacity lock.
 export async function claimPending(): Promise<Deployment[]> {
 	const max = await getMaxConcurrentDeployments();
 	return db.transaction(async tx => {
+		await tx.execute(sql`select pg_advisory_xact_lock(${DEPLOYMENT_CAPACITY_LOCK})`);
 		const [inflight] = await tx
 			.select({ value: count() })
 			.from(deployments)
-			.where(inArray(deployments.status, [...RECONCILE_IN_FLIGHT_STATUSES]));
+			.where(
+				and(
+					inArray(deployments.status, [...RECONCILE_IN_FLIGHT_STATUSES]),
+					sql`coalesce(${deployments.phase}, '') not in ('building', 'build-queued')`
+				)
+			);
 		const limit = computeClaimLimit(max, Number(inflight?.value ?? 0), CLAIM_BATCH);
 		if (limit === 0) return [];
 

@@ -1,7 +1,9 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { GaugeIcon, NetworkIcon, PlugIcon, ServerCogIcon } from 'lucide-react';
+import { GaugeIcon, NetworkIcon, PlugIcon, ServerCogIcon, HammerIcon } from 'lucide-react';
+import { BuildSection } from './build-section';
+import { useBuildSettings } from './use-build-settings';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/page-header';
@@ -32,10 +34,11 @@ export function PlatformSettingsPage({
 	const scaling = useScalingGroups();
 	const integrations = useIntegrationGroups();
 	const network = useTcpPoolGroup();
+	const builds = useBuildSettings();
 	// Drafts live here, not in the tabs, so edits survive switching tabs and one save bar covers them all.
 	const scalingGroups = [scaling.ha, scaling.concurrency, scaling.prPreview, scaling.autoscaling];
 	const integrationGroups = Object.values(integrations);
-	const saveBar = useSaveBar([...scalingGroups, ...integrationGroups]);
+	const saveBar = useSaveBar([...scalingGroups, ...integrationGroups, builds]);
 
 	// The GitHub App manifest callback lands here; the toast id keeps a strict-mode double run to one toast.
 	useEffect(() => {
@@ -66,13 +69,15 @@ export function PlatformSettingsPage({
 					},
 					{ id: 'scaling', label: 'Scaling & storage', icon: GaugeIcon, badge: unsavedDot(scalingGroups.filter(group => group.dirty).length) },
 					{ id: 'network', label: 'Network', icon: NetworkIcon, badge: unsavedDot(network.group.dirty ? 1 : 0) },
-					{ id: 'integrations', label: 'Integrations', icon: PlugIcon, badge: unsavedDot(integrationGroups.filter(group => group.dirty).length) }
+					{ id: 'integrations', label: 'Integrations', icon: PlugIcon, badge: unsavedDot(integrationGroups.filter(group => group.dirty).length) },
+					{ id: 'builds', label: 'Builds', icon: HammerIcon, badge: unsavedDot(builds.dirty ? 1 : 0) }
 				]}
 			>
 				{tab === 'system' && <SystemSection />}
 				{tab === 'scaling' && <ScalingSection groups={scaling} />}
 				{tab === 'network' && <NetworkSection {...network} />}
 				{tab === 'integrations' && <IntegrationsSection groups={integrations} />}
+				{tab === 'builds' && <BuildSection group={builds} />}
 			</SettingsLayout>
 
 			<SaveBar {...saveBar} />

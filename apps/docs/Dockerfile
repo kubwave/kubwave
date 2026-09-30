@@ -4,6 +4,8 @@ FROM oven/bun:1.3.14-alpine AS deps
 WORKDIR /app
 COPY package.json bun.lock turbo.json ./
 COPY apps/backend/package.json ./apps/backend/
+COPY apps/build-agent/package.json ./apps/build-agent/
+COPY packages/build-protocol/package.json ./packages/build-protocol/
 COPY apps/console/package.json ./apps/console/
 COPY apps/cli/package.json ./apps/cli/
 COPY apps/docs/package.json ./apps/docs/
