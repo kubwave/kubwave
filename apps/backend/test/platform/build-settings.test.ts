@@ -23,3 +23,20 @@ test('validates resource quantities and compares their actual values', () => {
 		expect(buildSettingsSchema.safeParse({ ...base, memoryRequest }).success).toBe(false);
 	}
 });
+
+test('accepts every Kubernetes memory quantity form from existing worker env values', () => {
+	for (const [memoryRequest, memoryLimit] of [
+		['512M', '2G'],
+		['1500000000', '2000000000'],
+		['1e9', '2e9'],
+		['1536Mi', '2Gi'],
+		['1G', '1Gi']
+	]) {
+		expect(() => resolveBuildSettings(null, { memoryRequest, memoryLimit })).not.toThrow();
+	}
+	const base = resolveBuildSettings(null);
+	expect(buildSettingsSchema.safeParse({ ...base, memoryRequest: '2Gi', memoryLimit: '2G' }).success).toBe(false);
+	for (const memoryRequest of ['0x10', 'Gi', '1.2.3G', '5n', '1Gix']) {
+		expect(buildSettingsSchema.safeParse({ ...base, memoryRequest }).success).toBe(false);
+	}
+});

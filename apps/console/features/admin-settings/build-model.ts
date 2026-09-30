@@ -7,9 +7,25 @@ export type BuildDraft = Omit<BuildSettingsDto, 'maxConcurrentBuilds' | 'timeout
 	queueTimeoutSeconds: string;
 };
 const cpu = (value: string) => (value.endsWith('m') ? Number(value.slice(0, -1)) : Number(value) * 1000);
+const MEMORY_QUANTITY = /^((?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)([KMGTPE]i|[kMGTPEm])?$/;
+const MEMORY_FACTORS: Record<string, number> = {
+	Ki: 1024,
+	Mi: 1024 ** 2,
+	Gi: 1024 ** 3,
+	Ti: 1024 ** 4,
+	Pi: 1024 ** 5,
+	Ei: 1024 ** 6,
+	k: 1e3,
+	M: 1e6,
+	G: 1e9,
+	T: 1e12,
+	P: 1e15,
+	E: 1e18,
+	m: 1e-3
+};
 const memory = (value: string) => {
-	const match = /^(\d+(?:\.\d+)?)(Mi|Gi|Ti)$/.exec(value);
-	return match ? Number(match[1]) * 1024 ** { Mi: 2, Gi: 3, Ti: 4 }[match[2] as 'Mi' | 'Gi' | 'Ti'] : NaN;
+	const match = MEMORY_QUANTITY.exec(value);
+	return match ? Number(match[1]) * (MEMORY_FACTORS[match[2] ?? ''] ?? 1) : NaN;
 };
 
 export const buildGroup: GroupSpec<BuildSettingsDto, BuildDraft, BuildSettingsDto> = {
@@ -46,7 +62,7 @@ export const buildGroup: GroupSpec<BuildSettingsDto, BuildDraft, BuildSettingsDt
 			if (draft[key] && (!/^\d+(?:\.\d+)?m?$/.test(draft[key].trim()) || cpu(draft[key]) <= 0))
 				errors[key] = 'Use a positive CPU quantity, such as 500m or 2.';
 		for (const key of ['memoryRequest', 'memoryLimit'] as const)
-			if (!(memory(draft[key].trim()) > 0)) errors[key] = 'Use a positive memory quantity, such as 512Mi or 4Gi.';
+			if (!(memory(draft[key].trim()) > 0)) errors[key] = 'Use a positive memory quantity, such as 512Mi, 4Gi or 2G.';
 		if (draft.cpuRequest && draft.cpuLimit && cpu(draft.cpuLimit) < cpu(draft.cpuRequest)) errors.cpuLimit = 'Limit must be at least the request.';
 		if (memory(draft.memoryLimit) < memory(draft.memoryRequest)) errors.memoryLimit = 'Limit must be at least the request.';
 		for (const [key, min, max] of [

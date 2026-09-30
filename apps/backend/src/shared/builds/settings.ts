@@ -1,3 +1,4 @@
+import { parseMemoryToBytes } from '@kubwave/kube';
 import { z } from 'zod';
 
 export const BUILD_SETTINGS_KEY = 'build_settings';
@@ -6,10 +7,10 @@ export function cpuMillicores(value: string): number {
 	return value.endsWith('m') ? Number(value.slice(0, -1)) : Number(value) * 1000;
 }
 
+const MEMORY_QUANTITY = /^(?:\d+(?:\.\d+)?|\.\d+)(?:[KMGTPE]i|[kMGTPEm]|[eE][+-]?\d+)?$/;
+
 export function memoryBytes(value: string): number {
-	const match = /^(\d+(?:\.\d+)?)(Mi|Gi|Ti)$/.exec(value);
-	if (!match) return NaN;
-	return Number(match[1]) * 1024 ** { Mi: 2, Gi: 3, Ti: 4 }[match[2] as 'Mi' | 'Gi' | 'Ti'];
+	return MEMORY_QUANTITY.test(value) ? (parseMemoryToBytes(value) ?? NaN) : NaN;
 }
 
 const cpu = z
@@ -22,7 +23,7 @@ const cpu = z
 const memory = z
 	.string()
 	.trim()
-	.refine(value => memoryBytes(value) > 0 && Number.isFinite(memoryBytes(value)), 'Use a positive memory quantity, such as 512Mi or 4Gi.');
+	.refine(value => memoryBytes(value) > 0 && Number.isFinite(memoryBytes(value)), 'Use a positive memory quantity, such as 512Mi, 4Gi or 2G.');
 
 export const buildSettingsSchema = z
 	.object({
