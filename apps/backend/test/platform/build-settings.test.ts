@@ -61,3 +61,13 @@ test('falls back to the defaults when the stored row is invalid instead of throw
 test('keeps an out-of-range env timeout instead of breaking every build', () => {
 	expect(resolveBuildSettings(null, { timeoutSeconds: 30 }).timeoutSeconds).toBe(30);
 });
+
+test('keeps stored settings when an env default is out of range', () => {
+	const stored = { ...resolveBuildSettings(null), execution: 'agent' as const, maxConcurrentBuilds: 7, timeoutSeconds: 1200 };
+	expect(resolveBuildSettings(stored, { timeoutSeconds: 30 })).toEqual(stored);
+	expect(resolveBuildSettings({ execution: 'agent', maxConcurrentBuilds: 7 }, { timeoutSeconds: 30 })).toMatchObject({
+		execution: 'agent',
+		maxConcurrentBuilds: 7,
+		timeoutSeconds: 1800
+	});
+});

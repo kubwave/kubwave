@@ -46,23 +46,34 @@ export const buildSettingsSchema = z
 
 export type BuildSettings = z.infer<typeof buildSettingsSchema>;
 
+const BUILD_DEFAULTS: BuildSettings = {
+	execution: 'cluster',
+	cpuRequest: '',
+	cpuLimit: '',
+	memoryRequest: '1.5Gi',
+	memoryLimit: '2Gi',
+	maxConcurrentBuilds: 3,
+	timeoutSeconds: 1800,
+	queueTimeoutSeconds: 86400,
+	fallbackToCluster: false
+};
+
 // Env-derived defaults are returned unvalidated, as they reached the Job spec before build settings existed.
+// Stored rows retry over the built-in defaults so an out-of-range env value cannot discard them.
 export function resolveBuildSettings(
 	raw: unknown,
 	defaults?: { memoryRequest?: string; memoryLimit?: string; timeoutSeconds?: number }
 ): BuildSettings {
 	const fallback: BuildSettings = {
-		execution: 'cluster',
-		cpuRequest: '',
-		cpuLimit: '',
-		memoryRequest: defaults?.memoryRequest ?? '1.5Gi',
-		memoryLimit: defaults?.memoryLimit ?? '2Gi',
-		maxConcurrentBuilds: 3,
-		timeoutSeconds: defaults?.timeoutSeconds ?? 1800,
-		queueTimeoutSeconds: 86400,
-		fallbackToCluster: false
+		...BUILD_DEFAULTS,
+		memoryRequest: defaults?.memoryRequest ?? BUILD_DEFAULTS.memoryRequest,
+		memoryLimit: defaults?.memoryLimit ?? BUILD_DEFAULTS.memoryLimit,
+		timeoutSeconds: defaults?.timeoutSeconds ?? BUILD_DEFAULTS.timeoutSeconds
 	};
 	if (raw === null || typeof raw !== 'object') return fallback;
-	const parsed = buildSettingsSchema.safeParse({ ...fallback, ...raw });
-	return parsed.success ? parsed.data : fallback;
+	for (const base of [fallback, BUILD_DEFAULTS]) {
+		const parsed = buildSettingsSchema.safeParse({ ...base, ...raw });
+		if (parsed.success) return parsed.data;
+	}
+	return fallback;
 }
