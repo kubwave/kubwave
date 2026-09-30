@@ -46,21 +46,23 @@ export const buildSettingsSchema = z
 
 export type BuildSettings = z.infer<typeof buildSettingsSchema>;
 
+// Env-derived defaults are returned unvalidated, as they reached the Job spec before build settings existed.
 export function resolveBuildSettings(
 	raw: unknown,
 	defaults?: { memoryRequest?: string; memoryLimit?: string; timeoutSeconds?: number }
 ): BuildSettings {
-	return buildSettingsSchema.parse(
-		raw ?? {
-			execution: 'cluster',
-			cpuRequest: '',
-			cpuLimit: '',
-			memoryRequest: defaults?.memoryRequest ?? '1.5Gi',
-			memoryLimit: defaults?.memoryLimit ?? '2Gi',
-			maxConcurrentBuilds: 3,
-			timeoutSeconds: defaults?.timeoutSeconds ?? 1800,
-			queueTimeoutSeconds: 86400,
-			fallbackToCluster: false
-		}
-	);
+	const fallback: BuildSettings = {
+		execution: 'cluster',
+		cpuRequest: '',
+		cpuLimit: '',
+		memoryRequest: defaults?.memoryRequest ?? '1.5Gi',
+		memoryLimit: defaults?.memoryLimit ?? '2Gi',
+		maxConcurrentBuilds: 3,
+		timeoutSeconds: defaults?.timeoutSeconds ?? 1800,
+		queueTimeoutSeconds: 86400,
+		fallbackToCluster: false
+	};
+	if (raw === null || typeof raw !== 'object') return fallback;
+	const parsed = buildSettingsSchema.safeParse({ ...fallback, ...raw });
+	return parsed.success ? parsed.data : fallback;
 }

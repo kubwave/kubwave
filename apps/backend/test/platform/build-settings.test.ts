@@ -40,3 +40,24 @@ test('accepts every Kubernetes memory quantity form from existing worker env val
 		expect(buildSettingsSchema.safeParse({ ...base, memoryRequest }).success).toBe(false);
 	}
 });
+
+test('fills fields missing from a stored row with the defaults', () => {
+	expect(resolveBuildSettings({ execution: 'agent', fallbackToCluster: true }, { memoryRequest: '3Gi', memoryLimit: '6Gi' })).toMatchObject({
+		execution: 'agent',
+		fallbackToCluster: true,
+		memoryRequest: '3Gi',
+		memoryLimit: '6Gi',
+		queueTimeoutSeconds: 86400
+	});
+});
+
+test('falls back to the defaults when the stored row is invalid instead of throwing', () => {
+	const defaults = { memoryRequest: '3Gi', memoryLimit: '6Gi', timeoutSeconds: 900 };
+	for (const raw of ['garbage', 42, { timeoutSeconds: 5 }, { memoryRequest: 'wat' }]) {
+		expect(resolveBuildSettings(raw, defaults)).toEqual(resolveBuildSettings(null, defaults));
+	}
+});
+
+test('keeps an out-of-range env timeout instead of breaking every build', () => {
+	expect(resolveBuildSettings(null, { timeoutSeconds: 30 }).timeoutSeconds).toBe(30);
+});
