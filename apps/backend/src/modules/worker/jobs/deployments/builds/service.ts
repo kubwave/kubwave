@@ -1,3 +1,4 @@
+import type { BuildCoreApi, BuildBatchApi } from '../../../../../shared/builds/artifacts.js';
 import { BatchV1Api, CoreV1Api, NetworkingV1Api } from '@kubernetes/client-node';
 import type { KubeConfig, V1Job, V1Pod } from '@kubernetes/client-node';
 import type { DeploymentLogEntry, RuntimeConfig } from '@kubwave/db';
@@ -9,6 +10,7 @@ import type { DeployContext, ReconcileResult } from '../deployers/types.js';
 import { env } from '../../../../../shared/config/worker-env.js';
 import { registryAuthHeaders } from '../../registry/auth.js';
 import { buildCacheRef } from './buildkit.js';
+import { reserveBuildDeployment } from './promotion.js';
 import { persistDeploymentImageRef } from '../image-ref.js';
 
 // Shared build-Job machinery for all build types; component label selects objects for reap/prune sweeps, deployment-id ties an object to its build attempt.
@@ -240,8 +242,9 @@ export async function runBuildReconcile(
 		notConfiguredError: string;
 		validateBuildConfig?: () => string | null;
 		startBuild: (args: {
-			coreApi: CoreV1Api;
-			batchApi: BatchV1Api;
+			coreApi: BuildCoreApi;
+			batchApi: BuildBatchApi;
+			external?: boolean;
 			namespace: string;
 			imageRef: string;
 			// BuildKit registry cache ref so repeated builds reuse unchanged layers.
@@ -271,11 +274,38 @@ export async function runBuildReconcile(
 		return result;
 	}
 
+	const runs = await import('../../../../../shared/builds/runs.js');
+	let run = await runs.getBuildRun(deploymentId);
+	if (run?.status === 'failed') return { state: 'failed', error: run.lastError ?? 'Build failed' };
+	if (run?.status === 'canceled') return { state: 'failed', error: 'Build canceled' };
+	if (run?.execution === 'agent' && run.status === 'succeeded') {
+		if (storedImageRef)
+			return (await reserveBuildDeployment(deploymentId))
+				? reconcileRuntime(ctx, config, storedImageRef)
+				: { state: 'progressing', phase: 'build-queued' };
+		const { verifiedImageRef, promoteBuildCache } = await import('../../../../../shared/builds/registry.js');
+		const verified = run.imageRef ? await verifiedImageRef(run.imageRef) : null;
+		if (!verified)
+			return run.finishedAt && Date.now() - run.finishedAt.getTime() > 60_000
+				? { state: 'failed', error: 'External build completed, but the cluster could not verify the pushed image in the registry.' }
+				: { state: 'progressing', phase: 'building' };
+		if (!(await reserveBuildDeployment(deploymentId))) return { state: 'progressing', phase: 'build-queued' };
+		const cache = buildCacheRef(env.registryEndpoint, ctx.environmentId, serviceId);
+		await promoteBuildCache(`${cache}-${run.id}-${run.attempt}`, cache);
+		await persistDeploymentImageRef(deploymentId, verified);
+		const result = await reconcileRuntime(ctx, config, verified);
+		return {
+			...result,
+			events: [stepEvent('build-succeeded', `Built and verified image on external server (${run.agentId})`), ...(result.events ?? [])]
+		};
+	}
+	if (run?.execution === 'agent' && ['preparing', 'ready', 'running'].includes(run.status))
+		return { state: 'progressing', phase: run.status === 'running' ? 'building' : 'build-queued' };
+
 	if (!storedImageRef && !env.registryEndpoint) return { state: 'failed', error: opts.notConfiguredError };
 
 	const namespace = env.podNamespace;
 	const imageRef = storedImageRef ?? buildImageRef(env.registryEndpoint, ctx.environmentId, serviceId, deploymentId);
-	if (!storedImageRef) await persistDeploymentImageRef(deploymentId, imageRef);
 	const cacheRef = env.registryEndpoint ? buildCacheRef(env.registryEndpoint, ctx.environmentId, serviceId) : null;
 	const coreApi = ctx.kc.makeApiClient(CoreV1Api);
 	const batchApi = ctx.kc.makeApiClient(BatchV1Api);
@@ -296,6 +326,12 @@ export async function runBuildReconcile(
 				events
 			};
 
+		if (run)
+			await runs.finishBuildRun(
+				run,
+				status === 'succeeded' ? 'succeeded' : 'failed',
+				status === 'failed' ? await buildFailureReason(coreApi, namespace, opts.jobName, opts.buildContainers) : null
+			);
 		if (status === 'failed')
 			return {
 				state: 'failed',
@@ -313,7 +349,42 @@ export async function runBuildReconcile(
 		if (!cacheRef) return { state: 'failed', error: opts.notConfiguredError };
 		const validationError = opts.validateBuildConfig?.();
 		if (validationError) return { state: 'failed', error: validationError };
-		await opts.startBuild({ coreApi, batchApi, namespace, imageRef, cacheRef, serviceId, deploymentId });
+		run ??= await runs.ensureBuildRun(deploymentId);
+		if (run.status === 'queued') {
+			const reserved = await runs.reserveBuildRun(run, process.arch === 'arm64' ? 'arm64' : 'amd64');
+			if (!reserved) return { state: 'progressing', phase: 'build-queued' };
+			run = reserved;
+		}
+		if (run.execution === 'agent') {
+			const { BuildArtifacts } = await import('../../../../../shared/builds/artifacts.js');
+			const { attemptImageRef } = await import('../../../../../shared/builds/execution.js');
+			const artifacts = new BuildArtifacts();
+			await opts.startBuild({
+				coreApi: artifacts.coreApi,
+				batchApi: artifacts.batchApi,
+				namespace,
+				imageRef: attemptImageRef(imageRef, run.id, run.attempt),
+				cacheRef,
+				serviceId,
+				deploymentId,
+				external: true
+			});
+			if (artifacts.job?.metadata) artifacts.job.metadata.namespace = namespace;
+			await runs.publishAgentBuild(run, artifacts, coreApi, imageRef);
+			events.push(stepEvent('build-queued', 'Build prepared for external server'));
+			return { state: 'progressing', phase: 'build-queued', events };
+		}
+		const { applyBuildResources } = await import('../../../../../shared/builds/execution.js');
+		const configuredBatch: BuildBatchApi = {
+			createNamespacedJob: async request => {
+				applyBuildResources(request.body, run!.settings);
+				return batchApi.createNamespacedJob(request);
+			}
+		};
+		await opts.startBuild({ coreApi, batchApi: configuredBatch, namespace, imageRef, cacheRef, serviceId, deploymentId });
+		await runs.markClusterBuildStarted(run, imageRef);
+		await persistDeploymentImageRef(deploymentId, imageRef);
+
 		events.push(stepEvent('build-started', `${opts.startMessage} (${opts.jobName})`));
 
 		return {
@@ -323,6 +394,8 @@ export async function runBuildReconcile(
 		};
 	}
 
+	if (!(await reserveBuildDeployment(deploymentId))) return { state: 'progressing', phase: 'build-queued', events };
+	if (!storedImageRef) await persistDeploymentImageRef(deploymentId, imageRef);
 	// Phase B: deploy the built image through the shared runtime core.
 	const result = await reconcileRuntime(ctx, config, imageRef);
 

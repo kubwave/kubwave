@@ -1,0 +1,21 @@
+{
+	"name": "@kubwave/build-protocol",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"check-types": "tsc --noEmit",
+		"test": "bun test"
+	},
+	"dependencies": {
+		"@kubernetes/client-node": "^1.2.0"
+	},
+	"devDependencies": {
+		"@types/bun": "^1.3.14",
+		"@types/node": "^26.1.0",
+		"typescript": "^6.0.3"
+	}
+}

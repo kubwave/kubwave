@@ -1,3 +1,4 @@
+import { cancelBuildRun } from '../../../../shared/builds/runs.js';
 import { and, desc, eq, lt } from 'drizzle-orm';
 import { CoreV1Api, NetworkingV1Api } from '@kubernetes/client-node';
 import { db, deployments, type Deployment, type DeploymentLogEntry } from '@kubwave/db';
@@ -75,6 +76,11 @@ async function recordRollbackFailure(row: Deployment, error: string, events: Dep
 
 export async function reconcileCanceling(ctx: DeploymentReconcileContext): Promise<void> {
 	const { kc, deployment: row, environmentId, defaultDomainHost, resolveConfig } = ctx;
+	if (isBuildDeployment(row) && (await cancelBuildRun(row.id)) && ['building', 'build-queued'].includes(row.phase ?? '')) {
+		await deleteBuildArtifactsForDeployment(kc, row.id);
+		await finalize(row.id, 'canceling', { status: 'canceled', phase: 'canceled', lastError: null }, [logEntry('warn', 'canceled', 'Build canceled')]);
+		return;
+	}
 	if (isBuildDeployment(row) && row.phase === 'building' && (await hasRunningBuildJobForDeployment(kc, row.id))) {
 		await deleteBuildArtifactsForDeployment(kc, row.id);
 		await finalize(row.id, 'canceling', { status: 'canceled', phase: 'canceled', lastError: null }, [

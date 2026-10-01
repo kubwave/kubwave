@@ -28,6 +28,7 @@ export const docsNav: NavGroup[] = [
 		items: [
 			{ title: 'Deploy a service', path: '/guides/deploy-a-service' },
 			{ title: 'Configure a service', path: '/guides/configure-a-service' },
+			{ title: 'Build servers', path: '/guides/build-servers' },
 			{ title: 'Tenant isolation', path: '/guides/tenant-isolation' },
 			{ title: 'Contributing to docs', path: '/guides/contributing-to-docs' }
 		]

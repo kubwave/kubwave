@@ -20,6 +20,7 @@ const insertLogsCalls: Array<{ id: string }> = [];
 const deletedBuildArtifacts: string[] = [];
 let hasRunningBuildJob = false;
 
+mock.module('~/shared/builds/runs', () => ({ cancelBuildRun: async () => false }));
 mock.module('~/shared/config/worker-env', () => ({ env: { ingressControllerNamespace: 'kube-system', reconcileIntervalMs: 5000 } }));
 mock.module('@kubwave/db', () => ({
 	deployments: {

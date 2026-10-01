@@ -18,12 +18,14 @@
 		"test": {
 			"dependsOn": ["^build"],
 			"passThroughEnv": ["DATABASE_URL", "POSTGRES_HOST", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB", "POSTGRES_PORT"],
-			"outputs": []
+			"outputs": [],
+			"env": ["BUILD_AGENT_TEST_DATABASE_URL"]
 		},
 		"test:coverage": {
 			"dependsOn": ["^build"],
 			"passThroughEnv": ["DATABASE_URL", "POSTGRES_HOST", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB", "POSTGRES_PORT"],
-			"outputs": []
+			"outputs": [],
+			"env": ["BUILD_AGENT_TEST_DATABASE_URL"]
 		},
 		"dev": {
 			"cache": false,

@@ -1,5 +1,7 @@
 // Shared React Query key factory so queries and invalidations line up across the app.
 export const queryKeys = {
+	buildSettings: ['admin', 'build-settings'] as const,
+	buildAgents: ['admin', 'build-agents'] as const,
 	teams: ['teams'] as const,
 	teamMembers: (teamId: string) => ['teams', teamId, 'members'] as const,
 	teamSshKeys: (teamId: string) => ['teams', teamId, 'ssh-keys'] as const,

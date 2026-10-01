@@ -119,7 +119,7 @@ export function readServiceOrNull(api: CoreV1Api, namespace: string, name: strin
 	return notFoundToNull(() => api.readNamespacedService({ name, namespace }));
 }
 
-export function readConfigMapOrNull(api: CoreV1Api, namespace: string, name: string): Promise<V1ConfigMap | null> {
+export function readConfigMapOrNull(api: Pick<CoreV1Api, 'readNamespacedConfigMap'>, namespace: string, name: string): Promise<V1ConfigMap | null> {
 	return notFoundToNull(() => api.readNamespacedConfigMap({ name, namespace }));
 }
 

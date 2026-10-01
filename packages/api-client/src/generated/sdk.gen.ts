@@ -19,6 +19,18 @@ import type {
 	AuthResetPasswordValidityResponses,
 	AuthSessionData,
 	AuthSessionResponses,
+	BuildAgentClaimData,
+	BuildAgentClaimResponses,
+	BuildAgentHeartbeatData,
+	BuildAgentHeartbeatResponses,
+	BuildAgentRegisterData,
+	BuildAgentRegisterResponses,
+	BuildAgentTaskLogsData,
+	BuildAgentTaskLogsResponses,
+	BuildAgentTaskResultData,
+	BuildAgentTaskResultResponses,
+	BuildAgentTaskSourceData,
+	BuildAgentTaskSourceResponses,
 	DeploymentBuildLogsGetData,
 	DeploymentBuildLogsGetResponses,
 	DeploymentLogsListData,
@@ -87,6 +99,16 @@ import type {
 	McpConsentCreateResponses,
 	McpInfoGetData,
 	McpInfoGetResponses,
+	PlatformBuildAgentsCreateData,
+	PlatformBuildAgentsCreateResponses,
+	PlatformBuildAgentsDeleteData,
+	PlatformBuildAgentsDeleteResponses,
+	PlatformBuildAgentsListData,
+	PlatformBuildAgentsListResponses,
+	PlatformBuildAgentsRevokeData,
+	PlatformBuildAgentsRevokeResponses,
+	PlatformBuildAgentsUpdateData,
+	PlatformBuildAgentsUpdateResponses,
 	PlatformClusterEventsGetData,
 	PlatformClusterEventsGetResponses,
 	PlatformClusterGetData,
@@ -101,6 +123,10 @@ import type {
 	PlatformSettingsAiGetResponses,
 	PlatformSettingsAiUpdateData,
 	PlatformSettingsAiUpdateResponses,
+	PlatformSettingsBuildsGetData,
+	PlatformSettingsBuildsGetResponses,
+	PlatformSettingsBuildsUpdateData,
+	PlatformSettingsBuildsUpdateResponses,
 	PlatformSettingsDeploymentConcurrencyGetData,
 	PlatformSettingsDeploymentConcurrencyGetResponses,
 	PlatformSettingsDeploymentConcurrencyUpdateData,
@@ -272,13 +298,238 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
 };
 
 /**
+ * Report capacity and renew active build leases
+ */
+export const buildAgentHeartbeat = <ThrowOnError extends boolean = false>(
+	options: Options<BuildAgentHeartbeatData, ThrowOnError>
+): RequestResult<BuildAgentHeartbeatResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<BuildAgentHeartbeatResponses, unknown, ThrowOnError>({
+		security: [
+			{
+				key: 'buildAgentAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
+		url: '/api/build-agent/heartbeat',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
+
+/**
+ * Claim the next assigned build
+ */
+export const buildAgentClaim = <ThrowOnError extends boolean = false>(
+	options?: Options<BuildAgentClaimData, ThrowOnError>
+): RequestResult<BuildAgentClaimResponses, unknown, ThrowOnError> =>
+	(options?.client ?? client).post<BuildAgentClaimResponses, unknown, ThrowOnError>({
+		security: [
+			{
+				key: 'buildAgentAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
+		url: '/api/build-agent/claim',
+		...options
+	});
+
+/**
+ * Append idempotent build logs
+ */
+export const buildAgentTaskLogs = <ThrowOnError extends boolean = false>(
+	options: Options<BuildAgentTaskLogsData, ThrowOnError>
+): RequestResult<BuildAgentTaskLogsResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<BuildAgentTaskLogsResponses, unknown, ThrowOnError>({
+		security: [
+			{
+				key: 'buildAgentAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
+		url: '/api/build-agent/tasks/{id}/logs',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
+
+/**
+ * Complete the current build attempt
+ */
+export const buildAgentTaskResult = <ThrowOnError extends boolean = false>(
+	options: Options<BuildAgentTaskResultData, ThrowOnError>
+): RequestResult<BuildAgentTaskResultResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<BuildAgentTaskResultResponses, unknown, ThrowOnError>({
+		security: [
+			{
+				key: 'buildAgentAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
+		url: '/api/build-agent/tasks/{id}/result',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
+
+/**
+ * Pin the checked-out source commit for retries
+ */
+export const buildAgentTaskSource = <ThrowOnError extends boolean = false>(
+	options: Options<BuildAgentTaskSourceData, ThrowOnError>
+): RequestResult<BuildAgentTaskSourceResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<BuildAgentTaskSourceResponses, unknown, ThrowOnError>({
+		security: [
+			{
+				key: 'buildAgentAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
+		url: '/api/build-agent/tasks/{id}/source',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
+
+/**
+ * Exchange a one-time registration code
+ */
+export const buildAgentRegister = <ThrowOnError extends boolean = false>(
+	options: Options<BuildAgentRegisterData, ThrowOnError>
+): RequestResult<BuildAgentRegisterResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<BuildAgentRegisterResponses, unknown, ThrowOnError>({
+		url: '/api/build-agent/register',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
+
+/**
+ * List external build servers
+ */
+export const platformBuildAgentsList = <ThrowOnError extends boolean = false>(
+	options?: Options<PlatformBuildAgentsListData, ThrowOnError>
+): RequestResult<PlatformBuildAgentsListResponses, unknown, ThrowOnError> =>
+	(options?.client ?? client).get<PlatformBuildAgentsListResponses, unknown, ThrowOnError>({
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
+		url: '/api/platform/build-agents',
+		...options
+	});
+
+/**
+ * Create a one-time build server registration
+ */
+export const platformBuildAgentsCreate = <ThrowOnError extends boolean = false>(
+	options: Options<PlatformBuildAgentsCreateData, ThrowOnError>
+): RequestResult<PlatformBuildAgentsCreateResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<PlatformBuildAgentsCreateResponses, unknown, ThrowOnError>({
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
+		url: '/api/platform/build-agents',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
+
+/**
+ * Remove a server with no active builds
+ */
+export const platformBuildAgentsDelete = <ThrowOnError extends boolean = false>(
+	options: Options<PlatformBuildAgentsDeleteData, ThrowOnError>
+): RequestResult<PlatformBuildAgentsDeleteResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).delete<PlatformBuildAgentsDeleteResponses, unknown, ThrowOnError>({
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
+		url: '/api/platform/build-agents/{id}',
+		...options
+	});
+
+/**
+ * Pause a server or configure its capacity
+ */
+export const platformBuildAgentsUpdate = <ThrowOnError extends boolean = false>(
+	options: Options<PlatformBuildAgentsUpdateData, ThrowOnError>
+): RequestResult<PlatformBuildAgentsUpdateResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).put<PlatformBuildAgentsUpdateResponses, unknown, ThrowOnError>({
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
+		url: '/api/platform/build-agents/{id}',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
+
+/**
+ * Revoke a server and fail its active builds
+ */
+export const platformBuildAgentsRevoke = <ThrowOnError extends boolean = false>(
+	options: Options<PlatformBuildAgentsRevokeData, ThrowOnError>
+): RequestResult<PlatformBuildAgentsRevokeResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).post<PlatformBuildAgentsRevokeResponses, unknown, ThrowOnError>({
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
+		url: '/api/platform/build-agents/{id}/revoke',
+		...options
+	});
+
+/**
  * Get MCP connection details and available scopes
  */
 export const mcpInfoGet = <ThrowOnError extends boolean = false>(
 	options?: Options<McpInfoGetData, ThrowOnError>
 ): RequestResult<McpInfoGetResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<McpInfoGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/mcp/info',
 		...options
 	});
@@ -290,7 +541,13 @@ export const mcpAccessList = <ThrowOnError extends boolean = false>(
 	options?: Options<McpAccessListData, ThrowOnError>
 ): RequestResult<McpAccessListResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<McpAccessListResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/mcp/access',
 		...options
 	});
@@ -302,7 +559,13 @@ export const mcpAccessCreate = <ThrowOnError extends boolean = false>(
 	options: Options<McpAccessCreateData, ThrowOnError>
 ): RequestResult<McpAccessCreateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).post<McpAccessCreateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/mcp/access',
 		...options,
 		headers: {
@@ -318,7 +581,13 @@ export const mcpAccessRevoke = <ThrowOnError extends boolean = false>(
 	options: Options<McpAccessRevokeData, ThrowOnError>
 ): RequestResult<McpAccessRevokeResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).delete<McpAccessRevokeResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/mcp/access/{accessId}',
 		...options
 	});
@@ -330,7 +599,13 @@ export const mcpAuthorizationGet = <ThrowOnError extends boolean = false>(
 	options: Options<McpAuthorizationGetData, ThrowOnError>
 ): RequestResult<McpAuthorizationGetResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).post<McpAuthorizationGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/mcp/authorization',
 		...options,
 		headers: {
@@ -346,7 +621,13 @@ export const mcpConsentCreate = <ThrowOnError extends boolean = false>(
 	options: Options<McpConsentCreateData, ThrowOnError>
 ): RequestResult<McpConsentCreateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).post<McpConsentCreateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/mcp/consent',
 		...options,
 		headers: {
@@ -442,7 +723,13 @@ export const authSession = <ThrowOnError extends boolean = false>(
 	options?: Options<AuthSessionData, ThrowOnError>
 ): RequestResult<AuthSessionResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<AuthSessionResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/auth/session',
 		...options
 	});
@@ -454,7 +741,13 @@ export const teamsList = <ThrowOnError extends boolean = false>(
 	options?: Options<TeamsListData, ThrowOnError>
 ): RequestResult<TeamsListResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<TeamsListResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams',
 		...options
 	});
@@ -466,7 +759,13 @@ export const teamsCreate = <ThrowOnError extends boolean = false>(
 	options: Options<TeamsCreateData, ThrowOnError>
 ): RequestResult<TeamsCreateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).post<TeamsCreateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams',
 		...options,
 		headers: {
@@ -482,7 +781,13 @@ export const teamsSetActive = <ThrowOnError extends boolean = false>(
 	options: Options<TeamsSetActiveData, ThrowOnError>
 ): RequestResult<TeamsSetActiveResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).put<TeamsSetActiveResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/active',
 		...options,
 		headers: {
@@ -498,7 +803,13 @@ export const teamsDelete = <ThrowOnError extends boolean = false>(
 	options: Options<TeamsDeleteData, ThrowOnError>
 ): RequestResult<TeamsDeleteResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).delete<TeamsDeleteResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/{teamId}',
 		...options
 	});
@@ -510,7 +821,13 @@ export const teamsRename = <ThrowOnError extends boolean = false>(
 	options: Options<TeamsRenameData, ThrowOnError>
 ): RequestResult<TeamsRenameResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).patch<TeamsRenameResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/{teamId}',
 		...options,
 		headers: {
@@ -526,7 +843,13 @@ export const teamMembersList = <ThrowOnError extends boolean = false>(
 	options: Options<TeamMembersListData, ThrowOnError>
 ): RequestResult<TeamMembersListResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<TeamMembersListResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/{teamId}/members',
 		...options
 	});
@@ -538,7 +861,13 @@ export const teamMembersAdd = <ThrowOnError extends boolean = false>(
 	options: Options<TeamMembersAddData, ThrowOnError>
 ): RequestResult<TeamMembersAddResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).post<TeamMembersAddResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/{teamId}/members',
 		...options,
 		headers: {
@@ -554,7 +883,13 @@ export const teamMembersRemove = <ThrowOnError extends boolean = false>(
 	options: Options<TeamMembersRemoveData, ThrowOnError>
 ): RequestResult<TeamMembersRemoveResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).delete<TeamMembersRemoveResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/{teamId}/members/{userId}',
 		...options
 	});
@@ -566,7 +901,13 @@ export const teamMembersUpdateRole = <ThrowOnError extends boolean = false>(
 	options: Options<TeamMembersUpdateRoleData, ThrowOnError>
 ): RequestResult<TeamMembersUpdateRoleResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).patch<TeamMembersUpdateRoleResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/{teamId}/members/{userId}',
 		...options,
 		headers: {
@@ -582,7 +923,13 @@ export const teamSshKeysList = <ThrowOnError extends boolean = false>(
 	options: Options<TeamSshKeysListData, ThrowOnError>
 ): RequestResult<TeamSshKeysListResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<TeamSshKeysListResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/{teamId}/ssh-keys',
 		...options
 	});
@@ -594,7 +941,13 @@ export const teamSshKeysCreate = <ThrowOnError extends boolean = false>(
 	options: Options<TeamSshKeysCreateData, ThrowOnError>
 ): RequestResult<TeamSshKeysCreateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).post<TeamSshKeysCreateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/{teamId}/ssh-keys',
 		...options,
 		headers: {
@@ -610,7 +963,13 @@ export const teamSshKeysDelete = <ThrowOnError extends boolean = false>(
 	options: Options<TeamSshKeysDeleteData, ThrowOnError>
 ): RequestResult<TeamSshKeysDeleteResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).delete<TeamSshKeysDeleteResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/{teamId}/ssh-keys/{keyId}',
 		...options
 	});
@@ -645,7 +1004,13 @@ export const teamProjectsList = <ThrowOnError extends boolean = false>(
 	options: Options<TeamProjectsListData, ThrowOnError>
 ): RequestResult<TeamProjectsListResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<TeamProjectsListResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/{teamId}/projects',
 		...options
 	});
@@ -657,7 +1022,13 @@ export const teamProjectsCreate = <ThrowOnError extends boolean = false>(
 	options: Options<TeamProjectsCreateData, ThrowOnError>
 ): RequestResult<TeamProjectsCreateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).post<TeamProjectsCreateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/{teamId}/projects',
 		...options,
 		headers: {
@@ -673,7 +1044,13 @@ export const projectsDelete = <ThrowOnError extends boolean = false>(
 	options: Options<ProjectsDeleteData, ThrowOnError>
 ): RequestResult<ProjectsDeleteResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).delete<ProjectsDeleteResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/projects/{projectId}',
 		...options
 	});
@@ -685,7 +1062,13 @@ export const projectsGet = <ThrowOnError extends boolean = false>(
 	options: Options<ProjectsGetData, ThrowOnError>
 ): RequestResult<ProjectsGetResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<ProjectsGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/projects/{projectId}',
 		...options
 	});
@@ -697,7 +1080,13 @@ export const projectsUpdate = <ThrowOnError extends boolean = false>(
 	options: Options<ProjectsUpdateData, ThrowOnError>
 ): RequestResult<ProjectsUpdateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).patch<ProjectsUpdateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/projects/{projectId}',
 		...options,
 		headers: {
@@ -713,7 +1102,13 @@ export const projectsSetPrPreviews = <ThrowOnError extends boolean = false>(
 	options: Options<ProjectsSetPrPreviewsData, ThrowOnError>
 ): RequestResult<ProjectsSetPrPreviewsResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).patch<ProjectsSetPrPreviewsResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/projects/{projectId}/pr-previews',
 		...options,
 		headers: {
@@ -729,7 +1124,13 @@ export const projectEnvironmentsCreate = <ThrowOnError extends boolean = false>(
 	options: Options<ProjectEnvironmentsCreateData, ThrowOnError>
 ): RequestResult<ProjectEnvironmentsCreateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).post<ProjectEnvironmentsCreateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/projects/{projectId}/environments',
 		...options,
 		headers: {
@@ -745,7 +1146,13 @@ export const environmentsDelete = <ThrowOnError extends boolean = false>(
 	options: Options<EnvironmentsDeleteData, ThrowOnError>
 ): RequestResult<EnvironmentsDeleteResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).delete<EnvironmentsDeleteResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/environments/{environmentId}',
 		...options
 	});
@@ -757,7 +1164,13 @@ export const environmentsUpdate = <ThrowOnError extends boolean = false>(
 	options: Options<EnvironmentsUpdateData, ThrowOnError>
 ): RequestResult<EnvironmentsUpdateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).patch<EnvironmentsUpdateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/environments/{environmentId}',
 		...options,
 		headers: {
@@ -773,7 +1186,13 @@ export const environmentFlowLayoutGet = <ThrowOnError extends boolean = false>(
 	options: Options<EnvironmentFlowLayoutGetData, ThrowOnError>
 ): RequestResult<EnvironmentFlowLayoutGetResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<EnvironmentFlowLayoutGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/environments/{environmentId}/flow-layout',
 		...options
 	});
@@ -785,7 +1204,13 @@ export const environmentFlowLayoutNodeUpdate = <ThrowOnError extends boolean = f
 	options: Options<EnvironmentFlowLayoutNodeUpdateData, ThrowOnError>
 ): RequestResult<EnvironmentFlowLayoutNodeUpdateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).patch<EnvironmentFlowLayoutNodeUpdateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/environments/{environmentId}/flow-layout/nodes/{serviceId}',
 		...options,
 		headers: {
@@ -801,7 +1226,13 @@ export const environmentServicesList = <ThrowOnError extends boolean = false>(
 	options: Options<EnvironmentServicesListData, ThrowOnError>
 ): RequestResult<EnvironmentServicesListResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<EnvironmentServicesListResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/environments/{environmentId}/services',
 		...options
 	});
@@ -813,7 +1244,13 @@ export const environmentServicesCreate = <ThrowOnError extends boolean = false>(
 	options: Options<EnvironmentServicesCreateData, ThrowOnError>
 ): RequestResult<EnvironmentServicesCreateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).post<EnvironmentServicesCreateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/environments/{environmentId}/services',
 		...options,
 		headers: {
@@ -829,7 +1266,13 @@ export const servicesDelete = <ThrowOnError extends boolean = false>(
 	options: Options<ServicesDeleteData, ThrowOnError>
 ): RequestResult<ServicesDeleteResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).delete<ServicesDeleteResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/services/{serviceId}',
 		...options
 	});
@@ -841,7 +1284,13 @@ export const servicesGet = <ThrowOnError extends boolean = false>(
 	options: Options<ServicesGetData, ThrowOnError>
 ): RequestResult<ServicesGetResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<ServicesGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/services/{serviceId}',
 		...options
 	});
@@ -853,7 +1302,13 @@ export const servicesUpdate = <ThrowOnError extends boolean = false>(
 	options: Options<ServicesUpdateData, ThrowOnError>
 ): RequestResult<ServicesUpdateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).patch<ServicesUpdateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/services/{serviceId}',
 		...options,
 		headers: {
@@ -869,7 +1324,13 @@ export const servicesConnectionGet = <ThrowOnError extends boolean = false>(
 	options: Options<ServicesConnectionGetData, ThrowOnError>
 ): RequestResult<ServicesConnectionGetResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<ServicesConnectionGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/services/{serviceId}/connection',
 		...options
 	});
@@ -881,7 +1342,13 @@ export const serviceStatusGet = <ThrowOnError extends boolean = false>(
 	options: Options<ServiceStatusGetData, ThrowOnError>
 ): RequestResult<ServiceStatusGetResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<ServiceStatusGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/services/{serviceId}/status',
 		...options
 	});
@@ -893,7 +1360,13 @@ export const environmentServiceStatusList = <ThrowOnError extends boolean = fals
 	options: Options<EnvironmentServiceStatusListData, ThrowOnError>
 ): RequestResult<EnvironmentServiceStatusListResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<EnvironmentServiceStatusListResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/environments/{environmentId}/services/status',
 		...options
 	});
@@ -905,7 +1378,13 @@ export const serviceLogsGet = <ThrowOnError extends boolean = false>(
 	options: Options<ServiceLogsGetData, ThrowOnError>
 ): RequestResult<ServiceLogsGetResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<ServiceLogsGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/services/{serviceId}/logs',
 		...options
 	});
@@ -917,7 +1396,13 @@ export const environmentServicesComposeCreate = <ThrowOnError extends boolean = 
 	options: Options<EnvironmentServicesComposeCreateData, ThrowOnError>
 ): RequestResult<EnvironmentServicesComposeCreateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).post<EnvironmentServicesComposeCreateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/environments/{environmentId}/services/compose',
 		...options,
 		headers: {
@@ -933,7 +1418,13 @@ export const aiStatusGet = <ThrowOnError extends boolean = false>(
 	options?: Options<AiStatusGetData, ThrowOnError>
 ): RequestResult<AiStatusGetResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<AiStatusGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/ai/status',
 		...options
 	});
@@ -945,7 +1436,13 @@ export const environmentServicesAnalyzeRepository = <ThrowOnError extends boolea
 	options: Options<EnvironmentServicesAnalyzeRepositoryData, ThrowOnError>
 ): RequestResult<EnvironmentServicesAnalyzeRepositoryResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).post<EnvironmentServicesAnalyzeRepositoryResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/environments/{environmentId}/services/analyze',
 		...options,
 		headers: {
@@ -961,7 +1458,13 @@ export const environmentServicesCreateFromPlan = <ThrowOnError extends boolean =
 	options: Options<EnvironmentServicesCreateFromPlanData, ThrowOnError>
 ): RequestResult<EnvironmentServicesCreateFromPlanResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).post<EnvironmentServicesCreateFromPlanResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/environments/{environmentId}/services/from-plan',
 		...options,
 		headers: {
@@ -977,7 +1480,13 @@ export const serviceMetricsGet = <ThrowOnError extends boolean = false>(
 	options: Options<ServiceMetricsGetData, ThrowOnError>
 ): RequestResult<ServiceMetricsGetResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<ServiceMetricsGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/services/{serviceId}/metrics',
 		...options
 	});
@@ -989,7 +1498,13 @@ export const gitGithubCreateManifest = <ThrowOnError extends boolean = false>(
 	options?: Options<GitGithubCreateManifestData, ThrowOnError>
 ): RequestResult<GitGithubCreateManifestResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).post<GitGithubCreateManifestResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/git/github/manifest',
 		...options
 	});
@@ -1001,7 +1516,13 @@ export const gitGithubDisconnect = <ThrowOnError extends boolean = false>(
 	options?: Options<GitGithubDisconnectData, ThrowOnError>
 ): RequestResult<GitGithubDisconnectResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).delete<GitGithubDisconnectResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/git/github',
 		...options
 	});
@@ -1013,7 +1534,13 @@ export const gitGithubConnectionGet = <ThrowOnError extends boolean = false>(
 	options?: Options<GitGithubConnectionGetData, ThrowOnError>
 ): RequestResult<GitGithubConnectionGetResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<GitGithubConnectionGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/git/github',
 		...options
 	});
@@ -1025,7 +1552,13 @@ export const teamGitInstallationsClaim = <ThrowOnError extends boolean = false>(
 	options: Options<TeamGitInstallationsClaimData, ThrowOnError>
 ): RequestResult<TeamGitInstallationsClaimResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).post<TeamGitInstallationsClaimResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/{teamId}/git/installations/claim',
 		...options,
 		headers: {
@@ -1041,7 +1574,13 @@ export const teamGitConnectionGet = <ThrowOnError extends boolean = false>(
 	options: Options<TeamGitConnectionGetData, ThrowOnError>
 ): RequestResult<TeamGitConnectionGetResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<TeamGitConnectionGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/{teamId}/git/connection',
 		...options
 	});
@@ -1053,7 +1592,13 @@ export const teamGitInstallationsList = <ThrowOnError extends boolean = false>(
 	options: Options<TeamGitInstallationsListData, ThrowOnError>
 ): RequestResult<TeamGitInstallationsListResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<TeamGitInstallationsListResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/{teamId}/git/installations',
 		...options
 	});
@@ -1065,7 +1610,13 @@ export const teamGitInstallationReposList = <ThrowOnError extends boolean = fals
 	options: Options<TeamGitInstallationReposListData, ThrowOnError>
 ): RequestResult<TeamGitInstallationReposListResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<TeamGitInstallationReposListResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/{teamId}/git/installations/{installationId}/repos',
 		...options
 	});
@@ -1077,7 +1628,13 @@ export const teamGitInstallationReposSync = <ThrowOnError extends boolean = fals
 	options: Options<TeamGitInstallationReposSyncData, ThrowOnError>
 ): RequestResult<TeamGitInstallationReposSyncResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).post<TeamGitInstallationReposSyncResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/{teamId}/git/installations/{installationId}/repos/sync',
 		...options
 	});
@@ -1089,7 +1646,13 @@ export const teamGitInstallationsUnbind = <ThrowOnError extends boolean = false>
 	options: Options<TeamGitInstallationsUnbindData, ThrowOnError>
 ): RequestResult<TeamGitInstallationsUnbindResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).delete<TeamGitInstallationsUnbindResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/{teamId}/git/installations/{installationId}',
 		...options
 	});
@@ -1101,7 +1664,13 @@ export const gitGiteaDisconnect = <ThrowOnError extends boolean = false>(
 	options?: Options<GitGiteaDisconnectData, ThrowOnError>
 ): RequestResult<GitGiteaDisconnectResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).delete<GitGiteaDisconnectResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/git/gitea',
 		...options
 	});
@@ -1113,7 +1682,13 @@ export const gitGiteaConnectionGet = <ThrowOnError extends boolean = false>(
 	options?: Options<GitGiteaConnectionGetData, ThrowOnError>
 ): RequestResult<GitGiteaConnectionGetResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<GitGiteaConnectionGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/git/gitea',
 		...options
 	});
@@ -1125,7 +1700,13 @@ export const gitGiteaConnect = <ThrowOnError extends boolean = false>(
 	options: Options<GitGiteaConnectData, ThrowOnError>
 ): RequestResult<GitGiteaConnectResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).post<GitGiteaConnectResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/git/gitea',
 		...options,
 		headers: {
@@ -1141,7 +1722,13 @@ export const teamGiteaInstallationsClaim = <ThrowOnError extends boolean = false
 	options: Options<TeamGiteaInstallationsClaimData, ThrowOnError>
 ): RequestResult<TeamGiteaInstallationsClaimResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).post<TeamGiteaInstallationsClaimResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/{teamId}/git/gitea/installations/claim',
 		...options,
 		headers: {
@@ -1157,7 +1744,13 @@ export const teamGiteaConnectionGet = <ThrowOnError extends boolean = false>(
 	options: Options<TeamGiteaConnectionGetData, ThrowOnError>
 ): RequestResult<TeamGiteaConnectionGetResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<TeamGiteaConnectionGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/{teamId}/git/gitea/connection',
 		...options
 	});
@@ -1169,7 +1762,13 @@ export const teamGiteaInstallationsList = <ThrowOnError extends boolean = false>
 	options: Options<TeamGiteaInstallationsListData, ThrowOnError>
 ): RequestResult<TeamGiteaInstallationsListResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<TeamGiteaInstallationsListResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/{teamId}/git/gitea/installations',
 		...options
 	});
@@ -1181,7 +1780,13 @@ export const teamGiteaInstallationReposList = <ThrowOnError extends boolean = fa
 	options: Options<TeamGiteaInstallationReposListData, ThrowOnError>
 ): RequestResult<TeamGiteaInstallationReposListResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<TeamGiteaInstallationReposListResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/{teamId}/git/gitea/installations/{installationId}/repos',
 		...options
 	});
@@ -1193,7 +1798,13 @@ export const teamGiteaInstallationReposSync = <ThrowOnError extends boolean = fa
 	options: Options<TeamGiteaInstallationReposSyncData, ThrowOnError>
 ): RequestResult<TeamGiteaInstallationReposSyncResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).post<TeamGiteaInstallationReposSyncResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/{teamId}/git/gitea/installations/{installationId}/repos/sync',
 		...options
 	});
@@ -1205,7 +1816,13 @@ export const teamGiteaInstallationsUnbind = <ThrowOnError extends boolean = fals
 	options: Options<TeamGiteaInstallationsUnbindData, ThrowOnError>
 ): RequestResult<TeamGiteaInstallationsUnbindResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).delete<TeamGiteaInstallationsUnbindResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/{teamId}/git/gitea/installations/{installationId}',
 		...options
 	});
@@ -1217,7 +1834,13 @@ export const teamDeploymentsList = <ThrowOnError extends boolean = false>(
 	options: Options<TeamDeploymentsListData, ThrowOnError>
 ): RequestResult<TeamDeploymentsListResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<TeamDeploymentsListResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/teams/{teamId}/deployments',
 		...options
 	});
@@ -1229,7 +1852,13 @@ export const serviceDeploymentsList = <ThrowOnError extends boolean = false>(
 	options: Options<ServiceDeploymentsListData, ThrowOnError>
 ): RequestResult<ServiceDeploymentsListResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<ServiceDeploymentsListResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/services/{serviceId}/deployments',
 		...options
 	});
@@ -1241,7 +1870,13 @@ export const serviceDeploymentsEnqueue = <ThrowOnError extends boolean = false>(
 	options: Options<ServiceDeploymentsEnqueueData, ThrowOnError>
 ): RequestResult<ServiceDeploymentsEnqueueResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).post<ServiceDeploymentsEnqueueResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/services/{serviceId}/deployments',
 		...options
 	});
@@ -1253,7 +1888,13 @@ export const deploymentsGet = <ThrowOnError extends boolean = false>(
 	options: Options<DeploymentsGetData, ThrowOnError>
 ): RequestResult<DeploymentsGetResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<DeploymentsGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/deployments/{deploymentId}',
 		...options
 	});
@@ -1265,7 +1906,13 @@ export const deploymentLogsList = <ThrowOnError extends boolean = false>(
 	options: Options<DeploymentLogsListData, ThrowOnError>
 ): RequestResult<DeploymentLogsListResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<DeploymentLogsListResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/deployments/{deploymentId}/logs',
 		...options
 	});
@@ -1277,7 +1924,13 @@ export const deploymentBuildLogsGet = <ThrowOnError extends boolean = false>(
 	options: Options<DeploymentBuildLogsGetData, ThrowOnError>
 ): RequestResult<DeploymentBuildLogsGetResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<DeploymentBuildLogsGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/deployments/{deploymentId}/build-logs',
 		...options
 	});
@@ -1289,7 +1942,13 @@ export const deploymentsCancel = <ThrowOnError extends boolean = false>(
 	options: Options<DeploymentsCancelData, ThrowOnError>
 ): RequestResult<DeploymentsCancelResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).post<DeploymentsCancelResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/deployments/{deploymentId}/cancel',
 		...options
 	});
@@ -1301,7 +1960,13 @@ export const invitationsList = <ThrowOnError extends boolean = false>(
 	options?: Options<InvitationsListData, ThrowOnError>
 ): RequestResult<InvitationsListResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<InvitationsListResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/invitations',
 		...options
 	});
@@ -1313,7 +1978,13 @@ export const invitationsCreate = <ThrowOnError extends boolean = false>(
 	options: Options<InvitationsCreateData, ThrowOnError>
 ): RequestResult<InvitationsCreateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).post<InvitationsCreateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/invitations',
 		...options,
 		headers: {
@@ -1329,7 +2000,13 @@ export const invitationsDelete = <ThrowOnError extends boolean = false>(
 	options: Options<InvitationsDeleteData, ThrowOnError>
 ): RequestResult<InvitationsDeleteResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).delete<InvitationsDeleteResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/invitations/{id}',
 		...options
 	});
@@ -1341,7 +2018,13 @@ export const invitationsResend = <ThrowOnError extends boolean = false>(
 	options: Options<InvitationsResendData, ThrowOnError>
 ): RequestResult<InvitationsResendResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).post<InvitationsResendResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/invitations/{id}/resend',
 		...options
 	});
@@ -1370,13 +2053,59 @@ export const invitationsAccept = <ThrowOnError extends boolean = false>(
 	});
 
 /**
+ * Get build execution and resource settings
+ */
+export const platformSettingsBuildsGet = <ThrowOnError extends boolean = false>(
+	options?: Options<PlatformSettingsBuildsGetData, ThrowOnError>
+): RequestResult<PlatformSettingsBuildsGetResponses, unknown, ThrowOnError> =>
+	(options?.client ?? client).get<PlatformSettingsBuildsGetResponses, unknown, ThrowOnError>({
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
+		url: '/api/platform/settings/builds',
+		...options
+	});
+
+/**
+ * Configure new builds
+ */
+export const platformSettingsBuildsUpdate = <ThrowOnError extends boolean = false>(
+	options: Options<PlatformSettingsBuildsUpdateData, ThrowOnError>
+): RequestResult<PlatformSettingsBuildsUpdateResponses, unknown, ThrowOnError> =>
+	(options.client ?? client).put<PlatformSettingsBuildsUpdateResponses, unknown, ThrowOnError>({
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
+		url: '/api/platform/settings/builds',
+		...options,
+		headers: {
+			'Content-Type': 'application/json',
+			...options.headers
+		}
+	});
+
+/**
  * Get platform version metadata
  */
 export const platformVersionGet = <ThrowOnError extends boolean = false>(
 	options?: Options<PlatformVersionGetData, ThrowOnError>
 ): RequestResult<PlatformVersionGetResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<PlatformVersionGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/version',
 		...options
 	});
@@ -1388,7 +2117,13 @@ export const platformVersionCheck = <ThrowOnError extends boolean = false>(
 	options?: Options<PlatformVersionCheckData, ThrowOnError>
 ): RequestResult<PlatformVersionCheckResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).post<PlatformVersionCheckResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/version/check',
 		...options
 	});
@@ -1400,7 +2135,13 @@ export const platformUsersList = <ThrowOnError extends boolean = false>(
 	options?: Options<PlatformUsersListData, ThrowOnError>
 ): RequestResult<PlatformUsersListResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<PlatformUsersListResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/users',
 		...options
 	});
@@ -1412,7 +2153,13 @@ export const platformUsersDelete = <ThrowOnError extends boolean = false>(
 	options: Options<PlatformUsersDeleteData, ThrowOnError>
 ): RequestResult<PlatformUsersDeleteResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).delete<PlatformUsersDeleteResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/users/{id}',
 		...options
 	});
@@ -1424,7 +2171,13 @@ export const platformUsersUpdate = <ThrowOnError extends boolean = false>(
 	options: Options<PlatformUsersUpdateData, ThrowOnError>
 ): RequestResult<PlatformUsersUpdateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).patch<PlatformUsersUpdateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/users/{id}',
 		...options,
 		headers: {
@@ -1440,7 +2193,13 @@ export const platformSettingsDomainGet = <ThrowOnError extends boolean = false>(
 	options?: Options<PlatformSettingsDomainGetData, ThrowOnError>
 ): RequestResult<PlatformSettingsDomainGetResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<PlatformSettingsDomainGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/settings/domain',
 		...options
 	});
@@ -1452,7 +2211,13 @@ export const platformSettingsDomainUpdate = <ThrowOnError extends boolean = fals
 	options: Options<PlatformSettingsDomainUpdateData, ThrowOnError>
 ): RequestResult<PlatformSettingsDomainUpdateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).put<PlatformSettingsDomainUpdateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/settings/domain',
 		...options,
 		headers: {
@@ -1468,7 +2233,13 @@ export const platformSettingsSmtpGet = <ThrowOnError extends boolean = false>(
 	options?: Options<PlatformSettingsSmtpGetData, ThrowOnError>
 ): RequestResult<PlatformSettingsSmtpGetResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<PlatformSettingsSmtpGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/settings/smtp',
 		...options
 	});
@@ -1480,7 +2251,13 @@ export const platformSettingsSmtpUpdate = <ThrowOnError extends boolean = false>
 	options: Options<PlatformSettingsSmtpUpdateData, ThrowOnError>
 ): RequestResult<PlatformSettingsSmtpUpdateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).put<PlatformSettingsSmtpUpdateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/settings/smtp',
 		...options,
 		headers: {
@@ -1496,7 +2273,13 @@ export const platformSettingsSmtpTest = <ThrowOnError extends boolean = false>(
 	options: Options<PlatformSettingsSmtpTestData, ThrowOnError>
 ): RequestResult<PlatformSettingsSmtpTestResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).post<PlatformSettingsSmtpTestResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/settings/smtp/test',
 		...options,
 		headers: {
@@ -1512,7 +2295,13 @@ export const platformSettingsRegistryGet = <ThrowOnError extends boolean = false
 	options?: Options<PlatformSettingsRegistryGetData, ThrowOnError>
 ): RequestResult<PlatformSettingsRegistryGetResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<PlatformSettingsRegistryGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/settings/registry',
 		...options
 	});
@@ -1524,7 +2313,13 @@ export const platformSettingsRegistryUpdate = <ThrowOnError extends boolean = fa
 	options: Options<PlatformSettingsRegistryUpdateData, ThrowOnError>
 ): RequestResult<PlatformSettingsRegistryUpdateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).put<PlatformSettingsRegistryUpdateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/settings/registry',
 		...options,
 		headers: {
@@ -1540,7 +2335,13 @@ export const platformSettingsMetricsGet = <ThrowOnError extends boolean = false>
 	options?: Options<PlatformSettingsMetricsGetData, ThrowOnError>
 ): RequestResult<PlatformSettingsMetricsGetResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<PlatformSettingsMetricsGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/settings/metrics',
 		...options
 	});
@@ -1552,7 +2353,13 @@ export const platformSettingsMetricsUpdate = <ThrowOnError extends boolean = fal
 	options: Options<PlatformSettingsMetricsUpdateData, ThrowOnError>
 ): RequestResult<PlatformSettingsMetricsUpdateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).put<PlatformSettingsMetricsUpdateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/settings/metrics',
 		...options,
 		headers: {
@@ -1568,7 +2375,13 @@ export const platformSettingsPrPreviewsGet = <ThrowOnError extends boolean = fal
 	options?: Options<PlatformSettingsPrPreviewsGetData, ThrowOnError>
 ): RequestResult<PlatformSettingsPrPreviewsGetResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<PlatformSettingsPrPreviewsGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/settings/pr-previews',
 		...options
 	});
@@ -1580,7 +2393,13 @@ export const platformSettingsPrPreviewsUpdate = <ThrowOnError extends boolean = 
 	options: Options<PlatformSettingsPrPreviewsUpdateData, ThrowOnError>
 ): RequestResult<PlatformSettingsPrPreviewsUpdateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).put<PlatformSettingsPrPreviewsUpdateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/settings/pr-previews',
 		...options,
 		headers: {
@@ -1596,7 +2415,13 @@ export const platformSettingsHaGet = <ThrowOnError extends boolean = false>(
 	options?: Options<PlatformSettingsHaGetData, ThrowOnError>
 ): RequestResult<PlatformSettingsHaGetResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<PlatformSettingsHaGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/settings/ha',
 		...options
 	});
@@ -1608,7 +2433,13 @@ export const platformSettingsHaUpdate = <ThrowOnError extends boolean = false>(
 	options: Options<PlatformSettingsHaUpdateData, ThrowOnError>
 ): RequestResult<PlatformSettingsHaUpdateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).put<PlatformSettingsHaUpdateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/settings/ha',
 		...options,
 		headers: {
@@ -1624,7 +2455,13 @@ export const platformSettingsDeploymentConcurrencyGet = <ThrowOnError extends bo
 	options?: Options<PlatformSettingsDeploymentConcurrencyGetData, ThrowOnError>
 ): RequestResult<PlatformSettingsDeploymentConcurrencyGetResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<PlatformSettingsDeploymentConcurrencyGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/settings/deployment-concurrency',
 		...options
 	});
@@ -1636,7 +2473,13 @@ export const platformSettingsDeploymentConcurrencyUpdate = <ThrowOnError extends
 	options: Options<PlatformSettingsDeploymentConcurrencyUpdateData, ThrowOnError>
 ): RequestResult<PlatformSettingsDeploymentConcurrencyUpdateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).put<PlatformSettingsDeploymentConcurrencyUpdateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/settings/deployment-concurrency',
 		...options,
 		headers: {
@@ -1652,7 +2495,13 @@ export const platformSettingsVolumeAutoscalingGet = <ThrowOnError extends boolea
 	options?: Options<PlatformSettingsVolumeAutoscalingGetData, ThrowOnError>
 ): RequestResult<PlatformSettingsVolumeAutoscalingGetResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<PlatformSettingsVolumeAutoscalingGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/settings/volume-autoscaling',
 		...options
 	});
@@ -1664,7 +2513,13 @@ export const platformSettingsVolumeAutoscalingUpdate = <ThrowOnError extends boo
 	options: Options<PlatformSettingsVolumeAutoscalingUpdateData, ThrowOnError>
 ): RequestResult<PlatformSettingsVolumeAutoscalingUpdateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).put<PlatformSettingsVolumeAutoscalingUpdateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/settings/volume-autoscaling',
 		...options,
 		headers: {
@@ -1680,7 +2535,13 @@ export const platformSettingsPlatformVolumesGet = <ThrowOnError extends boolean 
 	options?: Options<PlatformSettingsPlatformVolumesGetData, ThrowOnError>
 ): RequestResult<PlatformSettingsPlatformVolumesGetResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<PlatformSettingsPlatformVolumesGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/settings/platform-volumes',
 		...options
 	});
@@ -1692,7 +2553,13 @@ export const platformSettingsTcpPortPoolGet = <ThrowOnError extends boolean = fa
 	options?: Options<PlatformSettingsTcpPortPoolGetData, ThrowOnError>
 ): RequestResult<PlatformSettingsTcpPortPoolGetResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<PlatformSettingsTcpPortPoolGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/settings/tcp-port-pool',
 		...options
 	});
@@ -1704,7 +2571,13 @@ export const platformSettingsTcpPortPoolUpdate = <ThrowOnError extends boolean =
 	options: Options<PlatformSettingsTcpPortPoolUpdateData, ThrowOnError>
 ): RequestResult<PlatformSettingsTcpPortPoolUpdateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).put<PlatformSettingsTcpPortPoolUpdateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/settings/tcp-port-pool',
 		...options,
 		headers: {
@@ -1720,7 +2593,13 @@ export const platformSettingsAiGet = <ThrowOnError extends boolean = false>(
 	options?: Options<PlatformSettingsAiGetData, ThrowOnError>
 ): RequestResult<PlatformSettingsAiGetResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<PlatformSettingsAiGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/settings/ai',
 		...options
 	});
@@ -1732,7 +2611,13 @@ export const platformSettingsAiUpdate = <ThrowOnError extends boolean = false>(
 	options: Options<PlatformSettingsAiUpdateData, ThrowOnError>
 ): RequestResult<PlatformSettingsAiUpdateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).put<PlatformSettingsAiUpdateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/settings/ai',
 		...options,
 		headers: {
@@ -1748,7 +2633,13 @@ export const platformUpdatesList = <ThrowOnError extends boolean = false>(
 	options?: Options<PlatformUpdatesListData, ThrowOnError>
 ): RequestResult<PlatformUpdatesListResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<PlatformUpdatesListResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/updates',
 		...options
 	});
@@ -1760,7 +2651,13 @@ export const platformUpdatesTrigger = <ThrowOnError extends boolean = false>(
 	options: Options<PlatformUpdatesTriggerData, ThrowOnError>
 ): RequestResult<PlatformUpdatesTriggerResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).post<PlatformUpdatesTriggerResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/updates',
 		...options,
 		headers: {
@@ -1776,7 +2673,13 @@ export const platformUpdatesGet = <ThrowOnError extends boolean = false>(
 	options: Options<PlatformUpdatesGetData, ThrowOnError>
 ): RequestResult<PlatformUpdatesGetResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<PlatformUpdatesGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/updates/{id}',
 		...options
 	});
@@ -1788,7 +2691,13 @@ export const platformUpdateLogsGet = <ThrowOnError extends boolean = false>(
 	options: Options<PlatformUpdateLogsGetData, ThrowOnError>
 ): RequestResult<PlatformUpdateLogsGetResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<PlatformUpdateLogsGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/updates/{id}/logs',
 		...options
 	});
@@ -1800,7 +2709,13 @@ export const platformClusterGet = <ThrowOnError extends boolean = false>(
 	options?: Options<PlatformClusterGetData, ThrowOnError>
 ): RequestResult<PlatformClusterGetResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<PlatformClusterGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/cluster',
 		...options
 	});
@@ -1812,7 +2727,13 @@ export const platformClusterEventsGet = <ThrowOnError extends boolean = false>(
 	options?: Options<PlatformClusterEventsGetData, ThrowOnError>
 ): RequestResult<PlatformClusterEventsGetResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<PlatformClusterEventsGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/cluster/events',
 		...options
 	});
@@ -1824,7 +2745,13 @@ export const platformClusterUsageGet = <ThrowOnError extends boolean = false>(
 	options?: Options<PlatformClusterUsageGetData, ThrowOnError>
 ): RequestResult<PlatformClusterUsageGetResponses, unknown, ThrowOnError> =>
 	(options?.client ?? client).get<PlatformClusterUsageGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/cluster/usage',
 		...options
 	});
@@ -1836,7 +2763,13 @@ export const platformClusterNodeGet = <ThrowOnError extends boolean = false>(
 	options: Options<PlatformClusterNodeGetData, ThrowOnError>
 ): RequestResult<PlatformClusterNodeGetResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<PlatformClusterNodeGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/cluster/nodes/{name}',
 		...options
 	});
@@ -1848,7 +2781,13 @@ export const platformClusterNodeUsageGet = <ThrowOnError extends boolean = false
 	options: Options<PlatformClusterNodeUsageGetData, ThrowOnError>
 ): RequestResult<PlatformClusterNodeUsageGetResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).get<PlatformClusterNodeUsageGetResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/platform/cluster/nodes/{name}/usage',
 		...options
 	});
@@ -1884,7 +2823,13 @@ export const environmentServicesCreateFromTemplate = <ThrowOnError extends boole
 	options: Options<EnvironmentServicesCreateFromTemplateData, ThrowOnError>
 ): RequestResult<EnvironmentServicesCreateFromTemplateResponses, unknown, ThrowOnError> =>
 	(options.client ?? client).post<EnvironmentServicesCreateFromTemplateResponses, unknown, ThrowOnError>({
-		security: [{ scheme: 'bearer', type: 'http' }],
+		security: [
+			{
+				key: 'bearerAuth',
+				scheme: 'bearer',
+				type: 'http'
+			}
+		],
 		url: '/api/environments/{environmentId}/services/from-template',
 		...options,
 		headers: {

@@ -211,6 +211,20 @@
 			"when": 1790343489637,
 			"tag": "0029_mcp_credential_scopes",
 			"breakpoints": true
+		},
+		{
+			"idx": 30,
+			"version": "7",
+			"when": 1790770909661,
+			"tag": "0030_broken_cerebro",
+			"breakpoints": true
+		},
+		{
+			"idx": 31,
+			"version": "7",
+			"when": 1790773202902,
+			"tag": "0031_chunky_sebastian_shaw",
+			"breakpoints": true
 		}
 	]
 }

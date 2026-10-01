@@ -26,6 +26,7 @@
 		"test:coverage": "bun test --isolate --coverage --coverage-reporter=text --coverage-reporter=lcov test"
 	},
 	"dependencies": {
+		"@kubwave/build-protocol": "workspace:*",
 		"@ai-sdk/anthropic": "^4",
 		"@ai-sdk/openai-compatible": "^3",
 		"@fastify/cookie": "^11.0.2",

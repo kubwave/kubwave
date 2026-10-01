@@ -14,6 +14,17 @@ import type {
 	AuthResetPasswordResponses,
 	AuthResetPasswordValidityResponses,
 	AuthSessionResponses,
+	BuildAgentClaimResponses,
+	BuildAgentHeartbeatData,
+	BuildAgentHeartbeatResponses,
+	BuildAgentRegisterData,
+	BuildAgentRegisterResponses,
+	BuildAgentTaskLogsData,
+	BuildAgentTaskLogsResponses,
+	BuildAgentTaskResultData,
+	BuildAgentTaskResultResponses,
+	BuildAgentTaskSourceData,
+	BuildAgentTaskSourceResponses,
 	DeploymentBuildLogsGetResponses,
 	DeploymentLogsListResponses,
 	DeploymentsCancelResponses,
@@ -63,6 +74,13 @@ import type {
 	McpConsentCreateData,
 	McpConsentCreateResponses,
 	McpInfoGetResponses,
+	PlatformBuildAgentsCreateData,
+	PlatformBuildAgentsCreateResponses,
+	PlatformBuildAgentsDeleteResponses,
+	PlatformBuildAgentsListResponses,
+	PlatformBuildAgentsRevokeResponses,
+	PlatformBuildAgentsUpdateData,
+	PlatformBuildAgentsUpdateResponses,
 	PlatformClusterEventsGetResponses,
 	PlatformClusterGetResponses,
 	PlatformClusterNodeGetResponses,
@@ -73,6 +91,9 @@ import type {
 	PlatformSettingsAiGetResponses,
 	PlatformSettingsAiUpdateData,
 	PlatformSettingsAiUpdateResponses,
+	PlatformSettingsBuildsGetResponses,
+	PlatformSettingsBuildsUpdateData,
+	PlatformSettingsBuildsUpdateResponses,
 	PlatformSettingsDeploymentConcurrencyGetResponses,
 	PlatformSettingsDeploymentConcurrencyUpdateData,
 	PlatformSettingsDeploymentConcurrencyUpdateResponses,
@@ -206,6 +227,7 @@ export type KubwaveResourceClient = {
 	raw: KubwaveRawClient;
 	ai: KubwaveAiResource;
 	auth: KubwaveAuthResource;
+	buildAgent: KubwaveBuildAgentResource;
 	deployments: KubwaveDeploymentsResource;
 	environments: KubwaveEnvironmentsResource;
 	git: KubwaveGitResource;
@@ -268,6 +290,47 @@ export type KubwaveAuthResetPasswordTokenValidityResource = {
 
 export type KubwaveAuthSessionResource = {
 	get(): OperationResult<AuthSessionResponses>;
+};
+
+export type KubwaveBuildAgentResource = {
+	claim: KubwaveBuildAgentClaimResource;
+	heartbeat: KubwaveBuildAgentHeartbeatResource;
+	register: KubwaveBuildAgentRegisterResource;
+	tasks: KubwaveBuildAgentTasksResource;
+};
+
+export type KubwaveBuildAgentClaimResource = {
+	post(): OperationResult<BuildAgentClaimResponses>;
+};
+
+export type KubwaveBuildAgentHeartbeatResource = {
+	post(body: BuildAgentHeartbeatData['body']): OperationResult<BuildAgentHeartbeatResponses>;
+};
+
+export type KubwaveBuildAgentRegisterResource = {
+	post(body: BuildAgentRegisterData['body']): OperationResult<BuildAgentRegisterResponses>;
+};
+
+export type KubwaveBuildAgentTasksResource = {
+	(id: string): KubwaveBuildAgentTasksIdResource;
+};
+
+export type KubwaveBuildAgentTasksIdResource = {
+	logs: KubwaveBuildAgentTasksIdLogsResource;
+	result: KubwaveBuildAgentTasksIdResultResource;
+	source: KubwaveBuildAgentTasksIdSourceResource;
+};
+
+export type KubwaveBuildAgentTasksIdLogsResource = {
+	post(body: BuildAgentTaskLogsData['body']): OperationResult<BuildAgentTaskLogsResponses>;
+};
+
+export type KubwaveBuildAgentTasksIdResultResource = {
+	post(body: BuildAgentTaskResultData['body']): OperationResult<BuildAgentTaskResultResponses>;
+};
+
+export type KubwaveBuildAgentTasksIdSourceResource = {
+	post(body: BuildAgentTaskSourceData['body']): OperationResult<BuildAgentTaskSourceResponses>;
 };
 
 export type KubwaveDeploymentsResource = {
@@ -427,11 +490,28 @@ export type KubwaveMcpInfoResource = {
 };
 
 export type KubwavePlatformResource = {
+	buildAgents: KubwavePlatformBuildAgentsResource;
 	cluster: KubwavePlatformClusterResource;
 	settings: KubwavePlatformSettingsResource;
 	updates: KubwavePlatformUpdatesResource;
 	users: KubwavePlatformUsersResource;
 	version: KubwavePlatformVersionResource;
+};
+
+export type KubwavePlatformBuildAgentsResource = {
+	(id: string): KubwavePlatformBuildAgentsIdResource;
+	get(): OperationResult<PlatformBuildAgentsListResponses>;
+	post(body: PlatformBuildAgentsCreateData['body']): OperationResult<PlatformBuildAgentsCreateResponses>;
+};
+
+export type KubwavePlatformBuildAgentsIdResource = {
+	put(body: PlatformBuildAgentsUpdateData['body']): OperationResult<PlatformBuildAgentsUpdateResponses>;
+	delete(): OperationResult<PlatformBuildAgentsDeleteResponses>;
+	revoke: KubwavePlatformBuildAgentsIdRevokeResource;
+};
+
+export type KubwavePlatformBuildAgentsIdRevokeResource = {
+	post(): OperationResult<PlatformBuildAgentsRevokeResponses>;
 };
 
 export type KubwavePlatformClusterResource = {
@@ -464,6 +544,7 @@ export type KubwavePlatformClusterUsageResource = {
 
 export type KubwavePlatformSettingsResource = {
 	ai: KubwavePlatformSettingsAiResource;
+	builds: KubwavePlatformSettingsBuildsResource;
 	deploymentConcurrency: KubwavePlatformSettingsDeploymentConcurrencyResource;
 	domain: KubwavePlatformSettingsDomainResource;
 	ha: KubwavePlatformSettingsHaResource;
@@ -479,6 +560,11 @@ export type KubwavePlatformSettingsResource = {
 export type KubwavePlatformSettingsAiResource = {
 	get(): OperationResult<PlatformSettingsAiGetResponses>;
 	put(body: PlatformSettingsAiUpdateData['body']): OperationResult<PlatformSettingsAiUpdateResponses>;
+};
+
+export type KubwavePlatformSettingsBuildsResource = {
+	get(): OperationResult<PlatformSettingsBuildsGetResponses>;
+	put(body: PlatformSettingsBuildsUpdateData['body']): OperationResult<PlatformSettingsBuildsUpdateResponses>;
 };
 
 export type KubwavePlatformSettingsDeploymentConcurrencyResource = {
@@ -805,6 +891,31 @@ export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClie
 				get: () => apiResult(raw.authSession({}))
 			}
 		},
+		buildAgent: {
+			claim: {
+				post: () => apiResult(raw.buildAgentClaim({}))
+			},
+			heartbeat: {
+				post: (body: BuildAgentHeartbeatData['body']) => apiResult(raw.buildAgentHeartbeat({ body }))
+			},
+			register: {
+				post: (body: BuildAgentRegisterData['body']) => apiResult(raw.buildAgentRegister({ body }))
+			},
+			tasks: Object.assign(
+				(id: string) => ({
+					logs: {
+						post: (body: BuildAgentTaskLogsData['body']) => apiResult(raw.buildAgentTaskLogs({ path: { id: id }, body }))
+					},
+					result: {
+						post: (body: BuildAgentTaskResultData['body']) => apiResult(raw.buildAgentTaskResult({ path: { id: id }, body }))
+					},
+					source: {
+						post: (body: BuildAgentTaskSourceData['body']) => apiResult(raw.buildAgentTaskSource({ path: { id: id }, body }))
+					}
+				}),
+				{}
+			)
+		},
 		deployments: Object.assign(
 			(deploymentId: string) => ({
 				get: () => apiResult(raw.deploymentsGet({ path: { deploymentId: deploymentId } })),
@@ -917,6 +1028,19 @@ export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClie
 			}
 		},
 		platform: {
+			buildAgents: Object.assign(
+				(id: string) => ({
+					put: (body: PlatformBuildAgentsUpdateData['body']) => apiResult(raw.platformBuildAgentsUpdate({ path: { id: id }, body })),
+					delete: () => apiResult(raw.platformBuildAgentsDelete({ path: { id: id } })),
+					revoke: {
+						post: () => apiResult(raw.platformBuildAgentsRevoke({ path: { id: id } }))
+					}
+				}),
+				{
+					get: () => apiResult(raw.platformBuildAgentsList({})),
+					post: (body: PlatformBuildAgentsCreateData['body']) => apiResult(raw.platformBuildAgentsCreate({ body }))
+				}
+			),
 			cluster: {
 				get: () => apiResult(raw.platformClusterGet({})),
 				events: {
@@ -939,6 +1063,10 @@ export function createResourceClient(raw: KubwaveRawClient): KubwaveResourceClie
 				ai: {
 					get: () => apiResult(raw.platformSettingsAiGet({})),
 					put: (body: PlatformSettingsAiUpdateData['body']) => apiResult(raw.platformSettingsAiUpdate({ body }))
+				},
+				builds: {
+					get: () => apiResult(raw.platformSettingsBuildsGet({})),
+					put: (body: PlatformSettingsBuildsUpdateData['body']) => apiResult(raw.platformSettingsBuildsUpdate({ body }))
 				},
 				deploymentConcurrency: {
 					get: () => apiResult(raw.platformSettingsDeploymentConcurrencyGet({})),

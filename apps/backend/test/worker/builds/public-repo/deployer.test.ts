@@ -2,6 +2,22 @@ import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { AppsV1Api, AutoscalingV2Api, BatchV1Api, CoreV1Api, CustomObjectsApi, NetworkingV1Api, type KubeConfig } from '@kubernetes/client-node';
 import type { DeployContext } from '~/modules/worker/jobs/deployments/deployers/types';
 
+mock.module('~/modules/worker/jobs/deployments/builds/promotion', () => ({ reserveBuildDeployment: async () => true }));
+
+mock.module('~/shared/builds/runs', () => ({
+	getBuildRun: async () => null,
+	ensureBuildRun: async () => ({
+		id: 'run-1',
+		status: 'queued',
+		execution: 'cluster',
+		settings: { memoryRequest: '1Gi', memoryLimit: '2Gi', cpuRequest: '', cpuLimit: '', timeoutSeconds: 1800 }
+	}),
+	reserveBuildRun: async (run: unknown) => ({ ...(run as object), status: 'preparing' }),
+	markClusterBuildStarted: async () => {},
+	finishBuildRun: async () => {},
+	cancelBuildRun: async () => false
+}));
+
 // Replace the env module so the public-repo deployer sees a configured registry + builder images regardless of load order.
 mock.module('~/shared/config/worker-env', () => ({
 	env: {

@@ -1,3 +1,4 @@
+import type { BuildCoreApi } from '../../../../../../shared/builds/artifacts.js';
 import { BatchV1Api, CoreV1Api } from '@kubernetes/client-node';
 import type { GithubRepoServiceConfig } from '@kubwave/db';
 import { LABEL_SERVICE_ID } from '@kubwave/kube';
@@ -17,7 +18,13 @@ function tokenSecretName(deploymentId: string): string {
 }
 
 // Mint a short-lived installation token and drop it as a one-shot Secret (the Authorization header, not the raw token) labelled like every build artifact so reaper+teardown bound its lifetime.
-async function ensureTokenSecret(api: CoreV1Api, namespace: string, serviceId: string, deploymentId: string, installationId: string): Promise<void> {
+async function ensureTokenSecret(
+	api: BuildCoreApi,
+	namespace: string,
+	serviceId: string,
+	deploymentId: string,
+	installationId: string
+): Promise<void> {
 	const token = await getInstallationToken(installationId);
 	const name = tokenSecretName(deploymentId);
 	// Replace rather than ignore-conflict: a Secret left by an earlier attempt pins an installation token that expires in ~1h, so a later

@@ -35,5 +35,5 @@ export function hasBuildStep(deployment: Deployment | null | undefined): boolean
 }
 
 export function isDeploymentBuilding(deployment: Deployment): boolean {
-	return deployment.phase === 'building' || deployment.phase === 'pushing';
+	return deployment.phase === 'building' || deployment.phase === 'pushing' || deployment.phase === 'build-queued';
 }

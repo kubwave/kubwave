@@ -1,7 +1,31 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { BatchV1Api, CoreV1Api, NetworkingV1Api, type KubeConfig } from '@kubernetes/client-node';
 import type { CoreV1Api as CoreV1ApiType, V1Job } from '@kubernetes/client-node';
+import type { BuildArtifacts } from '~/shared/builds/artifacts';
 import type { DeployContext } from '~/modules/worker/jobs/deployments/deployers/types';
+
+mock.module('~/modules/worker/jobs/deployments/builds/promotion', () => ({ reserveBuildDeployment: async () => true }));
+
+let buildExecution = 'cluster';
+const publishedBuilds: BuildArtifacts[] = [];
+
+mock.module('~/shared/builds/runs', () => ({
+	getBuildRun: async () => null,
+	ensureBuildRun: async () => ({
+		id: 'run-1',
+		attempt: 1,
+		status: 'queued',
+		execution: buildExecution,
+		settings: { memoryRequest: '1Gi', memoryLimit: '2Gi', cpuRequest: '', cpuLimit: '', timeoutSeconds: 1800 }
+	}),
+	reserveBuildRun: async (run: unknown) => ({ ...(run as object), status: 'preparing' }),
+	publishAgentBuild: async (_run: unknown, artifacts: BuildArtifacts) => {
+		publishedBuilds.push(artifacts);
+	},
+	markClusterBuildStarted: async () => {},
+	finishBuildRun: async () => {},
+	cancelBuildRun: async () => false
+}));
 
 // The shared build→deploy state machine; stub env, db, and the runtime deploy core (Phase B). shared.test.ts covers the pure helpers.
 mock.module('~/shared/config/worker-env', () => ({
@@ -41,6 +65,8 @@ const { reapBuildJobs, deleteBuildArtifactsForDeployment, buildFailureReason, im
 const realFetch = globalThis.fetch;
 afterEach(() => {
 	globalThis.fetch = realFetch;
+	buildExecution = 'cluster';
+	publishedBuilds.length = 0;
 	reconcileCalls.length = 0;
 	persistedImageRefs.length = 0;
 });
@@ -318,6 +344,27 @@ describe('runBuildReconcile deploy hand-off', () => {
 		expect(started).toBe(false); // build skipped
 		expect(reconcileCalls).toHaveLength(1);
 		expect(result).toMatchObject({ state: 'progressing', phase: 'rolling-out' });
+	});
+
+	test('external execution captures build artifacts without creating Kubernetes build resources', async () => {
+		buildExecution = 'agent';
+		globalThis.fetch = (async () => ({ status: 404 })) as unknown as typeof fetch;
+		const result = await runBuildReconcile(makeCtx({ job: null }), {} as never, {
+			...opts(),
+			startBuild: async ({ coreApi, batchApi, imageRef, external }) => {
+				expect(external).toBe(true);
+				expect(imageRef).toEndWith('-run-1-1');
+				await coreApi.createNamespacedConfigMap({
+					namespace: 'kubwave',
+					body: { metadata: { name: 'dockerfile' }, data: { Dockerfile: 'FROM alpine' } }
+				});
+				await batchApi.createNamespacedJob({ namespace: 'kubwave', body: { metadata: { name: 'build-job' } } });
+			}
+		});
+		expect(result).toMatchObject({ state: 'progressing', phase: 'build-queued' });
+		expect(publishedBuilds).toHaveLength(1);
+		expect(publishedBuilds[0]!.configMaps.get('dockerfile')?.data?.Dockerfile).toBe('FROM alpine');
+		expect(reconcileCalls).toHaveLength(0);
 	});
 
 	test('no Job and no image → runs startBuild and reports building (does not deploy)', async () => {

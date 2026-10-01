@@ -1,12 +1,12 @@
-import { desc, eq } from 'drizzle-orm';
-import { db, deployments, services } from '@kubwave/db';
+import { desc, eq, inArray } from 'drizzle-orm';
+import { db, deployments, services, buildRuns } from '@kubwave/db';
 import { env } from '../../../../shared/config/worker-env.js';
 import { errorMessage } from '../../../../shared/worker-common/errors.js';
 import { BUILD_ACTIVE_STATUSES } from '../deployments/types.js';
 import { registryAuthHeaders } from './auth.js';
 import { BUILDKIT_CACHE_TAG } from '../deployments/builds/buildkit.js';
 
-// Prunes superseded Dockerfile image tags via the registry v2 manifest API, keeping the running image, the last-succeeded rollback target, and in-flight refs.
+// Prunes superseded build image tags via the registry v2 manifest API, keeping the running image, the last-succeeded rollback target, and in-flight refs.
 // Only un-references blobs; disk is reclaimed by `registry garbage-collect` (gc.ts). Best-effort: any error skips and retries.
 
 const MANIFEST_ACCEPT =
@@ -67,16 +67,26 @@ export async function pruneServiceRepo(environmentId: string, serviceId: string,
 	const repo = serviceRepoPath(environmentId, serviceId);
 	const tags = await listRepoTags(repo);
 	const toDelete = selectTagsToDelete(tags, keepTags);
+	if (!toDelete.length) return 0;
+	const protectedDigests = new Set<string>();
+	for (const tag of tags.filter(tag => tag === BUILDKIT_CACHE_TAG || keepTags.has(tag))) {
+		const digest = await resolveManifestDigest(repo, tag);
+		if (!digest) return 0;
+		protectedDigests.add(digest);
+	}
 	let deleted = 0;
 	for (const tag of toDelete) {
 		const digest = await resolveManifestDigest(repo, tag);
-		if (!digest) continue; // can't resolve -> skip; a later pass retries
+		if (!digest || protectedDigests.has(digest)) continue;
 		if (await deleteManifest(repo, digest)) deleted++;
 	}
 	return deleted;
 }
 
-export function computeKeepTags(rows: Array<{ id: string; status: string }>, keepSucceeded: number): Set<string> {
+export function computeKeepTags(
+	rows: Array<{ id: string; status: string; imageTag?: string | null; cacheTag?: string | null }>,
+	keepSucceeded: number
+): Set<string> {
 	const keep = new Set<string>();
 	let succeededKept = 0;
 	const activeSet = new Set<string>(BUILD_ACTIVE_STATUSES);
@@ -88,33 +98,50 @@ export function computeKeepTags(rows: Array<{ id: string; status: string }>, kee
 			succeededKept++;
 		}
 	}
+	for (const row of rows)
+		if (keep.has(row.id)) {
+			if (row.imageTag) keep.add(row.imageTag);
+			if (row.cacheTag) keep.add(row.cacheTag);
+		}
 	return keep;
 }
 
 export async function pruneRegistryImages(): Promise<void> {
 	if (!env.registryEndpoint) return;
 
-	// All Dockerfile deployments joined to their environment, newest first; the inner join skips deleted services (orphaned repos go to the GC pass).
+	// All source-build deployments joined to their environment, newest first; the inner join skips deleted services (orphaned repos go to the GC pass).
 	const rows = await db
 		.select({
 			id: deployments.id,
 			serviceId: deployments.serviceId,
 			environmentId: services.environmentId,
-			status: deployments.status
+			status: deployments.status,
+			imageRef: buildRuns.imageRef,
+			runId: buildRuns.id,
+			attempt: buildRuns.attempt
 		})
 		.from(deployments)
 		.innerJoin(services, eq(deployments.serviceId, services.id))
-		.where(eq(deployments.type, 'dockerfile'))
+		.leftJoin(buildRuns, eq(buildRuns.deploymentId, deployments.id))
+		.where(inArray(deployments.type, ['dockerfile', 'public-repo', 'private-repo', 'github-repo', 'gitea-repo']))
 		.orderBy(desc(deployments.createdAt));
 
-	const byService = new Map<string, { environmentId: string; rows: Array<{ id: string; status: string }> }>();
+	const byService = new Map<
+		string,
+		{ environmentId: string; rows: Array<{ id: string; status: string; imageTag?: string | null; cacheTag?: string | null }> }
+	>();
 	for (const row of rows) {
 		let group = byService.get(row.serviceId);
 		if (!group) {
 			group = { environmentId: row.environmentId, rows: [] };
 			byService.set(row.serviceId, group);
 		}
-		group.rows.push({ id: row.id, status: row.status });
+		group.rows.push({
+			id: row.id,
+			status: row.status,
+			imageTag: row.imageRef?.split(':').at(-1),
+			cacheTag: row.runId ? `buildcache-${row.runId}-${row.attempt}` : null
+		});
 	}
 
 	let totalDeleted = 0;

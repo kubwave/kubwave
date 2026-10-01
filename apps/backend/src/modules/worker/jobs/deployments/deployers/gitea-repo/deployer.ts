@@ -1,3 +1,4 @@
+import type { BuildCoreApi } from '../../../../../../shared/builds/artifacts.js';
 import { BatchV1Api, CoreV1Api } from '@kubernetes/client-node';
 import type { GiteaRepoServiceConfig } from '@kubwave/db';
 import { LABEL_SERVICE_ID } from '@kubwave/kube';
@@ -16,7 +17,13 @@ function tokenSecretName(deploymentId: string): string {
 	return `${JOB_NAME_PREFIX}-${deploymentId}-token`;
 }
 
-async function ensureTokenSecret(api: CoreV1Api, namespace: string, serviceId: string, deploymentId: string, installationId: string): Promise<void> {
+async function ensureTokenSecret(
+	api: BuildCoreApi,
+	namespace: string,
+	serviceId: string,
+	deploymentId: string,
+	installationId: string
+): Promise<void> {
 	const header = await getCloneAuthHeader(installationId);
 	const name = tokenSecretName(deploymentId);
 	await deleteIgnoreMissing(() => api.deleteNamespacedSecret({ name, namespace }));

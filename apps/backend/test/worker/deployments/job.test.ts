@@ -7,6 +7,11 @@ let settingsThrows = false;
 let claimResult: unknown[] = [];
 const seenArgs: Record<string, unknown> = {};
 
+mock.module('~/shared/builds/runs', () => ({
+	maintainBuildRuns: async () => {
+		calls.push('build-runs');
+	}
+}));
 mock.module('@kubwave/kube', () => ({ getKubeConfig: () => ({ makeApiClient: () => ({}) }) }));
 mock.module('~/shared/cluster/default-domain', () => ({
 	getDefaultDomainSettings: async () => {
@@ -58,7 +63,7 @@ describe('runDeploymentReconcile', () => {
 	test('runs the four steps in order after reading settings + runtime', async () => {
 		claimResult = [{ id: 'd1' }];
 		await runDeploymentReconcile();
-		expect(calls).toEqual(['getSettings', 'reconcileRuntime', 'claim', 'reconcile', 'gc', 'reap']);
+		expect(calls).toEqual(['getSettings', 'reconcileRuntime', 'build-runs', 'claim', 'reconcile', 'gc', 'reap']);
 		// The runtime + (non-off) settings thread into reconcileInFlight.
 		expect(seenArgs.defaultDomain).toEqual({ mode: 'subdomain', base: 'apps.example', subdomainTemplate: '{service}' });
 		expect(seenArgs.runtime).toEqual({ ingressIp: '1.2.3.4' });
@@ -67,7 +72,7 @@ describe('runDeploymentReconcile', () => {
 	test('a failed settings read falls back to off-mode and still reconciles', async () => {
 		settingsThrows = true;
 		await runDeploymentReconcile();
-		expect(calls).toEqual(['getSettings', 'reconcileRuntime', 'claim', 'reconcile', 'gc', 'reap']);
+		expect(calls).toEqual(['getSettings', 'reconcileRuntime', 'build-runs', 'claim', 'reconcile', 'gc', 'reap']);
 		expect(seenArgs.defaultDomain).toEqual({ mode: 'off', base: null, subdomainTemplate: null });
 	});
 
