@@ -159,12 +159,13 @@ async function runInstall(opts: {
 		assumeYes
 	});
 	await platform.preflight?.(kc);
+	// Read-only, so it runs with the preflight: a cluster it rejects must stop before any dependency is installed.
+	const clusterDnsPolicy = await platform.resolveDnsPolicy?.(kc);
 	const warmup = await warmNodes(kc, platform, { ha: opts.ha, assumeYes, enabled: opts.warmNodes });
 	if (warmup.raiseTimeout) raiseInstallTimeoutForColdStart();
 	try {
 		await ensureDependencies(kc, platform.dependencies, undefined, { assumeYes });
 		const storage = await platform.ensureStorage(kc, { storageMode, storageClass: opts.storageClass, assumeYes });
-		const clusterDnsPolicy = await platform.resolveDnsPolicy?.(kc);
 		const autoscaling = await platform.ensureAutoscaling?.(kc, {
 			upcloudAutoscaling: opts.upcloudAutoscaling,
 			upcloudClusterUuid: opts.upcloudClusterUuid,

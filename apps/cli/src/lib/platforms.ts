@@ -60,7 +60,7 @@ export interface Platform {
 	nodeSelector?: Record<string, string>;
 	// Fails fast on cluster state the platform cannot install over, before any dependency is touched.
 	preflight?: (kc: KubeConfig) => Promise<void>;
-	// Reads the DNS egress target from the cluster when the platform can't rely on a static default.
+	// Reads the DNS egress target from the cluster when the platform can't rely on a static default; read-only, runs right after preflight.
 	resolveDnsPolicy?: (kc: KubeConfig) => Promise<DnsPolicy>;
 	ensureStorage(kc: KubeConfig, opts: StorageOpts): Promise<StorageDecision>;
 	ensureAutoscaling?: (kc: KubeConfig, opts: AutoscalingOpts) => Promise<AutoscalingDecision | void>;
