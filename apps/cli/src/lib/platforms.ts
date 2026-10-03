@@ -1,17 +1,20 @@
 import type { KubeConfig } from '@kubernetes/client-node';
 import * as p from '@clack/prompts';
 import type { CloudProvider } from '~/lib/cloud-provider.js';
+import type { DnsPolicy } from '~/lib/helm.js';
 import { UserCancelledError } from '~/lib/errors.js';
 import { cloudfleetHetznerDescriptor } from '~/platforms/cloudfleet/hetzner/descriptor.js';
 import { cloudfleetGcpDescriptor } from '~/platforms/cloudfleet/gcp/descriptor.js';
 import { upcloudUksDescriptor } from '~/platforms/upcloud/descriptor.js';
 import { infomaniakPckDescriptor } from '~/platforms/infomaniak/descriptor.js';
+import { k3sDescriptor } from '~/platforms/k3s/descriptor.js';
 import { mergeDependencyState, withTcpPortPool, type DependencyStateInput, type DependencyStateMap } from '~/lib/dependency-state.js';
 import { buildUpcloudTraefikValues } from '~/platforms/upcloud/traefik-values.js';
 import { buildInfomaniakTraefikValues, OPENSTACK_FLOATING_NETWORK_ANNOTATION } from '~/platforms/infomaniak/traefik-values.js';
 import { buildGcpTraefikValues } from '~/platforms/cloudfleet/gcp/traefik-overrides.js';
 import { HETZNER_LB_LOCATION_ANNOTATION } from '~/platforms/cloudfleet/hetzner/traefik-overrides.js';
 import { buildCloudfleetTraefikValues } from '~/platforms/cloudfleet/traefik-values.js';
+import { buildK3sTraefikValues } from '~/platforms/k3s/traefik-values.js';
 import { readString } from '~/lib/object-path.js';
 import type { TcpPortPoolSettings } from '@kubwave/kube';
 
@@ -55,6 +58,10 @@ export interface Platform {
 	description: string;
 	provider?: CloudProvider;
 	nodeSelector?: Record<string, string>;
+	// Fails fast on cluster state the platform cannot install over, before any dependency is touched.
+	preflight?: (kc: KubeConfig) => Promise<void>;
+	// Reads the DNS egress target from the cluster when the platform can't rely on a static default; read-only, runs right after preflight.
+	resolveDnsPolicy?: (kc: KubeConfig) => Promise<DnsPolicy>;
 	ensureStorage(kc: KubeConfig, opts: StorageOpts): Promise<StorageDecision>;
 	ensureAutoscaling?: (kc: KubeConfig, opts: AutoscalingOpts) => Promise<AutoscalingDecision | void>;
 	dependencies: DependencyStateInput;
@@ -77,7 +84,8 @@ export const PLATFORMS: ReadonlyArray<PlatformDescriptor> = [
 	cloudfleetHetznerDescriptor,
 	cloudfleetGcpDescriptor,
 	upcloudUksDescriptor,
-	infomaniakPckDescriptor
+	infomaniakPckDescriptor,
+	k3sDescriptor
 ];
 
 export function getPlatformDescriptor(id: string): PlatformDescriptor {
@@ -111,6 +119,8 @@ export function defaultTraefikValuesForPlatform(
 			return buildInfomaniakTraefikValues({
 				floatingNetworkId: readString(existingValues, ['service', 'annotations', OPENSTACK_FLOATING_NETWORK_ANNOTATION])
 			});
+		case 'k3s':
+			return buildK3sTraefikValues();
 		case 'cloudfleet-hetzner': {
 			const lbLocation = readString(existingValues, ['service', 'annotations', HETZNER_LB_LOCATION_ANNOTATION]);
 			return buildCloudfleetTraefikValues({

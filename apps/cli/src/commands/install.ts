@@ -19,7 +19,7 @@ import { parseChannel, type Channel } from '~/lib/channel.js';
 import { validateTargetForChannel } from '~/lib/releases.js';
 import { buildInstallState } from '~/lib/install-state.js';
 import { FatalCliError, printAndExit } from '~/lib/errors.js';
-import type { InstallConfig } from '~/lib/helm.js';
+import type { DnsPolicy, InstallConfig } from '~/lib/helm.js';
 import type { AutoscalingDecision, Platform, UpcloudNodeGroup } from '~/lib/platforms.js';
 import { parseUpcloudNodeGroup } from '~/platforms/upcloud/autoscaling.js';
 
@@ -33,7 +33,7 @@ export function registerInstallCommand(parent: Command): void {
 		.option('--registry <url>', 'Container registry', DEFAULT_REGISTRY)
 		.option('--cluster-confirmed', 'Skip cluster confirmation', false)
 		.option('--in-cluster', 'Use in-cluster kubeconfig', false)
-		.option('--platform <id>', 'Target platform: cloudfleet-hetzner, cloudfleet-gcp, upcloud-uks, or infomaniak-pck (prompted when omitted)')
+		.option('--platform <id>', 'Target platform: cloudfleet-hetzner, cloudfleet-gcp, upcloud-uks, infomaniak-pck, or k3s (prompted when omitted)')
 		.option('--hetzner-lb-location <loc>', 'Hetzner Load Balancer location (fsn1|nbg1|hel1|ash|hil); used by cloudfleet-hetzner')
 		.option(
 			'--infomaniak-floating-network-id <uuid>',
@@ -158,6 +158,9 @@ async function runInstall(opts: {
 		infomaniakFloatingNetworkId: opts.infomaniakFloatingNetworkId,
 		assumeYes
 	});
+	await platform.preflight?.(kc);
+	// Read-only, so it runs with the preflight: a cluster it rejects must stop before any dependency is installed.
+	const clusterDnsPolicy = await platform.resolveDnsPolicy?.(kc);
 	const warmup = await warmNodes(kc, platform, { ha: opts.ha, assumeYes, enabled: opts.warmNodes });
 	if (warmup.raiseTimeout) raiseInstallTimeoutForColdStart();
 	try {
@@ -175,7 +178,17 @@ async function runInstall(opts: {
 		});
 		await checkAdoption(kc, assumeYes);
 
-		const config = await resolveInstallConfig(opts, storage, autoscaling, channel, cliVersion, platform, tenantPodSecurity, tenantRuntimeClass);
+		const config = await resolveInstallConfig(
+			opts,
+			storage,
+			autoscaling,
+			channel,
+			cliVersion,
+			platform,
+			tenantPodSecurity,
+			tenantRuntimeClass,
+			clusterDnsPolicy
+		);
 		const resolvedConfig = await resolveInstallClusterIssuer(kc, config);
 		if (resolvedConfig.ha) await warnIfFewNodesForHa(kc);
 		await prepareClusterResources(kc, resolvedConfig);
@@ -242,7 +255,8 @@ async function resolveInstallConfig(
 	cliVersion: string,
 	platform: Platform,
 	tenantPodSecurity: string,
-	tenantRuntimeClass: string
+	tenantRuntimeClass: string,
+	clusterDnsPolicy: DnsPolicy | undefined
 ): Promise<InstallConfig> {
 	const inputs = await promptInstallInputs({ domain: opts.domain, email: opts.email });
 	p.log.info(`Domain:  ${inputs.domain}`);
@@ -263,6 +277,7 @@ async function resolveInstallConfig(
 		tenantPodSecurity,
 		tenantRuntimeClass,
 		dnsPolicy: dnsPolicyForPlatform(platform.id),
+		...(clusterDnsPolicy ? { clusterDnsPolicy } : {}),
 		...(autoscaling?.enabled ? { upcloudAutoscaling: autoscaling } : {})
 	};
 }

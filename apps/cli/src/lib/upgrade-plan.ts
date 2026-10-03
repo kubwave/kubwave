@@ -35,7 +35,7 @@ export function buildUpgradeValues(state: InstallState, targetVersion: string): 
 		...(state.nodeSelector && Object.keys(state.nodeSelector).length > 0 ? { nodeSelector: state.nodeSelector } : {}),
 		dependencies,
 		tcpPortPool,
-		dnsPolicy: dnsPolicyForPlatform(state.platformId),
+		dnsPolicy: state.clusterDnsPolicy ?? dnsPolicyForPlatform(state.platformId),
 		// Preserve HA: the marker (worker-mirrored on toggle) is authoritative for replicas/affinity.
 		ha: state.ha,
 		// Preserve the tenant PSS level chosen at install so the upgrade doesn't revert to the chart default.

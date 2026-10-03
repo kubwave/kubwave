@@ -23,7 +23,7 @@ describe('getPlatformDescriptor', () => {
 
 	test('throws with available platforms for unknown ID', () => {
 		expect(() => getPlatformDescriptor('unknown')).toThrow(
-			'Unknown platform "unknown". Available: cloudfleet-hetzner, cloudfleet-gcp, upcloud-uks, infomaniak-pck'
+			'Unknown platform "unknown". Available: cloudfleet-hetzner, cloudfleet-gcp, upcloud-uks, infomaniak-pck, k3s'
 		);
 	});
 
@@ -43,6 +43,12 @@ describe('getPlatformDescriptor', () => {
 		const desc = getPlatformDescriptor('infomaniak-pck');
 		expect(desc.id).toBe('infomaniak-pck');
 		expect(desc.label).toBe('Infomaniak (PCK)');
+	});
+
+	test('returns descriptor for k3s', () => {
+		const desc = getPlatformDescriptor('k3s');
+		expect(desc.id).toBe('k3s');
+		expect(desc.label).toBe('k3s');
 	});
 });
 
@@ -84,5 +90,10 @@ describe('PLATFORMS registry', () => {
 	test('contains infomaniak-pck', () => {
 		const ids = PLATFORMS.map(d => d.id);
 		expect(ids).toContain('infomaniak-pck');
+	});
+
+	test('contains k3s', () => {
+		const ids = PLATFORMS.map(d => d.id);
+		expect(ids).toContain('k3s');
 	});
 });

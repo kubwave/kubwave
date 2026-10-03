@@ -50,6 +50,9 @@ let namespaceExists = true;
 let readyNodeCount = 3;
 let preflightPasses = true;
 let cliVersionValue = '1.2.3';
+let dnsPolicyError: Error | undefined;
+
+const clusterDnsPolicy = { namespace: 'kube-system', podLabels: { 'k8s-app': 'kube-dns' }, serviceIp: '10.100.0.10/32' };
 
 const api = {
 	readNamespace: async ({ name }: { name: string }) => {
@@ -79,6 +82,14 @@ const fakePlatform = {
 	provider: 'hetzner',
 	nodeSelector: { 'kubwave.io/role': 'system' },
 	dependencies: {},
+	preflight: async () => {
+		events.push('platform-preflight');
+	},
+	resolveDnsPolicy: async () => {
+		events.push('resolve-dns');
+		if (dnsPolicyError) throw dnsPolicyError;
+		return clusterDnsPolicy;
+	},
 	ensureStorage: async (_kc: unknown, opts: { storageMode: string; storageClass?: string }) => {
 		events.push('ensure-storage');
 		cap.storageOpts = opts;
@@ -220,6 +231,8 @@ const HAPPY_ORDER = [
 	'preflight',
 	'confirm-context',
 	'select-platform',
+	'platform-preflight',
+	'resolve-dns',
 	'ensure-deps',
 	'ensure-storage',
 	'check-adoption',
@@ -243,6 +256,7 @@ function resetFixtures(): void {
 	readyNodeCount = 3;
 	preflightPasses = true;
 	cliVersionValue = '1.2.3';
+	dnsPolicyError = undefined;
 	passwordValue = 's3cret';
 }
 
@@ -328,6 +342,7 @@ describe('install command', () => {
 			// storage returned no nodeSelector → falls back to platform.nodeSelector
 			nodeSelector: { 'kubwave.io/role': 'system' },
 			certManagerClusterIssuer: { name: 'letsencrypt-prod', create: true, email: 'admin@example.com' },
+			clusterDnsPolicy,
 			ha: false
 		});
 		expect(cap.helmValuesFile).toBe('/tmp/test-values.yaml');
@@ -337,7 +352,7 @@ describe('install command', () => {
 		expect(cap.marker?.by).toBe('cli');
 		expect(cap.marker?.channel).toBe('stable');
 		// state is built by the REAL buildInstallState from the resolved config + platform id.
-		expect(cap.marker?.state).toMatchObject({ platformId: 'test-platform', domain: 'console.example.com', ha: false });
+		expect(cap.marker?.state).toMatchObject({ platformId: 'test-platform', domain: 'console.example.com', ha: false, clusterDnsPolicy });
 
 		expect(cap.storageOpts?.storageMode).toBe('auto');
 	});
@@ -458,6 +473,15 @@ describe('install command', () => {
 		expect(printAndExitCalls[0]).toBeInstanceOf(FatalCliError);
 		// Nothing past the preflight gate ran.
 		expect(events).toEqual(['preflight', 'print-and-exit']);
+	});
+
+	test('stops before installing dependencies or storage when the cluster DNS cannot be resolved', async () => {
+		resetFixtures();
+		dnsPolicyError = new FatalCliError('Service kube-system/kube-dns not found.');
+		const action = registerAndCaptureAction();
+
+		await expect(action(baseOpts())).rejects.toThrow('Service kube-system/kube-dns not found.');
+		expect(events).toEqual(['preflight', 'confirm-context', 'select-platform', 'platform-preflight', 'resolve-dns', 'print-and-exit']);
 	});
 
 	test('rejects an invalid --storage mode before touching the cluster', async () => {
