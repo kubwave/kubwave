@@ -1,5 +1,6 @@
 import type { Platform, PlatformDescriptor } from '~/lib/platforms.js';
 import { TRAEFIK_NAMESPACE } from '~/lib/constants.js';
+import { resolveK3sDnsPolicy } from './dns.js';
 import { assertBundledTraefikDisabled } from './preflight.js';
 import { ensureK3sStorage } from './storage.js';
 import { buildK3sTraefikValues } from './traefik-values.js';
@@ -17,6 +18,7 @@ export const k3sDescriptor: PlatformDescriptor = {
 			description: 'Self-managed k3s cluster (bundled Traefik disabled)',
 			preflight: assertBundledTraefikDisabled,
 			ensureStorage: ensureK3sStorage,
+			resolveDnsPolicy: resolveK3sDnsPolicy,
 			dependencies: {
 				traefik: {
 					kind: 'traefik',

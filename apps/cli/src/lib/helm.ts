@@ -48,6 +48,8 @@ export interface InstallConfig {
 	upcloudAutoscaling?: { enabled: boolean; clusterUuid: string; nodeGroups?: UpcloudNodeGroup[] };
 	tcpPortPool?: TcpPortPoolSettings;
 	dnsPolicy?: DnsPolicy;
+	// DNS egress target read from the live cluster (k3s); wins over dnsPolicy and is persisted so upgrades keep it.
+	clusterDnsPolicy?: DnsPolicy;
 }
 
 export function generateValuesFile(config: InstallConfig): string {
@@ -92,8 +94,8 @@ const defaultDnsPolicy: DnsPolicy = {
 // UpCloud UKS ships CoreDNS labelled `k8s-app: coredns`; an earlier `kube-dns` guess blocked all tenant DNS egress there.
 const upcloudDnsPolicy: DnsPolicy = { ...defaultDnsPolicy, podLabels: { 'k8s-app': 'coredns' } };
 
-// k3s labels its CoreDNS pods `k8s-app: kube-dns` and serves DNS on 10.43.0.10 (default --service-cidr); its
-// embedded kube-router enforces NetworkPolicy, so the coredns-label default would cut tenant and build DNS.
+// Fallback only: k3s installs resolve the real kube-dns Service (resolveK3sDnsPolicy). Stock k3s labels CoreDNS
+// `k8s-app: kube-dns` on 10.43.0.10, and its enforced NetworkPolicy would cut build-pod DNS with the coredns label.
 const k3sDnsPolicy: DnsPolicy = { ...defaultDnsPolicy, podLabels: { 'k8s-app': 'kube-dns' }, serviceIp: '10.43.0.10/32' };
 
 export function dnsPolicyForPlatform(platformId: string | undefined): DnsPolicy {
@@ -335,7 +337,7 @@ export function buildValues(config: InstallConfig): Record<string, unknown> {
 		tenantRuntimeClass: config.tenantRuntimeClass,
 		clusterIssuerName: certManagerClusterIssuer.name,
 		certManagerClusterIssuer,
-		...(config.dnsPolicy ? { dnsPolicy: config.dnsPolicy } : {})
+		...(config.clusterDnsPolicy || config.dnsPolicy ? { dnsPolicy: config.clusterDnsPolicy ?? config.dnsPolicy } : {})
 	});
 }
 

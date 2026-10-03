@@ -2,9 +2,10 @@ import { describe, expect, test } from 'bun:test';
 import { k3sDescriptor } from '../src/platforms/k3s/descriptor.js';
 import { buildK3sTraefikValues } from '../src/platforms/k3s/traefik-values.js';
 import { defaultTraefikValuesForPlatform } from '../src/lib/platforms.js';
-import { buildProductionValues, dnsPolicyForPlatform } from '../src/lib/helm.js';
+import { buildProductionValues, buildValues, dnsPolicyForPlatform } from '../src/lib/helm.js';
 import { buildUpgradeValues } from '../src/lib/upgrade-plan.js';
 import { resolveDependencyState } from '../src/lib/dependencies.js';
+import { buildInstallState, decodeInstallStateData, encodeInstallStateData } from '../src/lib/install-state.js';
 
 describe('k3sDescriptor', () => {
 	test('exposes id, label and description', () => {
@@ -20,6 +21,7 @@ describe('k3sDescriptor', () => {
 		expect(platform.nodeSelector).toBeUndefined();
 		expect(platform.ensureAutoscaling).toBeUndefined();
 		expect(typeof platform.preflight).toBe('function');
+		expect(typeof platform.resolveDnsPolicy).toBe('function');
 		expect(typeof platform.ensureStorage).toBe('function');
 	});
 
@@ -80,7 +82,7 @@ describe('k3s dns policy', () => {
 		expect(workloadIngress.controllerNamespace).toBe('traefik');
 	});
 
-	test('upgrade values keep the k3s dns policy', async () => {
+	test('upgrade values fall back to the static k3s dns policy', async () => {
 		const platform = await k3sDescriptor.build({});
 		const state = {
 			domain: 'app.example.com',
@@ -98,5 +100,54 @@ describe('k3s dns policy', () => {
 		};
 		const values = buildUpgradeValues(state, '0.3.0') as { tenants: { egress: { dnsPodLabels: Record<string, string> } } };
 		expect(values.tenants.egress.dnsPodLabels).toEqual({ 'k8s-app': 'kube-dns' });
+	});
+});
+
+describe('cluster-resolved dns policy', () => {
+	const clusterDnsPolicy = { namespace: 'kube-system', podLabels: { 'k8s-app': 'kube-dns' }, serviceIp: '10.100.0.10/32' };
+	const installConfig = {
+		domain: 'app.example.com',
+		email: 'ops@example.com',
+		version: '1.0.0',
+		imageRegistry: 'ghcr.io/acme',
+		namespace: 'kubwave',
+		ha: false,
+		dnsPolicy: dnsPolicyForPlatform('k3s'),
+		clusterDnsPolicy
+	};
+
+	test('install values use it over the static platform default', () => {
+		const values = buildValues(installConfig) as {
+			tenants: { egress: { dnsServiceIp: string } };
+			builds: { networkPolicy: { dns: { serviceIp: string } } };
+		};
+		expect(values.tenants.egress.dnsServiceIp).toBe('10.100.0.10/32');
+		expect(values.builds.networkPolicy.dns.serviceIp).toBe('10.100.0.10/32');
+	});
+
+	test('round-trips through the marker and drives upgrade values', async () => {
+		const platform = await k3sDescriptor.build({});
+		const installState = buildInstallState({ ...installConfig, dependencies: platform.dependencies }, 'k3s');
+		const data = encodeInstallStateData(installState);
+		expect(JSON.parse(data['cluster_dns_policy_json'] ?? '{}')).toEqual(clusterDnsPolicy);
+
+		const decoded = decodeInstallStateData(data);
+		expect(decoded?.clusterDnsPolicy).toEqual(clusterDnsPolicy);
+
+		const values = buildUpgradeValues({ ...installState, ...decoded }, '0.3.0') as {
+			tenants: { egress: { dnsServiceIp: string } };
+			builds: { networkPolicy: { dns: { serviceIp: string } } };
+		};
+		expect(values.tenants.egress.dnsServiceIp).toBe('10.100.0.10/32');
+		expect(values.builds.networkPolicy.dns.serviceIp).toBe('10.100.0.10/32');
+	});
+
+	test('is not persisted when the platform did not read it from the cluster', () => {
+		const { clusterDnsPolicy: _omitted, ...config } = installConfig;
+		expect(encodeInstallStateData(buildInstallState(config, 'k3s'))).not.toHaveProperty('cluster_dns_policy_json');
+	});
+
+	test('a malformed marker value is ignored', () => {
+		expect(decodeInstallStateData({ cluster_dns_policy_json: '{"namespace":"kube-system"}' })?.clusterDnsPolicy).toBeUndefined();
 	});
 });

@@ -19,7 +19,7 @@ import { parseChannel, type Channel } from '~/lib/channel.js';
 import { validateTargetForChannel } from '~/lib/releases.js';
 import { buildInstallState } from '~/lib/install-state.js';
 import { FatalCliError, printAndExit } from '~/lib/errors.js';
-import type { InstallConfig } from '~/lib/helm.js';
+import type { DnsPolicy, InstallConfig } from '~/lib/helm.js';
 import type { AutoscalingDecision, Platform, UpcloudNodeGroup } from '~/lib/platforms.js';
 import { parseUpcloudNodeGroup } from '~/platforms/upcloud/autoscaling.js';
 
@@ -164,6 +164,7 @@ async function runInstall(opts: {
 	try {
 		await ensureDependencies(kc, platform.dependencies, undefined, { assumeYes });
 		const storage = await platform.ensureStorage(kc, { storageMode, storageClass: opts.storageClass, assumeYes });
+		const clusterDnsPolicy = await platform.resolveDnsPolicy?.(kc);
 		const autoscaling = await platform.ensureAutoscaling?.(kc, {
 			upcloudAutoscaling: opts.upcloudAutoscaling,
 			upcloudClusterUuid: opts.upcloudClusterUuid,
@@ -176,7 +177,17 @@ async function runInstall(opts: {
 		});
 		await checkAdoption(kc, assumeYes);
 
-		const config = await resolveInstallConfig(opts, storage, autoscaling, channel, cliVersion, platform, tenantPodSecurity, tenantRuntimeClass);
+		const config = await resolveInstallConfig(
+			opts,
+			storage,
+			autoscaling,
+			channel,
+			cliVersion,
+			platform,
+			tenantPodSecurity,
+			tenantRuntimeClass,
+			clusterDnsPolicy
+		);
 		const resolvedConfig = await resolveInstallClusterIssuer(kc, config);
 		if (resolvedConfig.ha) await warnIfFewNodesForHa(kc);
 		await prepareClusterResources(kc, resolvedConfig);
@@ -243,7 +254,8 @@ async function resolveInstallConfig(
 	cliVersion: string,
 	platform: Platform,
 	tenantPodSecurity: string,
-	tenantRuntimeClass: string
+	tenantRuntimeClass: string,
+	clusterDnsPolicy: DnsPolicy | undefined
 ): Promise<InstallConfig> {
 	const inputs = await promptInstallInputs({ domain: opts.domain, email: opts.email });
 	p.log.info(`Domain:  ${inputs.domain}`);
@@ -264,6 +276,7 @@ async function resolveInstallConfig(
 		tenantPodSecurity,
 		tenantRuntimeClass,
 		dnsPolicy: dnsPolicyForPlatform(platform.id),
+		...(clusterDnsPolicy ? { clusterDnsPolicy } : {}),
 		...(autoscaling?.enabled ? { upcloudAutoscaling: autoscaling } : {})
 	};
 }

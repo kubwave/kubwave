@@ -113,6 +113,8 @@ kubwave install --platform k3s --storage-class longhorn ...
 ## Network policy notes
 
 k3s enforces `NetworkPolicy` through its embedded network policy controller, so kubwave's tenant
-isolation and build egress policies are active out of the box. The `k3s` profile allows DNS to the
-k3s CoreDNS pods (`k8s-app: kube-dns`) and to its service IP `10.43.0.10`, which assumes the default
-k3s service CIDR.
+isolation and build egress policies are active out of the box. Their DNS rules have to name the
+cluster DNS, so the installer reads the `kube-system/kube-dns` Service and allows its ClusterIP and the
+pods it selects. A custom `--service-cidr`/`--cluster-dns` or a replaced CoreDNS works without extra
+flags. The install stops if the cluster has no `kube-dns` Service, for example when k3s runs with
+`--disable=coredns`.

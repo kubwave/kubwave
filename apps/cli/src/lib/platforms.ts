@@ -1,6 +1,7 @@
 import type { KubeConfig } from '@kubernetes/client-node';
 import * as p from '@clack/prompts';
 import type { CloudProvider } from '~/lib/cloud-provider.js';
+import type { DnsPolicy } from '~/lib/helm.js';
 import { UserCancelledError } from '~/lib/errors.js';
 import { cloudfleetHetznerDescriptor } from '~/platforms/cloudfleet/hetzner/descriptor.js';
 import { cloudfleetGcpDescriptor } from '~/platforms/cloudfleet/gcp/descriptor.js';
@@ -59,6 +60,8 @@ export interface Platform {
 	nodeSelector?: Record<string, string>;
 	// Fails fast on cluster state the platform cannot install over, before any dependency is touched.
 	preflight?: (kc: KubeConfig) => Promise<void>;
+	// Reads the DNS egress target from the cluster when the platform can't rely on a static default.
+	resolveDnsPolicy?: (kc: KubeConfig) => Promise<DnsPolicy>;
 	ensureStorage(kc: KubeConfig, opts: StorageOpts): Promise<StorageDecision>;
 	ensureAutoscaling?: (kc: KubeConfig, opts: AutoscalingOpts) => Promise<AutoscalingDecision | void>;
 	dependencies: DependencyStateInput;
