@@ -20,7 +20,8 @@ export const docsNav: NavGroup[] = [
 			{ title: 'Cloudfleet (Hetzner)', path: '/providers/cloudfleet-hetzner' },
 			{ title: 'Cloudfleet (Google Cloud)', path: '/providers/cloudfleet-gcp' },
 			{ title: 'UpCloud UKS', path: '/providers/upcloud-uks' },
-			{ title: 'Infomaniak PCK', path: '/providers/infomaniak-pck' }
+			{ title: 'Infomaniak PCK', path: '/providers/infomaniak-pck' },
+			{ title: 'k3s', path: '/providers/k3s' }
 		]
 	},
 	{

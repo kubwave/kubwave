@@ -92,8 +92,19 @@ const defaultDnsPolicy: DnsPolicy = {
 // UpCloud UKS ships CoreDNS labelled `k8s-app: coredns`; an earlier `kube-dns` guess blocked all tenant DNS egress there.
 const upcloudDnsPolicy: DnsPolicy = { ...defaultDnsPolicy, podLabels: { 'k8s-app': 'coredns' } };
 
+// k3s labels its CoreDNS pods `k8s-app: kube-dns` and serves DNS on 10.43.0.10 (default --service-cidr); its
+// embedded kube-router enforces NetworkPolicy, so the coredns-label default would cut tenant and build DNS.
+const k3sDnsPolicy: DnsPolicy = { ...defaultDnsPolicy, podLabels: { 'k8s-app': 'kube-dns' }, serviceIp: '10.43.0.10/32' };
+
 export function dnsPolicyForPlatform(platformId: string | undefined): DnsPolicy {
-	return platformId === 'upcloud-uks' ? upcloudDnsPolicy : defaultDnsPolicy;
+	switch (platformId) {
+		case 'upcloud-uks':
+			return upcloudDnsPolicy;
+		case 'k3s':
+			return k3sDnsPolicy;
+		default:
+			return defaultDnsPolicy;
+	}
 }
 
 const productionConsoleResources = {

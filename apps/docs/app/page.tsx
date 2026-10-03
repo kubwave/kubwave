@@ -36,7 +36,8 @@ const providers = [
 	{ name: 'Cloudfleet (Hetzner)', id: 'cloudfleet-hetzner', href: '/providers/cloudfleet-hetzner/' },
 	{ name: 'Cloudfleet (Google Cloud)', id: 'cloudfleet-gcp', href: '/providers/cloudfleet-gcp/' },
 	{ name: 'UpCloud UKS', id: 'upcloud-uks', href: '/providers/upcloud-uks/' },
-	{ name: 'Infomaniak PCK', id: 'infomaniak-pck', href: '/providers/infomaniak-pck/' }
+	{ name: 'Infomaniak PCK', id: 'infomaniak-pck', href: '/providers/infomaniak-pck/' },
+	{ name: 'k3s', id: 'k3s', href: '/providers/k3s/' }
 ];
 
 const tasks = [

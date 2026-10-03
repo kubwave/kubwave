@@ -1,0 +1,118 @@
+export const metadata = {
+	title: 'k3s',
+	description: 'Set up kubwave on a self-managed k3s cluster, including the Traefik, load balancer, and storage prerequisites.'
+};
+
+**k3s** runs kubwave on a k3s cluster you operate yourself — a single VPS, a few bare-metal servers,
+or a homelab. kubwave installs its own Traefik, cert-manager, and CloudNativePG, and relies on what
+k3s ships for everything else.
+
+- **Platform ID:** `k3s`
+- **Load balancer:** k3s ServiceLB (klipper-lb). It publishes the Traefik `Service` ports — `:80`,
+  `:443`, and the public TCP pool `30100`–`30119` — as host ports on every node and reports the node
+  IPs as the service's external IPs.
+- **Storage:** the cluster's default `StorageClass` — `local-path` on a stock k3s.
+- **Autoscaling:** none. kubwave neither installs nor drives a node autoscaler on this platform.
+
+## Prerequisites
+
+- A **k3s** cluster with its **bundled Traefik disabled**. kubwave manages its own Traefik in the
+  `traefik` namespace, and the k3s-bundled one would claim the same IngressClass and node ports.
+- **ServiceLB enabled** (the k3s default). If you started k3s with `--disable=servicelb`, run another
+  LoadBalancer implementation such as MetalLB instead.
+- Ports **80, 443, and 30100–30119** free on the nodes and reachable from the internet. Let's Encrypt
+  validates certificates over port 80.
+- A **kubeconfig** with cluster-admin rights.
+- A **domain** pointing at a node's public IP after install (or use a temporary hostname while
+  testing).
+
+## Set it up
+
+<Steps>
+
+1.  **Run k3s without its bundled Traefik.** On a new server:
+
+    ```sh
+    curl -sfL https://get.k3s.io | sh -s - --disable=traefik
+    ```
+
+    On an existing cluster, add `traefik` to the `disable` list in `/etc/rancher/k3s/config.yaml` on
+    every server node and restart k3s:
+
+    ```yaml
+    disable:
+      - traefik
+    ```
+
+    ```sh
+    sudo systemctl restart k3s
+    kubectl -n kube-system get helmchart traefik   # must report NotFound
+    ```
+
+    The installer checks this and stops before changing anything while the bundled Traefik is
+    still enabled.
+
+2.  **Point `kubectl` at the cluster.** Copy `/etc/rancher/k3s/k3s.yaml` from a server node, replace
+    `127.0.0.1` with the server's address, and verify the cluster is reachable:
+
+    ```sh
+    kubectl get nodes
+    kubectl get storageclass
+    ```
+
+3.  **Run the installer.**
+
+    ```sh
+    kubwave install \
+      --platform k3s \
+      --domain app.example.com \
+      --email ops@example.com
+    ```
+
+    For non-interactive installs, pass `--yes` together with `--domain`, `--email`, and
+    `--platform`.
+
+4.  **Point your DNS.** The Traefik service's `EXTERNAL-IP` lists the node IPs ServiceLB publishes
+    on:
+
+    ```sh
+    kubectl -n traefik get svc traefik
+    ```
+
+    Create an `A` record for `app.example.com` at a node's public IP. cert-manager issues the TLS
+    certificate within a minute or so once DNS resolves.
+
+    <Callout type="note" title="Build registry">
+
+    When you later enable the platform build registry in the admin settings, it is served at
+    `registry.app.example.com`. Add an `A` record for that host at the same IP.
+
+    </Callout>
+
+5.  **Open the console** at `https://app.example.com` and create the first admin account.
+
+</Steps>
+
+## Storage notes
+
+On a stock k3s, kubwave uses `local-path`, which stores each volume in a directory on the node the
+pod first lands on:
+
+- The platform database, the image registry, and tenant volumes stay pinned to that node and are lost
+  with it. On a multi-node cluster the installer warns about this; prefer a replicated
+  `StorageClass` such as Longhorn.
+- `local-path` does not allow volume expansion, so kubwave's volume autoscaling leaves those volumes
+  at their initial size.
+
+To use a different class, make it the cluster default or pass it explicitly:
+
+```sh
+kubwave install --platform k3s --storage-class longhorn ...
+```
+
+## Network policy notes
+
+k3s enforces `NetworkPolicy` through its embedded network policy controller, so kubwave's tenant
+isolation and build egress policies are active out of the box. The `k3s` profile allows DNS to the
+k3s CoreDNS pods (`k8s-app: kube-dns`) and to its service IP `10.43.0.10`, which assumes the default
+k3s service CIDR.

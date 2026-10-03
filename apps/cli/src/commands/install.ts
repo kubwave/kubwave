@@ -33,7 +33,7 @@ export function registerInstallCommand(parent: Command): void {
 		.option('--registry <url>', 'Container registry', DEFAULT_REGISTRY)
 		.option('--cluster-confirmed', 'Skip cluster confirmation', false)
 		.option('--in-cluster', 'Use in-cluster kubeconfig', false)
-		.option('--platform <id>', 'Target platform: cloudfleet-hetzner, cloudfleet-gcp, upcloud-uks, or infomaniak-pck (prompted when omitted)')
+		.option('--platform <id>', 'Target platform: cloudfleet-hetzner, cloudfleet-gcp, upcloud-uks, infomaniak-pck, or k3s (prompted when omitted)')
 		.option('--hetzner-lb-location <loc>', 'Hetzner Load Balancer location (fsn1|nbg1|hel1|ash|hil); used by cloudfleet-hetzner')
 		.option(
 			'--infomaniak-floating-network-id <uuid>',
@@ -158,6 +158,7 @@ async function runInstall(opts: {
 		infomaniakFloatingNetworkId: opts.infomaniakFloatingNetworkId,
 		assumeYes
 	});
+	await platform.preflight?.(kc);
 	const warmup = await warmNodes(kc, platform, { ha: opts.ha, assumeYes, enabled: opts.warmNodes });
 	if (warmup.raiseTimeout) raiseInstallTimeoutForColdStart();
 	try {
